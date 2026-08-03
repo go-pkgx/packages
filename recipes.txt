@@ -2,5 +2,15 @@
 # The pantry is built progressively: start with dependency-free leaves that build
 # cleanly, then grow this list outward toward the full pantry.
 #
-# Wave 1 — leaves (no build dependencies).
+# Wave 1 — leaves + shallow C packages (make/autotools; deps resolved by pkgx).
 lz4.org
+tukaani.org/xz
+sourceware.org/bzip2
+sqlite.org
+pcre.org
+re2c.org
+gnu.org/patch
+gnu.org/tar
+gnu.org/which
+gnu.org/gmp
+gnu.org/wget
