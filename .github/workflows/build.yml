@@ -67,7 +67,7 @@ jobs:
           OCI_USERNAME: ${{ github.actor }}
           # The workflow's built-in token (permissions.packages: write above) —
           # no long-lived PAT to manage, auto-rotated per run. Requires the
-          # go-pkgx/bottles package to grant this repo write access once
+          # go-pkgx/packages package to grant this repo write access once
           # (package → settings → Manage Actions access → add go-pkgx/factory).
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build pkgx pantry recipes with bk and publish signed, attested bottles to
-# ghcr.io/go-pkgx/bottles. The requested projects are expanded to their full
+# ghcr.io/go-pkgx/packages. The requested projects are expanded to their full
 # runtime-dependency closure (deps built before dependents), and a
 # (project,version,platform) already in ghcr is skipped — so shared deps build
 # once. Per-recipe failures are logged (failures.txt) but never fail the run:
@@ -14,7 +14,7 @@
 set -uo pipefail
 
 PLATFORM="${PLATFORM:?set PLATFORM=linux/x86-64|linux/aarch64}"
-DIST="oci://ghcr.io/go-pkgx/bottles"
+DIST="oci://ghcr.io/go-pkgx/packages"
 PANTRY="${PANTRY:-pantry}"
 OS="${PLATFORM%/*}"; ARCH="${PLATFORM#*/}"
 OARCH="$ARCH"; [ "$ARCH" = x86-64 ] && OARCH=amd64; [ "$ARCH" = aarch64 ] && OARCH=arm64
@@ -39,11 +39,11 @@ echo "closure: ${#LIST[@]} project(s) for $PLATFORM (from ${#WANT[@]} requested)
 alreadyPublished() {
   local proj="$1" ver="$2" tok man
   tok=$(curl -fsSL -u "$OCI_USERNAME:$OCI_PASSWORD" \
-    "https://ghcr.io/token?service=ghcr.io&scope=repository:go-pkgx/bottles/${proj}:pull" \
+    "https://ghcr.io/token?service=ghcr.io&scope=repository:go-pkgx/packages/${proj}:pull" \
     | sed -n 's/.*"token":"\([^"]*\)".*/\1/p') || return 1
   man=$(curl -fsSL -H "Authorization: Bearer $tok" \
     -H 'Accept: application/vnd.oci.image.index.v1+json' \
-    "https://ghcr.io/v2/go-pkgx/bottles/${proj}/manifests/${ver}" 2>/dev/null) || return 1
+    "https://ghcr.io/v2/go-pkgx/packages/${proj}/manifests/${ver}" 2>/dev/null) || return 1
   printf '%s' "$man" | jq -e --arg os "$OS" --arg a "$OARCH" \
     '.manifests[]?.platform | select(.os==$os and .architecture==$a)' >/dev/null 2>&1
 }

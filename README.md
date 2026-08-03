@@ -4,7 +4,7 @@
 
 Builds [pkgx pantry](https://github.com/pkgxdev/pantry) recipes with
 [`bk`](https://github.com/go-pkgx/bk) (the pure-Go brewkit) and publishes
-**signed, attested bottles** to `ghcr.io/go-pkgx/bottles`.
+**signed, attested bottles** to `ghcr.io/go-pkgx/packages`.
 
 Each bottle is pushed as an OCI artifact with a **CycloneDX SBOM**, an in-toto
 **SLSA provenance** statement, and a **cosign-style signature** (verified against
@@ -22,7 +22,7 @@ recipe list.
 
 ## Consuming
 
-    PKGX_DIST=oci://ghcr.io/go-pkgx/bottles PKGX_VERIFY=1 pkgm install lz4.org
+    PKGX_DIST=oci://ghcr.io/go-pkgx/packages PKGX_VERIFY=1 pkgm install lz4.org
 
 ## License
 
