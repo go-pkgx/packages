@@ -6,6 +6,10 @@ on:
         description: "space-separated projects to build (blank = recipes.txt)"
         required: false
         default: ""
+  # Continuous population: rebuild recipes.txt daily. skip-if-published means
+  # only new/updated (project,version,platform) are actually built.
+  schedule:
+    - cron: "0 6 * * *"
 
 permissions:
   contents: read
@@ -31,7 +35,9 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y --no-install-recommends \
-            ca-certificates curl git xz-utils build-essential gettext jq
+            ca-certificates curl git xz-utils build-essential gettext jq python3
+          # some recipes' configure looks for `python`
+          command -v python >/dev/null || ln -sf "$(command -v python3)" /usr/local/bin/python
 
       - uses: actions/checkout@v4
 
