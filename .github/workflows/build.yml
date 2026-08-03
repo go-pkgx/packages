@@ -1,0 +1,64 @@
+name: build
+on:
+  workflow_dispatch:
+    inputs:
+      recipes:
+        description: "space-separated projects to build (blank = recipes.txt)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-latest,    platform: linux/x86-64 }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+
+      - name: install pkgx (bk's build script sources its toolchain via `pkgx +deps`)
+        run: |
+          curl -fsS https://pkgx.sh | sh
+          for d in "$HOME/.local/bin" /usr/local/bin; do
+            [ -x "$d/pkgx" ] && { echo "$d" >> "$GITHUB_PATH"; break; }
+          done
+
+      - name: install bk
+        run: |
+          go install github.com/go-pkgx/bk/cmd/bk@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: tool versions
+        run: |
+          pkgx --version
+          bk 2>&1 | head -1 || true
+
+      - name: clone pantry
+        run: git clone --depth 1 https://github.com/pkgxdev/pantry
+
+      - name: build + publish bottles
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          RECIPES: ${{ github.event.inputs.recipes }}
+          OCI_USERNAME: ${{ github.actor }}
+          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+        run: bash factory.sh
+
+      - name: upload failures list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failures-${{ strategy.job-index }}
+          path: failures.txt
+          if-no-files-found: ignore
