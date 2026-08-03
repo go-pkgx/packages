@@ -20,13 +20,25 @@ jobs:
           - { runner: ubuntu-latest,    platform: linux/x86-64 }
           - { runner: ubuntu-24.04-arm, platform: linux/aarch64 }
     runs-on: ${{ matrix.runner }}
+    # Phase A isolation: build inside a pinned, controlled debian base (bookworm,
+    # glibc 2.36) instead of the drifting runner host — reproducible, no host-tool
+    # leakage, and a known glibc floor. (Phase B — building against pkgx's OWN
+    # glibc for truly self-contained FROM-scratch bottles — is a bk change.)
+    container:
+      image: debian:stable-slim
     steps:
+      - name: base tools
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git xz-utils build-essential
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-go@v5
         with: { go-version: stable }
 
-      - name: install pkgx (bk's build script sources its toolchain via `pkgx +deps`)
+      - name: install pkgx (bk sources its toolchain via `pkgx +deps`)
         run: |
           curl -fsS https://pkgx.sh | sh
           for d in "$HOME/.local/bin" /usr/local/bin; do
@@ -34,8 +46,10 @@ jobs:
           done
 
       - name: install bk
+        # GOPROXY=direct: pull the current main straight from GitHub, else the
+        # module proxy serves a stale cached @main and CI runs an old bk.
         run: |
-          go install github.com/go-pkgx/bk/cmd/bk@main
+          GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: tool versions
@@ -51,9 +65,6 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           RECIPES: ${{ github.event.inputs.recipes }}
           OCI_USERNAME: ${{ github.actor }}
-          # A write:packages PAT — GITHUB_TOKEN can't push to the pre-existing
-          # go-pkgx/bottles package (not linked to this repo). TODO: replace with
-          # a fine-grained token scoped to write:packages on go-pkgx/bottles.
           OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: bash factory.sh
