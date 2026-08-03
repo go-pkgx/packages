@@ -1,6 +1,6 @@
 # factory
 
-[![build](https://github.com/go-pkgx/factory/actions/workflows/build.yml/badge.svg)](https://github.com/go-pkgx/factory/actions/workflows/build.yml)
+[![build](https://github.com/go-pkgx/packages/actions/workflows/build.yml/badge.svg)](https://github.com/go-pkgx/packages/actions/workflows/build.yml)
 
 Builds [pkgx pantry](https://github.com/pkgxdev/pantry) recipes with
 [`bk`](https://github.com/go-pkgx/bk) (the pure-Go brewkit) and publishes
