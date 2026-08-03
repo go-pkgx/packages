@@ -51,7 +51,10 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           RECIPES: ${{ github.event.inputs.recipes }}
           OCI_USERNAME: ${{ github.actor }}
-          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          # A write:packages PAT — GITHUB_TOKEN can't push to the pre-existing
+          # go-pkgx/bottles package (not linked to this repo). TODO: replace with
+          # a fine-grained token scoped to write:packages on go-pkgx/bottles.
+          OCI_PASSWORD: ${{ secrets.GHCR_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: bash factory.sh
 
