@@ -1,68 +1,84 @@
 #!/usr/bin/env bash
 # Build pkgx pantry recipes with bk and publish signed, attested bottles to
-# ghcr.io/go-pkgx/bottles. Individual recipe failures are logged (to
-# failures.txt) but do not fail the run — the pantry is built progressively.
+# ghcr.io/go-pkgx/bottles. The requested projects are expanded to their full
+# runtime-dependency closure (deps built before dependents), and a
+# (project,version,platform) already in ghcr is skipped — so shared deps build
+# once. Per-recipe failures are logged (failures.txt) but never fail the run:
+# the pantry is built progressively.
 #
 # Env: PLATFORM=linux/x86-64|linux/aarch64  (required)
 #      RECIPES="p1 p2 ..."   (optional; blank = recipes.txt)
 #      PANTRY=<dir>          (default: pantry)
-#      OCI_USERNAME/OCI_PASSWORD  ghcr push creds
+#      OCI_USERNAME/OCI_PASSWORD  ghcr creds
 #      SIGNING_KEY           (optional; org secret → bk publish --sign)
 set -uo pipefail
 
 PLATFORM="${PLATFORM:?set PLATFORM=linux/x86-64|linux/aarch64}"
 DIST="oci://ghcr.io/go-pkgx/bottles"
 PANTRY="${PANTRY:-pantry}"
+OS="${PLATFORM%/*}"; ARCH="${PLATFORM#*/}"
+OARCH="$ARCH"; [ "$ARCH" = x86-64 ] && OARCH=amd64; [ "$ARCH" = aarch64 ] && OARCH=arm64
 
-# Signing key (org secret) → a private temp file for `bk publish --sign`.
 SIGN_ARGS=()
 if [ -n "${SIGNING_KEY:-}" ]; then
-  umask 077
-  KEYFILE="$(mktemp)"
-  printf '%s' "$SIGNING_KEY" > "$KEYFILE"
-  SIGN_ARGS=(--sign "$KEYFILE")
-  echo "signing: enabled"
+  umask 077; KEYFILE="$(mktemp)"; printf '%s' "$SIGNING_KEY" > "$KEYFILE"
+  SIGN_ARGS=(--sign "$KEYFILE"); echo "signing: enabled"
 else
   echo "signing: disabled (no SIGNING_KEY)"
 fi
 
-# Recipe list: workflow input wins, else recipes.txt (minus blanks/comments).
-if [ -n "${RECIPES:-}" ]; then
-  read -ra LIST <<<"$RECIPES"
-else
-  mapfile -t LIST < <(grep -vE '^[[:space:]]*(#|$)' recipes.txt)
-fi
-echo "building ${#LIST[@]} recipe(s) for $PLATFORM"
+# Requested list: workflow input, else recipes.txt (minus blanks/comments).
+if [ -n "${RECIPES:-}" ]; then read -ra WANT <<<"$RECIPES"; else
+  mapfile -t WANT < <(grep -vE '^[[:space:]]*(#|$)' recipes.txt); fi
 
-ok=0 fail=0
+# Expand to the topologically-ordered runtime closure (deps first).
+mapfile -t LIST < <(PANTRY="$PANTRY" PLATFORM="$PLATFORM" go run ./closure "${WANT[@]}")
+echo "closure: ${#LIST[@]} project(s) for $PLATFORM (from ${#WANT[@]} requested)"
+
+# alreadyPublished proj ver → 0 if ghcr already has this platform for that version.
+alreadyPublished() {
+  local proj="$1" ver="$2" tok man
+  tok=$(curl -fsSL -u "$OCI_USERNAME:$OCI_PASSWORD" \
+    "https://ghcr.io/token?service=ghcr.io&scope=repository:go-pkgx/bottles/${proj}:pull" \
+    | sed -n 's/.*"token":"\([^"]*\)".*/\1/p') || return 1
+  man=$(curl -fsSL -H "Authorization: Bearer $tok" \
+    -H 'Accept: application/vnd.oci.image.index.v1+json' \
+    "https://ghcr.io/v2/go-pkgx/bottles/${proj}/manifests/${ver}" 2>/dev/null) || return 1
+  printf '%s' "$man" | jq -e --arg os "$OS" --arg a "$OARCH" \
+    '.manifests[]?.platform | select(.os==$os and .architecture==$a)' >/dev/null 2>&1
+}
+
+ok=0 fail=0 skip=0
 : > failures.txt
 for proj in "${LIST[@]}"; do
   rec="$PANTRY/projects/$proj/package.yml"
-  if [ ! -f "$rec" ]; then echo "SKIP $proj (no recipe at $rec)"; continue; fi
+  [ -f "$rec" ] || { echo "SKIP $proj (no recipe)"; continue; }
+
+  ver=$(curl -fsSL "https://dist.pkgx.dev/${proj}/${OS}/${ARCH}/versions.txt" 2>/dev/null | tail -1)
+  if [ -n "$ver" ] && alreadyPublished "$proj" "$ver"; then
+    echo "⏭  SKIP $proj $ver ($PLATFORM) — already in ghcr"; skip=$((skip+1)); continue
+  fi
 
   echo "::group::build $proj ($PLATFORM)"
   out="$(bk --platform "$PLATFORM" build --recipe "$rec" --dist dist "$proj" 2>&1)"; rc=$?
-  printf '%s\n' "$out" | tail -25
+  printf '%s\n' "$out" | tail -20
   echo "::endgroup::"
-  if [ $rc -ne 0 ]; then echo "❌ BUILD FAIL $proj"; echo "$proj build" >> failures.txt; fail=$((fail+1)); continue; fi
+  [ $rc -eq 0 ] || { echo "❌ BUILD FAIL $proj"; echo "$proj build" >> failures.txt; fail=$((fail+1)); continue; }
 
   bottle="$(printf '%s\n' "$out" | sed -n 's/^bottle: //p' | tail -1)"
-  ver="$(basename "${bottle:-}" | sed -E 's/^v(.*)\.tar\.(gz|xz)$/\1/')"
-  if [ -z "${bottle:-}" ] || [ -z "${ver:-}" ]; then
-    echo "❌ PARSE FAIL $proj (bottle=$bottle)"; echo "$proj parse" >> failures.txt; fail=$((fail+1)); continue
-  fi
+  bver="$(basename "${bottle:-}" | sed -E 's/^v(.*)\.tar\.(gz|xz)$/\1/')"
+  [ -n "${bottle:-}" ] && [ -n "${bver:-}" ] || { echo "❌ PARSE FAIL $proj"; echo "$proj parse" >> failures.txt; fail=$((fail+1)); continue; }
 
-  echo "::group::publish $proj $ver"
+  echo "::group::publish $proj $bver"
   if SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
-     bk publish --to "$DIST" --project "$proj" --version "$ver" \
-        --platform "$PLATFORM" "${SIGN_ARGS[@]}" "$bottle"; then
-    echo "✅ OK $proj $ver $PLATFORM"; ok=$((ok+1))
+     bk publish --to "$DIST" --project "$proj" --version "$bver" --platform "$PLATFORM" "${SIGN_ARGS[@]}" "$bottle"; then
+    echo "✅ OK $proj $bver $PLATFORM"; ok=$((ok+1))
   else
     echo "❌ PUBLISH FAIL $proj"; echo "$proj publish" >> failures.txt; fail=$((fail+1))
   fi
   echo "::endgroup::"
 done
 
-echo "=== summary ($PLATFORM): $ok ok, $fail failed ==="
+echo "=== summary ($PLATFORM): $ok built, $skip skipped, $fail failed ==="
 [ -s failures.txt ] && { echo "failures:"; cat failures.txt; }
 exit 0

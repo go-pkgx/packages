@@ -31,7 +31,7 @@ jobs:
         run: |
           apt-get update -qq
           apt-get install -y --no-install-recommends \
-            ca-certificates curl git xz-utils build-essential
+            ca-certificates curl git xz-utils build-essential gettext jq
 
       - uses: actions/checkout@v4
 

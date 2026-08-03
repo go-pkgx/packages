@@ -1,3 +1,5 @@
 dist/
 pantry/
 failures.txt
+/closure/closure
+cov.out
