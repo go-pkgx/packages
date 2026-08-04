@@ -4,12 +4,12 @@
 
 A pure-Go package factory. Builds [pkgx pantry](https://github.com/pkgxdev/pantry)
 recipes with [`bk`](https://github.com/go-pkgx/bk) (the CGO-free re-implementation
-of brewkit) and publishes **signed, attested bottles** to
+of brewkit) and publishes **signed, attested packages** to
 `ghcr.io/go-pkgx/packages`.
 
 ## Supply chain
 
-Every bottle is pushed as an OCI artifact carrying, as **OCI referrers**:
+Every package is pushed as an OCI artifact carrying, as **OCI referrers**:
 
 - a **CycloneDX SBOM** ([`go-pkgx/sbom`](https://github.com/go-pkgx/sbom)),
 - an in-toto **SLSA provenance** statement, and
@@ -18,7 +18,7 @@ Every bottle is pushed as an OCI artifact carrying, as **OCI referrers**:
 Signatures verify against the pinned public key
 `RWQ+rmH+fXy2iYr+gReQAOQtYWtH0A7UlxcAa2hpr+txNBwGqtpFsR6L`. On install,
 `bottle.VerifySignature` checks it; set **`PKGX_VERIFY=1`** to fail closed —
-an unsigned or badly-signed bottle is refused rather than installed.
+an unsigned or badly-signed package is refused rather than installed.
 
 ## How it runs
 
@@ -42,13 +42,13 @@ Per-recipe failures are logged (`failures.txt`) but never fail the run. Grow
   container — a controlled glibc floor instead of the drifting runner host, with no
   host-tool leakage and reproducible output.
 - **Phase B (experimental / proven feasible).** Building against pkgx's *own* glibc
-  toolchain for truly self-contained `FROM scratch` bottles. It is a `bk` change on
+  toolchain for truly self-contained `FROM scratch` packages. It is a `bk` change on
   branch `feat/pkgx-glibc-toolchain`, off by default (`BK_PKGX_LIBC=1`); design note:
   [`bk/docs/from-scratch-toolchain.md`](https://github.com/go-pkgx/bk/blob/feat/pkgx-glibc-toolchain/docs/from-scratch-toolchain.md).
 
 ## Consuming
 
-Bottles are OCI artifacts, so any OCI client can pull them; the catalog grows daily
+Packages are OCI artifacts, so any OCI client can pull them; the catalog grows daily
 via the cron, so treat the published set as a moving target. Currently live:
 `zlib.net`, `tukaani.org/xz`, `lz4.org`, `gnu.org/tar`, `sourceware.org/bzip2`.
 
@@ -56,7 +56,7 @@ Point the go-pkgx tools at the registry and verify against the pinned key:
 
     PKGX_DIST=oci://ghcr.io/go-pkgx/packages PKGX_VERIFY=1 pkgm install lz4.org
 
-or pull a bottle directly:
+or pull a package directly:
 
     docker pull ghcr.io/go-pkgx/packages/lz4.org:1.10.0
 
