@@ -28,11 +28,16 @@ else
 fi
 
 # Requested list: workflow input, else recipes.txt (minus blanks/comments).
+# NB: `mapfile` is bash 4+, absent from macOS's stock bash 3.2 — read portably.
+WANT=()
 if [ -n "${RECIPES:-}" ]; then read -ra WANT <<<"$RECIPES"; else
-  mapfile -t WANT < <(grep -vE '^[[:space:]]*(#|$)' recipes.txt); fi
+  while IFS= read -r line; do WANT+=("$line"); done \
+    < <(grep -vE '^[[:space:]]*(#|$)' recipes.txt); fi
 
 # Expand to the topologically-ordered runtime closure (deps first).
-mapfile -t LIST < <(PANTRY="$PANTRY" PLATFORM="$PLATFORM" go run ./closure "${WANT[@]}")
+LIST=()
+while IFS= read -r line; do LIST+=("$line"); done \
+  < <(PANTRY="$PANTRY" PLATFORM="$PLATFORM" go run ./closure "${WANT[@]}")
 echo "closure: ${#LIST[@]} project(s) for $PLATFORM (from ${#WANT[@]} requested)"
 
 # alreadyPublished proj ver → 0 if ghcr already has this platform for that version.
