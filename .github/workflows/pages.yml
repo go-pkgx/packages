@@ -19,7 +19,7 @@ on:
     # After all four build factories (06:00–09:00).
     - cron: "0 11 * * *"
 
-permissions: { contents: read, actions: read, pages: write, id-token: write }
+permissions: { contents: read, actions: read, packages: read, pages: write, id-token: write }
 
 # Only one Pages deploy at a time (the build workflows no longer deploy Pages).
 concurrency: { group: registry-deploy, cancel-in-progress: false }
@@ -69,9 +69,8 @@ jobs:
             done
           done
 
-      - name: Generate registry.json + a no-JS list fallback
+      - name: Generate registry.json
         run: |
-          n=$(find site -name 'v*.tar.gz' | wc -l | tr -d ' ')
           # Static Pages (workflow source, no Jekyll) serves files verbatim.
           touch site/.nojekyll
           # registry.json: one row per (name, os, arch, version) — the data the
@@ -81,23 +80,40 @@ jobs:
           find site -name 'v*.tar.gz' \
             | sed -E 's|site/(.*)/([^/]+)/([^/]+)/v(.*)\.tar\.gz|{"name":"\1","os":"\2","arch":"\3","version":"\4"}|' \
             | jq -s 'sort_by(.name,.os,.arch,.version)' > site/registry.json
-          # list.html: a plain, no-JS/accessible table fallback (the canvas viewer
-          # carries no text/SEO), linked from the viewer page.
-          # shellcheck disable=SC2016
-          rows=$(find site -name 'v*.tar.gz' \
-            | sed -E 's|site/(.*)/([^/]+)/([^/]+)/v(.*)\.tar\.gz|<tr><td>\1</td><td>\2/\3</td><td>\4</td></tr>|' \
-            | sort)
+          echo "registry.json rows: $(jq 'length' site/registry.json)"
+
+      - name: Stamp rows with ghcr publish dates + build the no-JS list.html
+        run: |
+          # Annotate each row with `published` (the date the OCI version was first
+          # pushed, from the ghcr container version's created_at). One API call per
+          # distinct package; a package with no ghcr version just gets "".
+          : > /tmp/stamps.tsv
+          for name in $(jq -r '.[].name' site/registry.json | sort -u); do
+            enc=$(jq -rn --arg p "packages/$name" '$p|@uri')
+            gh api "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/$enc/versions" --paginate 2>/dev/null \
+              | jq -r --arg n "$name" '.[] | .created_at as $c
+                  | (.metadata.container.tags[]? | select(startswith("sha256-")|not))
+                  | [$n+"|"+., ($c|split("T")[0])] | @tsv' >> /tmp/stamps.tsv || true
+          done
+          jq -Rn '[inputs|split("\t")|{key:.[0],value:.[1]}]|from_entries' /tmp/stamps.tsv > /tmp/stamps.json
+          jq --slurpfile s /tmp/stamps.json \
+            'map(. + {published: ($s[0][(.name+"|"+.version)] // "")})' \
+            site/registry.json > /tmp/reg.json && mv /tmp/reg.json site/registry.json
+          echo "stamped $(jq '[.[]|select(.published!="")]|length') of $(jq 'length' site/registry.json) rows with a publish date"
+          # list.html: a plain, no-JS/accessible table fallback (package · platform
+          # · version · published), built from the stamped registry.json.
+          n=$(jq 'length' site/registry.json)
+          rows=$(jq -r '.[] | "<tr><td>\(.name)</td><td>\(.os)/\(.arch)</td><td>\(.version)</td><td>\(.published)</td></tr>"' site/registry.json)
           {
             echo '<!doctype html><meta charset="utf-8"><title>go-pkgx package registry — list</title>'
-            echo '<style>body{font:15px/1.5 system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem}'
+            echo '<style>body{font:15px/1.5 system-ui,sans-serif;max-width:64rem;margin:2rem auto;padding:0 1rem}'
             echo 'table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:.25rem .75rem;border-bottom:1px solid #8884}'
             echo '@media(prefers-color-scheme:dark){body{background:#111;color:#eee}}</style>'
-            echo "<h1>go-pkgx package registry</h1><p><b>$n</b> packages · <a href=\"./\">interactive tree view</a></p>"
-            echo '<table><thead><tr><th>package</th><th>platform</th><th>version</th></tr></thead><tbody>'
+            echo "<h1>go-pkgx package registry</h1><p><b>$n</b> platform builds · <a href=\"./\">interactive tree view</a></p>"
+            echo '<table><thead><tr><th>package</th><th>platform</th><th>version</th><th>published</th></tr></thead><tbody>'
             echo "$rows"
             echo '</tbody></table>'
           } > site/list.html
-          echo "registry.json rows: $(jq 'length' site/registry.json)  ($n tarballs)"
 
       - uses: actions/setup-go@v5
         with: { go-version: stable }
