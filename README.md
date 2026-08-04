@@ -11,9 +11,9 @@ of brewkit) and publishes **signed, attested packages** to
 
 Every package is pushed as an OCI artifact carrying, as **OCI referrers**:
 
-- a **CycloneDX SBOM** ([`go-pkgx/sbom`](https://github.com/go-pkgx/sbom)),
+- a **CycloneDX SBOM** ([`go-attest/sbom`](https://github.com/go-attest/sbom)),
 - an in-toto **SLSA provenance** statement, and
-- a **cosign-style + minisign signature** ([`go-pkgx/sign`](https://github.com/go-pkgx/sign)).
+- a **cosign-style + minisign signature** ([`go-attest/sign`](https://github.com/go-attest/sign)).
 
 Signatures verify against the pinned public key
 `RWQ+rmH+fXy2iYr+gReQAOQtYWtH0A7UlxcAa2hpr+txNBwGqtpFsR6L`. On install,
