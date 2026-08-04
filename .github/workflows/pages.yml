@@ -1,12 +1,14 @@
 # GitHub Pages deployer / aggregator — the single place the pkgx dist mirror at
 # https://go-pkgx.github.io/packages is built and published.
 #
-# It does NOT build anything. For each of the four build workflows (build.yml,
-# darwin.yml, windows.yml, windows-rust.yml) it downloads the `dist-*` artifacts
-# of that workflow's latest SUCCESSFUL run and unions every dist tree into one
-# combined site (`<project>/<os>/<arch>/…`, `versions.txt` unioned+sorted so all
-# platforms coexist). The same packages are also published as signed OCI
-# artifacts to ghcr.io/go-pkgx/packages by those build workflows.
+# For each of the four build workflows (build.yml, darwin.yml, windows.yml,
+# windows-rust.yml) it downloads the `dist-*` artifacts of that workflow's latest
+# SUCCESSFUL run and unions every dist tree into one combined site
+# (`<project>/<os>/<arch>/…`, `versions.txt` unioned+sorted so all platforms
+# coexist). It then emits registry.json and builds the go-pkgx/registry-viewer
+# WASM app (a filterable go-widgets tree, name/os/arch/version) as the site root,
+# with a no-JS list.html fallback. The same packages are also published as signed
+# OCI artifacts to ghcr.io/go-pkgx/packages by those build workflows.
 #
 # Runs on its own daily schedule AFTER the builds (linux 06:00 … rust 09:00), so
 # it always deploys the freshest successful run of each platform.
@@ -67,32 +69,50 @@ jobs:
             done
           done
 
-      - name: Generate combined index
+      - name: Generate registry.json + a no-JS list fallback
         run: |
           n=$(find site -name 'v*.tar.gz' | wc -l | tr -d ' ')
-          # Static Pages (workflow source, no Jekyll) serves files verbatim, so the
-          # root needs a real index.html (an index.md would 404). .nojekyll keeps
-          # Pages from trying to process the tree.
+          # Static Pages (workflow source, no Jekyll) serves files verbatim.
           touch site/.nojekyll
+          # registry.json: one row per (name, os, arch, version) — the data the
+          # WASM tree-view viewer fetches. name may contain '/', but os and arch
+          # are always the last two path components before v<ver>.tar.gz.
           # shellcheck disable=SC2016  # backrefs in the sed replacement are literal
+          find site -name 'v*.tar.gz' \
+            | sed -E 's|site/(.*)/([^/]+)/([^/]+)/v(.*)\.tar\.gz|{"name":"\1","os":"\2","arch":"\3","version":"\4"}|' \
+            | jq -s 'sort_by(.name,.os,.arch,.version)' > site/registry.json
+          # list.html: a plain, no-JS/accessible table fallback (the canvas viewer
+          # carries no text/SEO), linked from the viewer page.
+          # shellcheck disable=SC2016
           rows=$(find site -name 'v*.tar.gz' \
             | sed -E 's|site/(.*)/([^/]+)/([^/]+)/v(.*)\.tar\.gz|<tr><td>\1</td><td>\2/\3</td><td>\4</td></tr>|' \
             | sort)
           {
-            echo '<!doctype html><meta charset="utf-8"><title>go-pkgx package registry</title>'
+            echo '<!doctype html><meta charset="utf-8"><title>go-pkgx package registry — list</title>'
             echo '<style>body{font:15px/1.5 system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem}'
             echo 'table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:.25rem .75rem;border-bottom:1px solid #8884}'
-            echo 'code{background:#8882;padding:.1em .35em;border-radius:4px}@media(prefers-color-scheme:dark){body{background:#111;color:#eee}}</style>'
-            echo '<h1>go-pkgx package registry — pkgx dist mirror</h1>'
-            echo "<p><b>$n</b> packages across linux, darwin and windows, cross-built from"
-            echo '<a href="https://github.com/pkgxdev/pantry">pkgx pantry</a> recipes.</p>'
-            echo '<p>Consume with any go-pkgx tool via <code>PKGX_DIST=https://go-pkgx.github.io/packages</code>.'
-            echo 'The identical packages are also published as signed OCI artifacts to <code>ghcr.io/go-pkgx/packages</code>.</p>'
+            echo '@media(prefers-color-scheme:dark){body{background:#111;color:#eee}}</style>'
+            echo "<h1>go-pkgx package registry</h1><p><b>$n</b> packages · <a href=\"./\">interactive tree view</a></p>"
             echo '<table><thead><tr><th>package</th><th>platform</th><th>version</th></tr></thead><tbody>'
             echo "$rows"
             echo '</tbody></table>'
-          } > site/index.html
-          echo "deploying $n packages"
+          } > site/list.html
+          echo "registry.json rows: $(jq 'length' site/registry.json)  ($n tarballs)"
+
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+
+      - name: Build the WASM tree-view viewer (go-widgets) → site root
+        run: |
+          git clone --depth 1 https://github.com/go-pkgx/registry-viewer
+          # build.sh consumes our real registry.json and emits dist/{app.wasm,
+          # wasm_exec.js, index.html, registry.json}. index.html becomes the site
+          # root (the interactive viewer); the dist tree + registry.json stay for
+          # PKGX_DIST consumers and the no-JS list.html.
+          ( cd registry-viewer && bash build.sh "$GITHUB_WORKSPACE/site/registry.json" )
+          cp registry-viewer/dist/app.wasm registry-viewer/dist/wasm_exec.js \
+             registry-viewer/dist/index.html site/
+          echo "viewer wired:"; ls -la site/app.wasm site/index.html
 
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
