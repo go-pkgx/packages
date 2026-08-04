@@ -26,8 +26,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: macos-14,       platform: darwin/aarch64 } # Apple Silicon
-          - { runner: macos-15-intel, platform: darwin/x86-64 }  # Intel
+          - { runner: macos-14,       platform: darwin/aarch64, dist_name: dist-darwin-aarch64 } # Apple Silicon
+          - { runner: macos-15-intel, platform: darwin/x86-64,  dist_name: dist-darwin-x86-64 }  # Intel
     runs-on: ${{ matrix.runner }}
     steps:
       - name: base tools
@@ -77,6 +77,17 @@ jobs:
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: bash factory.sh
+
+      # The pkgx dist tree factory.sh writes (bk build --dist dist) — deployed to
+      # the GitHub Pages mirror by the central pages.yml aggregator. Uploaded per
+      # platform so the aggregator can union all four build workflows' trees.
+      - name: upload dist tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.dist_name }}
+          path: dist
+          if-no-files-found: ignore
 
       - name: upload failures list
         if: always()

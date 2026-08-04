@@ -1,0 +1,93 @@
+# GitHub Pages deployer / aggregator — the single place the pkgx dist mirror at
+# https://go-pkgx.github.io/packages is built and published.
+#
+# It does NOT build anything. For each of the four build workflows (build.yml,
+# darwin.yml, windows.yml, windows-rust.yml) it downloads the `dist-*` artifacts
+# of that workflow's latest SUCCESSFUL run and unions every dist tree into one
+# combined site (`<project>/<os>/<arch>/…`, `versions.txt` unioned+sorted so all
+# platforms coexist). The same packages are also published as signed OCI
+# artifacts to ghcr.io/go-pkgx/packages by those build workflows.
+#
+# Runs on its own daily schedule AFTER the builds (linux 06:00 … rust 09:00), so
+# it always deploys the freshest successful run of each platform.
+name: pages
+on:
+  workflow_dispatch:
+  schedule:
+    # After all four build factories (06:00–09:00).
+    - cron: "0 11 * * *"
+
+permissions: { contents: read, actions: read, pages: write, id-token: write }
+
+# Only one Pages deploy at a time (the build workflows no longer deploy Pages).
+concurrency: { group: registry-deploy, cancel-in-progress: false }
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: "${{ steps.dep.outputs.page_url }}" }
+    env: { GH_TOKEN: "${{ github.token }}" }
+    steps:
+      - name: Download dist-* artifacts from every build workflow's latest success
+        run: |
+          mkdir -p dl
+          for wf in build.yml darwin.yml windows.yml windows-rust.yml; do
+            rid=$(gh run list --workflow "$wf" --status success -L1 \
+                    --repo "$GITHUB_REPOSITORY" --json databaseId \
+                    --jq '.[0].databaseId // empty')
+            if [ -z "$rid" ]; then
+              echo "no successful run for $wf yet — skipping"; continue
+            fi
+            echo "downloading dist-* from $wf run $rid"
+            # gh run download exits non-zero if the pattern matches nothing —
+            # tolerate it so a run with no dist artifacts does not fail the deploy.
+            gh run download "$rid" --repo "$GITHUB_REPOSITORY" \
+              -p 'dist-*' -D "dl/$wf" 2>/dev/null \
+              || echo "no dist-* artifacts in $wf run $rid"
+          done
+
+      - name: Merge all dist trees into one site/ (versions.txt unioned+sorted)
+        run: |
+          mkdir -p site
+          # gh run download lays each artifact at dl/<wf>/<artifact-name>/…; each
+          # such dir is a pkgx dist tree rooted at <project>/<os>/<arch>/…. Walk
+          # every file: copy through, except versions.txt which is union+sorted so
+          # the same <project>/<os>/<arch> from multiple sources coexists.
+          find dl -mindepth 2 -maxdepth 2 -type d | while read -r src; do
+            [ -d "$src" ] || continue
+            ( cd "$src" && find . -type f ) | while read -r rel; do
+              rel=${rel#./}
+              mkdir -p "site/$(dirname "$rel")"
+              if [ "$(basename "$rel")" = versions.txt ]; then
+                cat "$src/$rel" "site/$rel" 2>/dev/null \
+                  | sort -u -V > "site/$rel.tmp" && mv "site/$rel.tmp" "site/$rel"
+              else
+                cp "$src/$rel" "site/$rel"
+              fi
+            done
+          done
+
+      - name: Generate combined index
+        run: |
+          n=$(find site -name 'v*.tar.gz' | wc -l | tr -d ' ')
+          # shellcheck disable=SC2016  # backrefs in the sed replacement are literal
+          {
+            echo "# go-pkgx package registry — pkgx dist mirror"
+            echo
+            echo "**$n** packages across linux, darwin and windows, cross-built from"
+            echo "[pkgx pantry](https://github.com/pkgxdev/pantry) recipes."
+            echo
+            echo "Consume with any go-pkgx tool via"
+            echo '`PKGX_DIST=https://go-pkgx.github.io/packages`. The identical packages'
+            echo 'are also published as signed OCI artifacts to `ghcr.io/go-pkgx/packages`.'
+            echo
+            find site -name 'v*.tar.gz' \
+              | sed -E 's|site/(.*)/([^/]+)/([^/]+)/v(.*)\.tar\.gz|- `\1` \2/\3 v\4|' \
+              | sort
+          } > site/index.md
+          echo "deploying $n packages"
+
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+      - id: dep
+        uses: actions/deploy-pages@v4

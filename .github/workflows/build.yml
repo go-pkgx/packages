@@ -21,8 +21,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runner: ubuntu-latest,    platform: linux/x86-64 }
-          - { runner: ubuntu-24.04-arm, platform: linux/aarch64 }
+          - { runner: ubuntu-latest,    platform: linux/x86-64,  dist_name: dist-linux-x86-64 }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, dist_name: dist-linux-aarch64 }
     runs-on: ${{ matrix.runner }}
     # Phase A isolation: build inside a pinned, controlled debian base (bookworm,
     # glibc 2.36) instead of the drifting runner host — reproducible, no host-tool
@@ -78,6 +78,17 @@ jobs:
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: bash factory.sh
+
+      # The pkgx dist tree factory.sh writes (bk build --dist dist) — deployed to
+      # the GitHub Pages mirror by the central pages.yml aggregator. Uploaded per
+      # platform so the aggregator can union all four build workflows' trees.
+      - name: upload dist tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.dist_name }}
+          path: dist
+          if-no-files-found: ignore
 
       - name: upload failures list
         if: always()

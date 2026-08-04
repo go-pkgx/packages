@@ -1,5 +1,8 @@
 # Windows package factory (Go) — cross-builds pantry Go projects to Windows PE
-# packages and publishes a browsable pkgx dist to this repo's GitHub Pages.
+# packages and publishes them to BOTH channels, exactly like linux/darwin:
+#   - the signed OCI registry ghcr.io/go-pkgx/packages (via `bk publish`), and
+#   - the GitHub Pages pkgx dist mirror (via the central pages.yml aggregator,
+#     which unions the `dist-*` artifact this job uploads).
 # Go tools cross-build to Windows for free (GOOS=windows CGO_ENABLED=0 → a
 # self-contained .exe, no libc, no DLLs), so a large slice of the pantry becomes
 # Windows packages with no per-recipe work.
@@ -11,9 +14,9 @@ on:
   workflow_dispatch:
   schedule:
     # Staggered after the ghcr factories (linux 06:00, darwin 07:00). Go runs
-    # before Rust (08:00 < 09:00) so the Rust publish overlays a fresh Go dist.
+    # before Rust (08:00 < 09:00). The Pages mirror is deployed later by pages.yml.
     - cron: "0 8 * * *"
-permissions: { contents: read, pages: write, id-token: write }
+permissions: { contents: read, packages: write }
 env:
   CHUNK: "25"   # projects per matrix job (chunked so we scale past the 256-job matrix cap)
 
@@ -43,9 +46,30 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version: stable }
+      - name: install pkgx + bk (for signed OCI publish)
+        run: |
+          curl -fsS https://pkgx.sh | sh
+          for d in "$HOME/.local/bin" /usr/local/bin; do
+            [ -x "$d/pkgx" ] && { echo "$d" >> "$GITHUB_PATH"; break; }
+          done
+          # GOPROXY=direct: pull current main from GitHub, not a stale proxy cache.
+          GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Cross-build chunk ${{ matrix.chunk }} → Windows packages
+        env:
+          OCI_USERNAME: ${{ github.actor }}
+          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: |
           start=$(( ${{ matrix.chunk }} * CHUNK + 1 )); end=$(( start + CHUNK - 1 ))
+          # Signing key → temp file, as factory.sh does; skip --sign if unset.
+          SIGN_ARGS=()
+          if [ -n "${SIGNING_KEY:-}" ]; then
+            umask 077; KEYFILE="$(mktemp)"; printf '%s' "$SIGNING_KEY" > "$KEYFILE"
+            SIGN_ARGS=(--sign "$KEYFILE"); echo "signing: enabled"
+          else
+            echo "signing: disabled (no SIGNING_KEY)"
+          fi
           sed -n "${start},${end}p" windows/go-projects.txt | while IFS='|' read -r slug repo bin; do
             [ -n "$slug" ] || continue
             echo "::group::$slug ($repo, bin=$bin)"
@@ -72,41 +96,24 @@ jobs:
             echo "$ver" > "$d/versions.txt"
             mkdir -p "$GITHUB_WORKSPACE/out/$slug"
             printf 'provides:\n  - bin/%s\n' "$bin" > "$GITHUB_WORKSPACE/out/$slug/package.yml"
+            # Publish the same package to the signed OCI registry (best-effort:
+            # a publish failure must not abort the chunk). windows/x86-64 is as
+            # os/arch-generic to `bk publish` as linux/darwin are.
+            if SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
+               bk publish --to oci://ghcr.io/go-pkgx/packages --project "$slug" \
+                 --version "$ver" --platform windows/x86-64 "${SIGN_ARGS[@]}" \
+                 "$d/v$ver.tar.gz"; then
+              echo "published $slug $ver → OCI"
+            else
+              echo "OCI publish failed for $slug (non-fatal)"
+            fi
             echo "OK $slug v$ver"; echo "::endgroup::"
           done
+      # Upload the dist tree for the central pages.yml aggregator to union into
+      # the GitHub Pages mirror. Named `dist-*` so pages.yml discovers it.
       - uses: actions/upload-artifact@v4
         if: hashFiles('out/**') != ''
         with:
-          name: pkg-${{ matrix.chunk }}
+          name: dist-windows-go-${{ matrix.chunk }}
           path: out
           if-no-files-found: ignore
-
-  publish:
-    needs: build
-    runs-on: ubuntu-latest
-    permissions: { contents: read, actions: read, pages: write, id-token: write }
-    concurrency: { group: registry-deploy, cancel-in-progress: false }
-    environment: { name: github-pages, url: "${{ steps.dep.outputs.page_url }}" }
-    env: { GH_TOKEN: "${{ github.token }}" }
-    steps:
-      - uses: actions/download-artifact@v4
-        with: { pattern: pkg-*, path: dist, merge-multiple: true }
-      - name: Overlay sibling Rust packages (latest successful windows-rust.yml run)
-        run: |
-          rid=$(gh run list --workflow windows-rust.yml --status success -L1 --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.[0].databaseId // empty')
-          if [ -n "$rid" ]; then
-            gh run download "$rid" --repo "$GITHUB_REPOSITORY" -p 'rust-pkg-*' -D sib 2>/dev/null || true
-            for d in sib/*/; do [ -d "$d" ] && cp -r "$d". dist/ 2>/dev/null || true; done
-            echo "overlaid Rust artifacts from run $rid"
-          fi
-      - name: Combined index
-        run: |
-          n=$(find dist -name 'v*.tar.gz' | wc -l | tr -d ' ')
-          # shellcheck disable=SC2016  # \1/\2 are sed backrefs, single quotes are intentional
-          { echo "# go-pkgx Windows package registry"; echo; echo "**$n** self-contained Windows packages (Go + Rust), cross-built from pantry recipes. Use with \`PKGX_DIST=https://go-pkgx.github.io/packages\` or push to an OCI registry via \`go-pkgx/mirror --to\`."; echo; \
-            find dist -name 'v*.tar.gz' | sed -E 's|dist/(.*)/windows/x86-64/v(.*)\.tar\.gz|- `\1` v\2|' | sort; } > dist/index.md
-          echo "deploying $n packages"
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: dist }
-      - id: dep
-        uses: actions/deploy-pages@v4
