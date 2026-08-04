@@ -51,6 +51,25 @@ Per-recipe failures are logged (`failures.txt`) but never fail the run. Grow
   branch `feat/pkgx-glibc-toolchain`, off by default (`BK_PKGX_LIBC=1`); design note:
   [`bk/docs/from-scratch-toolchain.md`](https://github.com/go-pkgx/bk/blob/feat/pkgx-glibc-toolchain/docs/from-scratch-toolchain.md).
 
+## Install pkgm
+
+To install from this registry you need `pkgm` (the pure-Go installer). One line:
+
+```sh
+# Linux / macOS
+curl -fsSL https://go-pkgx.github.io/install.sh | sh
+```
+
+```powershell
+# Windows (PowerShell)
+irm https://go-pkgx.github.io/install.ps1 | iex
+```
+
+or, for Go users, `go install github.com/go-pkgx/pkgm@latest`. The installer
+grabs the static binary for your os/arch and verifies it against the release
+`SHA256SUMS`; then `pkgm install lz4.org` verifies each bottle against this
+signed registry by default.
+
 ## Consuming
 
 Packages are OCI artifacts, so any OCI client can pull them; the catalog grows daily
