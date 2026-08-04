@@ -2,10 +2,13 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -26,8 +29,8 @@ func swapStdout(t *testing.T) func() {
 	}
 }
 
-// mockDoer routes every request through fn, so a test can serve the GitHub
-// Packages API, the ghcr pull-token endpoint and the OCI registry from memory.
+// mockDoer routes every request through fn, so a test can serve the ghcr
+// pull-token endpoint and the OCI registry from memory.
 type mockDoer struct {
 	fn func(*http.Request) (*http.Response, error)
 }
@@ -46,12 +49,6 @@ func resp(status int, body string, header http.Header) *http.Response {
 		Header:     header,
 	}
 }
-
-// errReader is a ReadCloser whose Read always fails, to exercise body-read errors.
-type errReader struct{}
-
-func (errReader) Read([]byte) (int, error) { return 0, errors.New("boom") }
-func (errReader) Close() error             { return nil }
 
 // route dispatches by matching substrings of the request URL, in order.
 func route(pairs ...func(url string) (*http.Response, bool)) mockDoer {
@@ -75,20 +72,31 @@ func when(match string, r *http.Response) func(string) (*http.Response, bool) {
 	}
 }
 
+// fakeFiles returns a readFile seam backed by an in-memory map, erroring on any
+// path not present.
+func fakeFiles(files map[string]string) func(string) ([]byte, error) {
+	return func(p string) ([]byte, error) {
+		if s, ok := files[p]; ok {
+			return []byte(s), nil
+		}
+		return nil, fmt.Errorf("no such file %q", p)
+	}
+}
+
 func TestRunHappyPath(t *testing.T) {
-	page1 := `[{"name":"packages/foo"},{"name":"other/thing"}]`
-	page2 := `[{"name":"packages/bar"}]`
-	nextHdr := http.Header{"Link": {`<https://api.test/orgs/acme/packages?package_type=container&per_page=100&page=2>; rel="next"`}}
+	// Candidates come from the repo files (not an org API). Comments, blank
+	// lines and surrounding whitespace are stripped; the windows lists carry the
+	// slug in the first '|' field; a blank slug field is ignored; foo repeats
+	// across recipes + windows to exercise de-dup.
+	files := map[string]string{
+		"recipes.txt":               "foo\n# comment\n\n  bar  \n",
+		"windows/go-projects.txt":   "foo|foo-repo|foo\nbaz|baz/repo|baz\n",
+		"windows/rust-projects.txt": "# header\nqux|q/r|qux\n  |empty-slug\n",
+	}
 
 	// foo carries two versions (1.0 multi-arch, 1.1 single) so the sort
-	// comparator's name / os / arch / version tiers all get exercised.
-	fooVersions := `[
-	  {"created_at":"2026-08-03T00:00:00Z","metadata":{"container":{"tags":["1.1"]}}},
-	  {"created_at":"2026-08-01T10:00:00Z","metadata":{"container":{"tags":["1.0","sha256-abc"]}}},
-	  {"created_at":"2026-08-01T09:00:00Z","metadata":{"container":{"tags":["sha256-only"]}}}
-	]`
-	barVersions := `[{"created_at":"2026-07-15T00:00:00Z","metadata":{"container":{"tags":["2.0"]}}}]`
-
+	// comparator's name / os / arch / version tiers all get exercised. The 1.0
+	// index also carries unknown/empty attestation entries that must be dropped.
 	fooManifest10 := `{"manifests":[
 	  {"platform":{"os":"linux","architecture":"amd64"}},
 	  {"platform":{"os":"linux","architecture":"arm64"}},
@@ -99,21 +107,27 @@ func TestRunHappyPath(t *testing.T) {
 	fooManifest11 := `{"manifests":[{"platform":{"os":"linux","architecture":"amd64"}}]}`
 	barManifest := `{"manifests":[{"platform":{"os":"windows","architecture":"amd64"}}]}`
 
-	tokenJSON := `{"token":"ghcr-tok"}`
-
 	d := mockDoer{fn: func(r *http.Request) (*http.Response, error) {
 		u := r.URL.String()
 		switch {
-		case strings.Contains(u, "/packages?package_type=container") && strings.Contains(u, "page=2"):
-			return resp(200, page2, nil), nil
-		case strings.Contains(u, "/packages?package_type=container"):
-			return resp(200, page1, nextHdr), nil
-		case strings.Contains(u, "packages%2Ffoo/versions"):
-			return resp(200, fooVersions, nil), nil
-		case strings.Contains(u, "packages%2Fbar/versions"):
-			return resp(200, barVersions, nil), nil
-		case strings.Contains(u, "/token?"):
-			return resp(200, tokenJSON, nil), nil
+		// Token endpoint: baz is denied (not published); the rest yield a token.
+		case strings.Contains(u, "/token?") && strings.Contains(u, "packages/baz:pull"):
+			return resp(403, `{"errors":[{"code":"DENIED"}]}`, nil), nil
+		case strings.Contains(u, "/token?") && strings.Contains(u, "packages/foo:pull"):
+			return resp(200, `{"token":"t-foo"}`, nil), nil
+		case strings.Contains(u, "/token?") && strings.Contains(u, "packages/bar:pull"):
+			return resp(200, `{"token":"t-bar"}`, nil), nil
+		case strings.Contains(u, "/token?") && strings.Contains(u, "packages/qux:pull"):
+			return resp(200, `{"token":"t-qux"}`, nil), nil
+		// Tags: foo drops sha256-* + "latest" junk; qux 404s (published token but
+		// empty repo) so it yields no rows.
+		case strings.Contains(u, "/packages/foo/tags/list"):
+			return resp(200, `{"name":"acme/packages/foo","tags":["1.1","1.0","sha256-abc","latest"]}`, nil), nil
+		case strings.Contains(u, "/packages/bar/tags/list"):
+			return resp(200, `{"name":"acme/packages/bar","tags":["2.0"]}`, nil), nil
+		case strings.Contains(u, "/packages/qux/tags/list"):
+			return resp(404, `{"errors":[{"code":"NAME_UNKNOWN"}]}`, nil), nil
+		// Manifests.
 		case strings.Contains(u, "/packages/foo/manifests/1.0"):
 			return resp(200, fooManifest10, nil), nil
 		case strings.Contains(u, "/packages/foo/manifests/1.1"):
@@ -126,13 +140,11 @@ func TestRunHappyPath(t *testing.T) {
 
 	env := map[string]string{
 		"GITHUB_REPOSITORY_OWNER": "acme",
-		"GITHUB_API_URL":          "https://api.test",
 		"GHCR_URL":                "https://ghcr.test",
-		"GITHUB_TOKEN":            "gh-tok",
 		"CATALOG_CONCURRENCY":     "2",
 	}
 	var out, errb strings.Builder
-	if err := run(&out, &errb, func(k string) string { return env[k] }, d); err != nil {
+	if err := run(&out, &errb, func(k string) string { return env[k] }, d, fakeFiles(files)); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	got := out.String()
@@ -141,36 +153,31 @@ func TestRunHappyPath(t *testing.T) {
   "name": "bar",
   "os": "windows",
   "arch": "x86-64",
-  "version": "2.0",
-  "published": "2026-07-15"
+  "version": "2.0"
  },
  {
   "name": "foo",
   "os": "darwin",
   "arch": "aarch64",
-  "version": "1.0",
-  "published": "2026-08-01"
+  "version": "1.0"
  },
  {
   "name": "foo",
   "os": "linux",
   "arch": "aarch64",
-  "version": "1.0",
-  "published": "2026-08-01"
+  "version": "1.0"
  },
  {
   "name": "foo",
   "os": "linux",
   "arch": "x86-64",
-  "version": "1.0",
-  "published": "2026-08-01"
+  "version": "1.0"
  },
  {
   "name": "foo",
   "os": "linux",
   "arch": "x86-64",
-  "version": "1.1",
-  "published": "2026-08-03"
+  "version": "1.1"
  }
 ]
 `
@@ -182,19 +189,27 @@ func TestRunHappyPath(t *testing.T) {
 	}
 }
 
-func TestRunListPackagesError(t *testing.T) {
-	d := route(when("/packages?package_type=container", resp(500, "boom", nil)))
-	if err := run(io.Discard, io.Discard, func(string) string { return "" }, d); err == nil {
-		t.Fatal("expected error")
+func TestRunCandidatesError(t *testing.T) {
+	// recipes.txt unreadable -> candidateNames errors -> run errors.
+	d := route()
+	rf := fakeFiles(nil) // every path missing
+	if err := run(io.Discard, io.Discard, func(string) string { return "" }, d, rf); err == nil {
+		t.Fatal("expected error when recipes.txt is unreadable")
 	}
 }
 
 func TestRunConcurrencyZeroDefaults(t *testing.T) {
-	// CATALOG_CONCURRENCY=0 must fall back to the default worker count.
+	// CATALOG_CONCURRENCY=0 must fall back to the default worker count, and an
+	// empty candidate set encodes as JSON null.
+	files := map[string]string{
+		"recipes.txt":               "",
+		"windows/go-projects.txt":   "",
+		"windows/rust-projects.txt": "",
+	}
 	env := map[string]string{"CATALOG_CONCURRENCY": "0"}
-	d := route(when("/packages?package_type=container", resp(200, `[]`, nil)))
+	d := route()
 	var out strings.Builder
-	if err := run(&out, io.Discard, func(k string) string { return env[k] }, d); err != nil {
+	if err := run(&out, io.Discard, func(k string) string { return env[k] }, d, fakeFiles(files)); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if strings.TrimSpace(out.String()) != "null" {
@@ -202,67 +217,116 @@ func TestRunConcurrencyZeroDefaults(t *testing.T) {
 	}
 }
 
+func TestCandidateNames(t *testing.T) {
+	// Mixed case exercises the lower-casing (github.com/AOMediaCodec -> …/aomediacodec),
+	// which also collapses A.org (recipes) with a.org into one candidate.
+	files := map[string]string{
+		"recipes.txt":               "b.org\n#c\n\n  A.org  \n",
+		"windows/go-projects.txt":   "a.org|repo|a\ngithub.com/AOMediaCodec/libavif|r|x\n",
+		"windows/rust-projects.txt": "# hdr\nM.rs|m/r|m\n |blank\n",
+	}
+	names, err := candidateNames(fakeFiles(files))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"a.org", "b.org", "github.com/aomediacodec/libavif", "m.rs"}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("candidateNames = %v, want %v", names, want)
+	}
+
+	// recipes.txt read error propagates.
+	if _, err := candidateNames(fakeFiles(map[string]string{})); err == nil {
+		t.Fatal("expected error on missing recipes.txt")
+	}
+	// A windows list read error propagates too.
+	only := fakeFiles(map[string]string{"recipes.txt": "x\n"})
+	if _, err := candidateNames(only); err == nil {
+		t.Fatal("expected error on missing windows list")
+	}
+}
+
 func testClient(d doer) *client {
 	return &client{
 		doer:     d,
-		apiBase:  "https://api.test",
 		ghcrBase: "https://ghcr.test",
 		owner:    "acme",
 		stderr:   io.Discard,
 	}
 }
 
-func TestListPackageNamesFilterAndBadJSON(t *testing.T) {
-	c := testClient(route(when("/packages?", resp(200, `[{"name":"packages/a"},{"name":"nope/b"}]`, nil))))
-	names, err := c.listPackageNames()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(names) != 1 || names[0] != "a" {
-		t.Fatalf("got %v", names)
-	}
-
-	c = testClient(route(when("/packages?", resp(200, `not json`, nil))))
-	if _, err := c.listPackageNames(); err == nil {
-		t.Fatal("expected json error")
-	}
-}
-
-func TestListVersions(t *testing.T) {
-	body := `[
-	  {"created_at":"2026-01-02T03:04:05Z","metadata":{"container":{"tags":["1.0","sha256-x"]}}},
-	  {"created_at":"2026-01-03T00:00:00Z","metadata":{"container":{"tags":["sha256-y"]}}}
-	]`
-	c := testClient(route(when("packages%2Fx.org%2Ftool/versions", resp(200, body, nil))))
-	vs, err := c.listVersions("x.org/tool")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(vs) != 1 || vs[0].published != "2026-01-02" || len(vs[0].tags) != 1 || vs[0].tags[0] != "1.0" {
-		t.Fatalf("got %+v", vs)
-	}
-
-	c = testClient(route(when("/versions", resp(200, `bad`, nil))))
-	if _, err := c.listVersions("x"); err == nil {
-		t.Fatal("expected json error")
-	}
-}
-
 func TestGhcrToken(t *testing.T) {
+	// 200 -> token.
 	c := testClient(route(when("/token?", resp(200, `{"token":"T"}`, nil))))
 	tok, err := c.ghcrToken("foo")
 	if err != nil || tok != "T" {
 		t.Fatalf("tok=%q err=%v", tok, err)
 	}
-
+	// 403 -> not published: empty token, no error.
+	c = testClient(route(when("/token?", resp(403, `denied`, nil))))
+	if tok, err := c.ghcrToken("foo"); err != nil || tok != "" {
+		t.Fatalf("403: tok=%q err=%v, want empty,nil", tok, err)
+	}
+	// 404 -> also not published.
+	c = testClient(route(when("/token?", resp(404, `missing`, nil))))
+	if tok, err := c.ghcrToken("foo"); err != nil || tok != "" {
+		t.Fatalf("404: tok=%q err=%v, want empty,nil", tok, err)
+	}
+	// 400 NAME_INVALID -> not published (an un-nameable slug), skipped silently.
+	c = testClient(route(when("/token?", resp(400, `{"errors":[{"code":"NAME_INVALID"}]}`, nil))))
+	if tok, err := c.ghcrToken("foo"); err != nil || tok != "" {
+		t.Fatalf("400: tok=%q err=%v, want empty,nil", tok, err)
+	}
+	// Other non-2xx -> error.
+	c = testClient(route(when("/token?", resp(500, "boom", nil))))
+	if _, err := c.ghcrToken("foo"); err == nil {
+		t.Fatal("expected 500 error")
+	}
+	// 200 with malformed body -> decode error.
 	c = testClient(route(when("/token?", resp(200, `oops`, nil))))
 	if _, err := c.ghcrToken("foo"); err == nil {
 		t.Fatal("expected decode error")
 	}
-
-	c = testClient(route(when("/token?", resp(403, "denied", nil))))
+	// Transport error.
+	c = testClient(mockDoer{fn: func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("net down")
+	}})
 	if _, err := c.ghcrToken("foo"); err == nil {
-		t.Fatal("expected status error")
+		t.Fatal("expected transport error")
+	}
+}
+
+func TestListTags(t *testing.T) {
+	// 200: sha256-* + non-semver junk dropped, remaining sorted.
+	body := `{"name":"acme/packages/x","tags":["1.1","1.0","sha256-x","latest","v2.0"]}`
+	c := testClient(route(when("/tags/list", resp(200, body, nil))))
+	tags, err := c.listTags("x", "tok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(tags, []string{"1.0", "1.1", "v2.0"}) {
+		t.Fatalf("tags = %v, want [1.0 1.1 v2.0]", tags)
+	}
+	// 404 -> no tags, no error (not published / empty).
+	c = testClient(route(when("/tags/list", resp(404, `{}`, nil))))
+	if tags, err := c.listTags("x", "tok"); err != nil || tags != nil {
+		t.Fatalf("404: tags=%v err=%v, want nil,nil", tags, err)
+	}
+	// Other non-2xx -> error.
+	c = testClient(route(when("/tags/list", resp(500, "boom", nil))))
+	if _, err := c.listTags("x", "tok"); err == nil {
+		t.Fatal("expected 500 error")
+	}
+	// 200 malformed -> decode error.
+	c = testClient(route(when("/tags/list", resp(200, `bad`, nil))))
+	if _, err := c.listTags("x", "tok"); err == nil {
+		t.Fatal("expected decode error")
+	}
+	// Transport error.
+	c = testClient(mockDoer{fn: func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("net down")
+	}})
+	if _, err := c.listTags("x", "tok"); err == nil {
+		t.Fatal("expected transport error")
 	}
 }
 
@@ -281,37 +345,41 @@ func TestPlatforms(t *testing.T) {
 	if len(ps) != 2 || ps[0].arch != "amd64" || ps[1].arch != "arm64" {
 		t.Fatalf("got %+v", ps)
 	}
-
+	// Non-2xx from get -> error.
+	c = testClient(route(when("/manifests/1.0", resp(500, "bad", nil))))
+	if _, err := c.platforms("foo", "1.0", "tok"); err == nil {
+		t.Fatal("expected get error")
+	}
+	// 200 malformed -> decode error.
 	c = testClient(route(when("/manifests/1.0", resp(200, `nope`, nil))))
 	if _, err := c.platforms("foo", "1.0", "tok"); err == nil {
 		t.Fatal("expected decode error")
 	}
 }
 
-func TestPackageRowsSkips(t *testing.T) {
-	// versions error -> skipped, no rows, no panic.
-	c := testClient(route(when("/versions", resp(500, "x", nil))))
+func TestPackageRows(t *testing.T) {
+	// token error (non-2xx that is not 403/404) -> logged + skipped.
+	c := testClient(route(when("/token?", resp(500, "x", nil))))
 	if rows := c.packageRows("foo"); rows != nil {
-		t.Fatalf("want nil, got %v", rows)
+		t.Fatalf("token error: want nil, got %v", rows)
 	}
-
-	// token error -> skipped.
+	// not published (403) -> empty bearer -> skipped silently.
+	c = testClient(route(when("/token?", resp(403, "denied", nil))))
+	if rows := c.packageRows("foo"); rows != nil {
+		t.Fatalf("not published: want nil, got %v", rows)
+	}
+	// tags error -> skipped.
 	c = testClient(route(
-		when("/versions", resp(200, `[{"created_at":"2026-01-01T00:00:00Z","metadata":{"container":{"tags":["1.0"]}}}]`, nil)),
-		when("/token?", resp(500, "x", nil)),
+		when("/token?", resp(200, `{"token":"t"}`, nil)),
+		when("/tags/list", resp(500, "x", nil)),
 	))
 	if rows := c.packageRows("foo"); rows != nil {
-		t.Fatalf("want nil, got %v", rows)
+		t.Fatalf("tags error: want nil, got %v", rows)
 	}
-
 	// one tag's manifest errors -> that tag skipped, the other yields a row.
-	versions := `[
-	  {"created_at":"2026-01-01T00:00:00Z","metadata":{"container":{"tags":["1.0"]}}},
-	  {"created_at":"2026-02-02T00:00:00Z","metadata":{"container":{"tags":["2.0"]}}}
-	]`
 	c = testClient(route(
-		when("/versions", resp(200, versions, nil)),
 		when("/token?", resp(200, `{"token":"t"}`, nil)),
+		when("/tags/list", resp(200, `{"tags":["1.0","2.0"]}`, nil)),
 		when("/manifests/2.0", resp(200, `{"manifests":[{"platform":{"os":"linux","architecture":"amd64"}}]}`, nil)),
 		when("/manifests/1.0", resp(500, "bad", nil)),
 	))
@@ -321,13 +389,16 @@ func TestPackageRowsSkips(t *testing.T) {
 	}
 }
 
-func TestGetErrors(t *testing.T) {
+func TestGetAndRawGetErrors(t *testing.T) {
 	// NewRequest failure (control char in URL).
 	c := testClient(nil)
-	if _, err := c.get("http://\x7f/x", "", ""); err == nil {
+	if _, _, err := c.rawGet("http://\x7f/x", "", ""); err == nil {
 		t.Fatal("expected request build error")
 	}
-
+	// get surfaces the same build error.
+	if _, err := c.get("http://\x7f/x", "", ""); err == nil {
+		t.Fatal("expected get build error")
+	}
 	// doer transport error.
 	c = testClient(mockDoer{fn: func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("net down")
@@ -335,7 +406,6 @@ func TestGetErrors(t *testing.T) {
 	if _, err := c.get("http://x/y", "a", "tok"); err == nil {
 		t.Fatal("expected transport error")
 	}
-
 	// non-2xx status.
 	c = testClient(route(when("/y", resp(404, "missing", nil))))
 	if _, err := c.get("http://x/y", "", ""); err == nil {
@@ -343,48 +413,30 @@ func TestGetErrors(t *testing.T) {
 	}
 }
 
-func TestPaginateBodyReadError(t *testing.T) {
-	c := testClient(mockDoer{fn: func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: 200, Status: "OK", Body: errReader{}, Header: http.Header{}}, nil
-	}})
-	if err := c.paginate("http://x/p", func([]byte) error { return nil }); err == nil {
-		t.Fatal("expected read error")
+func TestSemverTag(t *testing.T) {
+	for tag, want := range map[string]bool{
+		"1.9.4":       true,
+		"14.1.0":      true,
+		"0.128.0":     true,
+		"v1.2.3":      true,
+		"sha256-abcd": false,
+		"latest":      false,
+		"":            false,
+		"v":           false,
+		"vabc":        false,
+		"edge":        false,
+	} {
+		if got := semverTag(tag); got != want {
+			t.Fatalf("semverTag(%q) = %v, want %v", tag, got, want)
+		}
 	}
 }
 
-func TestNextLink(t *testing.T) {
-	h := `<https://a/p?page=2>; rel="next", <https://a/p?page=9>; rel="last"`
-	if got := nextLink(h); got != "https://a/p?page=2" {
-		t.Fatalf("got %q", got)
-	}
-	if got := nextLink(`<https://a/p?page=9>; rel="last"`); got != "" {
-		t.Fatalf("got %q", got)
-	}
-	if got := nextLink(""); got != "" {
-		t.Fatalf("got %q", got)
-	}
-	if got := nextLink("garbage"); got != "" { // no semicolon segment
-		t.Fatalf("got %q", got)
-	}
-	if got := nextLink(`bare; rel="next"`); got != "" { // url not <...>
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestMapArchAndHelpers(t *testing.T) {
+func TestMapArchAndEnvOr(t *testing.T) {
 	for in, want := range map[string]string{"amd64": "x86-64", "arm64": "aarch64", "riscv64": "riscv64"} {
 		if got := mapArch(in); got != want {
 			t.Fatalf("mapArch(%q)=%q want %q", in, got, want)
 		}
-	}
-	if got := urlEncode("packages/x.org/a-b_c~1"); got != "packages%2Fx.org%2Fa-b_c~1" {
-		t.Fatalf("urlEncode=%q", got)
-	}
-	if got := dateOnly("2026-08-04T12:00:00Z"); got != "2026-08-04" {
-		t.Fatalf("dateOnly=%q", got)
-	}
-	if got := dateOnly("2026-08-04"); got != "2026-08-04" {
-		t.Fatalf("dateOnly no-T=%q", got)
 	}
 	if got := envOr(func(string) string { return "" }, "K", "def"); got != "def" {
 		t.Fatalf("envOr default=%q", got)
@@ -395,16 +447,31 @@ func TestMapArchAndHelpers(t *testing.T) {
 }
 
 func TestMainSuccessAndFailure(t *testing.T) {
-	// Success: main() runs to completion (no exit) against a live test server.
-	ok := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[]`))
+	// Success: main() runs to completion against a live test server that denies
+	// every token (so the catalog is empty) — with recipes/windows files present
+	// in the working directory it reads via os.ReadFile.
+	deny := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"errors":[{"code":"DENIED"}]}`, http.StatusForbidden)
 	}))
-	defer ok.Close()
+	defer deny.Close()
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "recipes.txt"), []byte("x.org\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, "windows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"go-projects.txt", "rust-projects.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, "windows", f), []byte(""), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
 
 	restoreOut := swapStdout(t)
-	t.Setenv("GITHUB_API_URL", ok.URL)
+	t.Setenv("GHCR_URL", deny.URL)
 	t.Setenv("GITHUB_REPOSITORY_OWNER", "acme")
-	t.Setenv("GITHUB_TOKEN", "t")
 	t.Setenv("CATALOG_CONCURRENCY", "")
 	exited := -1
 	osExit = func(code int) { exited = code }
@@ -415,12 +482,9 @@ func TestMainSuccessAndFailure(t *testing.T) {
 		t.Fatalf("unexpected exit %d", exited)
 	}
 
-	// Failure: a 500 makes run() error, so main() calls osExit(1).
-	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "boom", 500)
-	}))
-	defer bad.Close()
-	t.Setenv("GITHUB_API_URL", bad.URL)
+	// Failure: an empty working directory has no recipes.txt, so candidateNames
+	// errors, run() errors, and main() calls osExit(1).
+	t.Chdir(t.TempDir())
 	main()
 	if exited != 1 {
 		t.Fatalf("want exit 1, got %d", exited)

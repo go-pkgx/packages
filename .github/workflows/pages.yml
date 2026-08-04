@@ -75,7 +75,6 @@ jobs:
         with: { go-version: stable }
 
       - name: Generate registry.json from the ghcr OCI registry + build list.html
-        env: { GITHUB_TOKEN: "${{ github.token }}" }
         run: |
           # Static Pages (workflow source, no Jekyll) serves files verbatim.
           touch site/.nojekyll
@@ -83,22 +82,23 @@ jobs:
           # from the AUTHORITATIVE catalog — the ghcr OCI registry — not from this
           # run's dist artifacts: the linux/darwin factories skip already-published
           # packages, so their per-run dist tree is nearly empty and undercounts the
-          # catalog. The catalog tool enumerates every container package + version
-          # in ghcr and emits one {name,os,arch,version,published} row per platform.
-          # (The dist-tree union above still serves the actual tarballs.)
+          # catalog. The catalog tool needs NO GitHub token: it probes ghcr
+          # anonymously (public packages grant an anonymous pull token) for every
+          # recipe/windows candidate and emits one {name,os,arch,version} row per
+          # platform. (The dist-tree union above still serves the actual tarballs.)
           go run ./catalog > site/registry.json
           echo "registry.json rows: $(jq 'length' site/registry.json) across $(jq '[.[].name]|unique|length' site/registry.json) packages"
           # list.html: a plain, no-JS/accessible table fallback (package · platform
-          # · version · published), built from registry.json.
+          # · version), built from registry.json.
           n=$(jq 'length' site/registry.json)
-          rows=$(jq -r '.[] | "<tr><td>\(.name)</td><td>\(.os)/\(.arch)</td><td>\(.version)</td><td>\(.published)</td></tr>"' site/registry.json)
+          rows=$(jq -r '.[] | "<tr><td>\(.name)</td><td>\(.os)/\(.arch)</td><td>\(.version)</td></tr>"' site/registry.json)
           {
             echo '<!doctype html><meta charset="utf-8"><title>go-pkgx package registry — list</title>'
             echo '<style>body{font:15px/1.5 system-ui,sans-serif;max-width:64rem;margin:2rem auto;padding:0 1rem}'
             echo 'table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:.25rem .75rem;border-bottom:1px solid #8884}'
             echo '@media(prefers-color-scheme:dark){body{background:#111;color:#eee}}</style>'
             echo "<h1>go-pkgx package registry</h1><p><b>$n</b> platform builds · <a href=\"./\">interactive tree view</a></p>"
-            echo '<table><thead><tr><th>package</th><th>platform</th><th>version</th><th>published</th></tr></thead><tbody>'
+            echo '<table><thead><tr><th>package</th><th>platform</th><th>version</th></tr></thead><tbody>'
             echo "$rows"
             echo '</tbody></table>'
           } > site/list.html

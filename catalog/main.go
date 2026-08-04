@@ -1,21 +1,26 @@
 // Command catalog enumerates the true package catalog from the ghcr OCI
-// registry ghcr.io/go-pkgx/packages and writes it as registry.json.
+// registry ghcr.io/go-pkgx/packages and writes it as registry.json — using NO
+// GitHub token. The org Packages API 400s under a plain GITHUB_TOKEN, so instead
+// of listing the org's packages server-side this tool probes ghcr anonymously:
 //
-// The Pages viewer counts and renders whatever registry.json contains. Building
-// that file from a single build run's dist artifacts undercounts the catalog:
-// the linux/darwin factories skip already-published packages, so their per-run
-// dist tree is nearly empty, while windows rebuilds everything. The authoritative
-// catalog is what actually lives in ghcr, so this tool reads it directly:
+//   - Candidate package names come from the repository, not the org API: every
+//     non-comment line of recipes.txt (the linux/darwin candidates) unioned with
+//     the first '|'-field of windows/go-projects.txt and windows/rust-projects.txt
+//     (the windows slugs).
+//   - For each candidate it fetches an anonymous ghcr pull token
+//     (https://ghcr.io/token?service=ghcr.io&scope=repository:OWNER/packages/NAME:pull).
+//     Public packages yield a 200 + token; unpublished/inaccessible names yield a
+//     403, which is the "not published" signal — the candidate is skipped.
+//   - With the bearer it reads the version tags
+//     (GET /v2/OWNER/packages/NAME/tags/list), dropping sha256-* digests and any
+//     non-semver junk, and then each tag's OCI image index
+//     (GET /v2/OWNER/packages/NAME/manifests/TAG) for its {os, architecture} set.
 //
-//  1. list the org's container packages (GitHub Packages API),
-//  2. list each package's versions (created_at + semantic tags),
-//  3. read each version tag's OCI image index for its {os, architecture} set,
+// It emits one JSON row {name, os, arch, version} per (name, os, arch, version)
+// to stdout — the same shape the viewer and the no-JS list.html consume, minus
+// the publish date (anonymous ghcr exposes no created_at without the org API).
 //
-// and emits one JSON row {name, os, arch, version, published} per
-// (name, os, arch, version) to stdout — the same shape the viewer and the no-JS
-// list.html already consume.
-//
-//	GITHUB_TOKEN=… GITHUB_REPOSITORY_OWNER=go-pkgx catalog > registry.json
+//	GITHUB_REPOSITORY_OWNER=go-pkgx catalog > registry.json
 package main
 
 import (
@@ -34,7 +39,7 @@ import (
 var osExit = os.Exit
 
 func main() {
-	if err := run(os.Stdout, os.Stderr, os.Getenv, http.DefaultClient); err != nil {
+	if err := run(os.Stdout, os.Stderr, os.Getenv, http.DefaultClient, os.ReadFile); err != nil {
 		fmt.Fprintln(os.Stderr, "catalog:", err)
 		osExit(1)
 	}
@@ -42,42 +47,36 @@ func main() {
 
 // row is one emitted registry.json record. Field order fixes the JSON key order.
 type row struct {
-	Name      string `json:"name"`
-	OS        string `json:"os"`
-	Arch      string `json:"arch"`
-	Version   string `json:"version"`
-	Published string `json:"published"`
+	Name    string `json:"name"`
+	OS      string `json:"os"`
+	Arch    string `json:"arch"`
+	Version string `json:"version"`
 }
 
 // doer is the injected HTTP seam (satisfied by *http.Client) so tests can mock
-// the GitHub Packages API, the ghcr pull-token endpoint and the OCI registry
-// without touching the network.
+// the ghcr pull-token endpoint and the OCI registry without touching the network.
 type doer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-// client bundles the enumeration configuration and endpoints. apiBase and
-// ghcrBase are fields so tests can point them at a mock.
+// client bundles the enumeration configuration and endpoints. ghcrBase is a
+// field so tests can point it at a mock.
 type client struct {
 	doer     doer
-	apiBase  string // https://api.github.com
 	ghcrBase string // https://ghcr.io
-	token    string // GitHub token with packages:read (may be empty)
 	owner    string // org that owns the packages
 	stderr   io.Writer
 }
 
-func run(stdout, stderr io.Writer, getenv func(string) string, d doer) error {
+func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile func(string) ([]byte, error)) error {
 	c := &client{
 		doer:     d,
-		apiBase:  envOr(getenv, "GITHUB_API_URL", "https://api.github.com"),
 		ghcrBase: envOr(getenv, "GHCR_URL", "https://ghcr.io"),
-		token:    getenv("GITHUB_TOKEN"),
 		owner:    envOr(getenv, "GITHUB_REPOSITORY_OWNER", "go-pkgx"),
 		stderr:   stderr,
 	}
 
-	names, err := c.listPackageNames()
+	names, err := candidateNames(readFile)
 	if err != nil {
 		return err
 	}
@@ -107,7 +106,54 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer) error {
 	return enc.Encode(rows)
 }
 
-// collect fans the package names out across a bounded worker pool, tolerating a
+// candidateNames returns the de-duplicated, sorted set of package slugs to probe
+// in ghcr: every non-comment, non-blank recipes.txt line (the linux/darwin
+// candidates) unioned with the first '|'-field of each windows project list.
+// Every slug is lower-cased: ghcr/OCI repository names are lowercase, and the
+// build factories publish each package under its lower-cased slug, so a slug
+// with any upper-case letter (github.com/AOMediaCodec/…) must be probed — and
+// emitted — in lower case to match the actual registry name.
+func candidateNames(readFile func(string) ([]byte, error)) ([]string, error) {
+	set := map[string]bool{}
+
+	recipes, err := readFile("recipes.txt")
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range strings.Split(string(recipes), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		set[strings.ToLower(line)] = true
+	}
+
+	for _, path := range []string{"windows/go-projects.txt", "windows/rust-projects.txt"} {
+		data, err := readFile(path)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			slug, _, _ := strings.Cut(line, "|")
+			if slug = strings.TrimSpace(slug); slug != "" {
+				set[strings.ToLower(slug)] = true
+			}
+		}
+	}
+
+	out := make([]string, 0, len(set))
+	for s := range set {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// collect fans the candidate names out across a bounded worker pool, tolerating a
 // per-package failure (logged to stderr) so one bad package never aborts the run.
 func (c *client) collect(names []string, workers int) []row {
 	in := make(chan string)
@@ -136,115 +182,62 @@ func (c *client) collect(names []string, workers int) []row {
 	return out
 }
 
-// packageRows resolves every (os, arch, version) row for one package, skipping
-// and logging any error rather than propagating it.
+// packageRows resolves every (os, arch, version) row for one candidate. A 403 at
+// the token endpoint means "not published" and yields no rows silently; any real
+// error is logged to stderr and skipped rather than propagated.
 func (c *client) packageRows(name string) []row {
-	versions, err := c.listVersions(name)
-	if err != nil {
-		fmt.Fprintf(c.stderr, "catalog: skip %s versions: %v\n", name, err)
-		return nil
-	}
 	bearer, err := c.ghcrToken(name)
 	if err != nil {
 		fmt.Fprintf(c.stderr, "catalog: skip %s token: %v\n", name, err)
 		return nil
 	}
+	if bearer == "" {
+		return nil // candidate not published (token denied)
+	}
+	tags, err := c.listTags(name, bearer)
+	if err != nil {
+		fmt.Fprintf(c.stderr, "catalog: skip %s tags: %v\n", name, err)
+		return nil
+	}
 	var rows []row
-	for _, v := range versions {
-		for _, tag := range v.tags {
-			plats, err := c.platforms(name, tag, bearer)
-			if err != nil {
-				fmt.Fprintf(c.stderr, "catalog: skip %s:%s: %v\n", name, tag, err)
-				continue
-			}
-			for _, p := range plats {
-				rows = append(rows, row{
-					Name:      name,
-					OS:        p.os,
-					Arch:      mapArch(p.arch),
-					Version:   tag,
-					Published: v.published,
-				})
-			}
+	for _, tag := range tags {
+		plats, err := c.platforms(name, tag, bearer)
+		if err != nil {
+			fmt.Fprintf(c.stderr, "catalog: skip %s:%s: %v\n", name, tag, err)
+			continue
+		}
+		for _, p := range plats {
+			rows = append(rows, row{
+				Name:    name,
+				OS:      p.os,
+				Arch:    mapArch(p.arch),
+				Version: tag,
+			})
 		}
 	}
 	return rows
 }
 
-// listPackageNames returns the org's container package names with the required
-// "packages/" prefix stripped.
-func (c *client) listPackageNames() ([]string, error) {
-	url := c.apiBase + "/orgs/" + c.owner + "/packages?package_type=container&per_page=100"
-	var names []string
-	err := c.paginate(url, func(b []byte) error {
-		var page []struct {
-			Name string `json:"name"`
-		}
-		if err := json.Unmarshal(b, &page); err != nil {
-			return err
-		}
-		for _, p := range page {
-			if n, ok := strings.CutPrefix(p.Name, "packages/"); ok {
-				names = append(names, n)
-			}
-		}
-		return nil
-	})
-	return names, err
-}
-
-type version struct {
-	published string // created_at date (YYYY-MM-DD)
-	tags      []string
-}
-
-// listVersions returns each container version's created_at date and its
-// semantic tags (sha256-* digests dropped).
-func (c *client) listVersions(name string) ([]version, error) {
-	enc := urlEncode("packages/" + name)
-	url := c.apiBase + "/orgs/" + c.owner + "/packages/container/" + enc + "/versions?per_page=100"
-	var versions []version
-	err := c.paginate(url, func(b []byte) error {
-		var page []struct {
-			CreatedAt string `json:"created_at"`
-			Metadata  struct {
-				Container struct {
-					Tags []string `json:"tags"`
-				} `json:"container"`
-			} `json:"metadata"`
-		}
-		if err := json.Unmarshal(b, &page); err != nil {
-			return err
-		}
-		for _, v := range page {
-			var tags []string
-			for _, t := range v.Metadata.Container.Tags {
-				if !strings.HasPrefix(t, "sha256-") {
-					tags = append(tags, t)
-				}
-			}
-			if len(tags) == 0 {
-				continue
-			}
-			versions = append(versions, version{
-				published: dateOnly(v.CreatedAt),
-				tags:      tags,
-			})
-		}
-		return nil
-	})
-	return versions, err
-}
-
-// ghcrToken fetches an anonymous pull token for a public package's OCI repo.
+// ghcrToken fetches an anonymous pull token for a public package's OCI repo. A
+// 403/404 (the "not published / inaccessible" signal ghcr returns for an unknown
+// name) yields ("", nil) so the caller skips the candidate silently.
 func (c *client) ghcrToken(name string) (string, error) {
 	url := c.ghcrBase + "/token?service=ghcr.io&scope=repository:" +
 		c.owner + "/packages/" + name + ":pull"
-	resp, err := c.get(url, "", "")
+	resp, code, err := c.rawGet(url, "", "")
 	if err != nil {
 		return "", err
 	}
 	defer resp.Body.Close()
+	// 403 (denied) / 404 (unknown) / 400 (NAME_INVALID for a slug ghcr cannot
+	// name) all mean "no such public package" — skip the candidate silently.
+	if code == http.StatusForbidden || code == http.StatusNotFound || code == http.StatusBadRequest {
+		return "", nil
+	}
+	if code < 200 || code >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("token %s: %s: %s", name, resp.Status, strings.TrimSpace(string(b)))
+	}
 	var tok struct {
 		Token string `json:"token"`
 	}
@@ -252,6 +245,38 @@ func (c *client) ghcrToken(name string) (string, error) {
 		return "", err
 	}
 	return tok.Token, nil
+}
+
+// listTags returns a package's semantic version tags (sha256-* digests and any
+// non-semver junk dropped). A 404 (no such repo / empty) yields no tags.
+func (c *client) listTags(name, bearer string) ([]string, error) {
+	url := c.ghcrBase + "/v2/" + c.owner + "/packages/" + name + "/tags/list"
+	resp, code, err := c.rawGet(url, "", bearer)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if code == http.StatusNotFound {
+		return nil, nil
+	}
+	if code < 200 || code >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET %s: %s: %s", url, resp.Status, strings.TrimSpace(string(b)))
+	}
+	var tl struct {
+		Tags []string `json:"tags"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tl); err != nil {
+		return nil, err
+	}
+	var tags []string
+	for _, t := range tl.Tags {
+		if semverTag(t) {
+			tags = append(tags, t)
+		}
+	}
+	sort.Strings(tags)
+	return tags, nil
 }
 
 type platform struct {
@@ -290,34 +315,13 @@ func (c *client) platforms(name, tag, bearer string) ([]platform, error) {
 	return plats, nil
 }
 
-// paginate GETs a GitHub API URL and follows rel="next" Link headers, passing
-// each page's body to fn.
-func (c *client) paginate(url string, fn func([]byte) error) error {
-	for url != "" {
-		resp, err := c.get(url, "application/vnd.github+json", c.token)
-		if err != nil {
-			return err
-		}
-		b, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return err
-		}
-		if err := fn(b); err != nil {
-			return err
-		}
-		url = nextLink(resp.Header.Get("Link"))
-	}
-	return nil
-}
-
-// get issues an authenticated GET and returns the response for a 2xx status, or
-// an error (with the body) otherwise. token, when non-empty, is sent as a
-// Bearer credential.
-func (c *client) get(url, accept, token string) (*http.Response, error) {
+// rawGet issues a GET and returns the response and its status code without
+// treating a non-2xx as an error, so callers can special-case 403/404.
+// token, when non-empty, is sent as a Bearer credential.
+func (c *client) rawGet(url, accept, token string) (*http.Response, int, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	if accept != "" {
 		req.Header.Set("Accept", accept)
@@ -327,9 +331,19 @@ func (c *client) get(url, accept, token string) (*http.Response, error) {
 	}
 	resp, err := c.doer.Do(req)
 	if err != nil {
+		return nil, 0, err
+	}
+	return resp, resp.StatusCode, nil
+}
+
+// get issues a GET and returns the response for a 2xx status, or an error (with
+// the body) otherwise.
+func (c *client) get(url, accept, token string) (*http.Response, error) {
+	resp, code, err := c.rawGet(url, accept, token)
+	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	if code < 200 || code >= 300 {
 		b, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		return nil, fmt.Errorf("GET %s: %s: %s", url, resp.Status, strings.TrimSpace(string(b)))
@@ -337,24 +351,15 @@ func (c *client) get(url, accept, token string) (*http.Response, error) {
 	return resp, nil
 }
 
-// nextLink extracts the rel="next" URL from an RFC 8288 Link header, or "".
-func nextLink(header string) string {
-	for _, part := range strings.Split(header, ",") {
-		seg := strings.Split(strings.TrimSpace(part), ";")
-		if len(seg) < 2 {
-			continue
-		}
-		u := strings.TrimSpace(seg[0])
-		if !strings.HasPrefix(u, "<") || !strings.HasSuffix(u, ">") {
-			continue
-		}
-		for _, p := range seg[1:] {
-			if strings.TrimSpace(p) == `rel="next"` {
-				return u[1 : len(u)-1]
-			}
-		}
+// semverTag reports whether t is a version tag worth keeping: not a sha256-*
+// digest and not floating junk like "latest" — a leading optional 'v' followed
+// by a digit (1.9.4, v1.2.3, 0.128.0), which is how the factories tag releases.
+func semverTag(t string) bool {
+	if t == "" || strings.HasPrefix(t, "sha256-") {
+		return false
 	}
-	return ""
+	s := strings.TrimPrefix(t, "v")
+	return s != "" && s[0] >= '0' && s[0] <= '9'
 }
 
 // mapArch normalizes OCI arch names to the dist-tree convention the viewer
@@ -368,34 +373,6 @@ func mapArch(a string) string {
 	default:
 		return a
 	}
-}
-
-// urlEncode percent-encodes every reserved byte of a path segment (so a '/' in a
-// package name becomes %2F), matching the encoding the GitHub Packages API path
-// requires.
-func urlEncode(s string) string {
-	const hex = "0123456789ABCDEF"
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		ch := s[i]
-		if 'A' <= ch && ch <= 'Z' || 'a' <= ch && ch <= 'z' ||
-			'0' <= ch && ch <= '9' || ch == '-' || ch == '_' || ch == '.' || ch == '~' {
-			b.WriteByte(ch)
-			continue
-		}
-		b.WriteByte('%')
-		b.WriteByte(hex[ch>>4])
-		b.WriteByte(hex[ch&0x0f])
-	}
-	return b.String()
-}
-
-// dateOnly keeps the YYYY-MM-DD prefix of an RFC 3339 timestamp.
-func dateOnly(ts string) string {
-	if t, _, ok := strings.Cut(ts, "T"); ok {
-		return t
-	}
-	return ts
 }
 
 func envOr(getenv func(string) string, key, def string) string {
