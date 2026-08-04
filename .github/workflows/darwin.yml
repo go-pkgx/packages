@@ -1,39 +1,61 @@
 name: darwin
 
 # macOS bottles for ghcr.io/go-pkgx/packages. Same pure-Go bk pipeline and the
-# same signed-OCI registry as the linux factory (build.yml) — the ONLY
-# difference is native macOS runners instead of a debian container (GitHub's
-# macOS runners are already clean, ephemeral VMs, so they are the isolation).
-# factory.sh is platform-agnostic (PLATFORM=darwin/<arch>); nothing else changes.
+# same signed-OCI registry as the linux factory (build.yml) — the ONLY difference
+# is native macOS runners instead of a debian container (GitHub's macOS runners
+# are already clean, ephemeral VMs, so they are the isolation). factory.sh is
+# platform-agnostic (PLATFORM=darwin/<arch>). The whole recipes.txt is chunked
+# across both arches; macOS runner concurrency is scarce so max-parallel is low.
 on:
   workflow_dispatch:
     inputs:
       recipes:
-        description: "space-separated projects to build (blank = recipes.txt)"
+        description: "space-separated projects to build (blank = the whole recipes.txt, chunked)"
         required: false
         default: ""
   schedule:
-    # one hour after the linux factory, to spread load across the two registries.
     - cron: "0 7 * * *"
 
 permissions:
   contents: read
   packages: write
 
+env:
+  CHUNK: "50"
+
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        run: |
+          if [ -n "${{ github.event.inputs.recipes }}" ]; then
+            m='{"include":[{"runner":"macos-14","platform":"darwin/aarch64","slug":"darwin-aarch64","chunk":"manual"},{"runner":"macos-15-intel","platform":"darwin/x86-64","slug":"darwin-x86-64","chunk":"manual"}]}'
+          else
+            total=$(grep -vcE '^[[:space:]]*(#|$)' recipes.txt)
+            n=$(( (total + CHUNK - 1) / CHUNK ))
+            m=$(jq -cn --argjson n "$n" '{include: [range(0;$n) as $c
+              | ({runner:"macos-14",platform:"darwin/aarch64",slug:"darwin-aarch64"},
+                 {runner:"macos-15-intel",platform:"darwin/x86-64",slug:"darwin-x86-64"})
+              + {chunk:($c|tostring)}]}')
+          fi
+          echo "matrix=$m" >> "$GITHUB_OUTPUT"
+          echo "$m" | jq '.include | length | "\(.) build jobs"'
+
   build:
+    needs: setup
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { runner: macos-14,       platform: darwin/aarch64, dist_name: dist-darwin-aarch64 } # Apple Silicon
-          - { runner: macos-15-intel, platform: darwin/x86-64,  dist_name: dist-darwin-x86-64 }  # Intel
-    runs-on: ${{ matrix.runner }}
+      max-parallel: 6   # macOS runner concurrency is limited; keep the fan-out modest
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
     steps:
       - name: base tools
         # macOS runners ship git, curl, xz, jq and the Xcode command-line tools
-        # (the C toolchain) already; only gettext (msgfmt, for recipes with po/)
-        # is missing. Best-effort — never fail the run on a tool install.
+        # already; only gettext (msgfmt, for recipes with po/) is missing.
         run: |
           brew install gettext >/dev/null 2>&1 || true
           brew link --force gettext >/dev/null 2>&1 || true
@@ -52,40 +74,36 @@ jobs:
           done
 
       - name: install bk
-        # GOPROXY=direct: pull the current main straight from GitHub, else the
-        # module proxy serves a stale cached @main and CI runs an old bk.
         run: |
           GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: tool versions
-        run: |
-          pkgx --version
-          bk 2>&1 | head -1 || true
-
       - name: clone pantry
         run: git clone --depth 1 https://github.com/pkgxdev/pantry
 
-      - name: build + publish bottles
+      - name: build + publish this chunk
         env:
           PLATFORM: ${{ matrix.platform }}
-          RECIPES: ${{ github.event.inputs.recipes }}
           OCI_USERNAME: ${{ github.actor }}
-          # The workflow's built-in token (permissions.packages: write above) —
-          # no long-lived PAT; auto-rotated per run. The go-pkgx/packages
-          # packages are owned by this repo, so GITHUB_TOKEN writes natively.
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
-        run: bash factory.sh
+        run: |
+          if [ "${{ matrix.chunk }}" = "manual" ]; then
+            RECIPES="${{ github.event.inputs.recipes }}"
+          else
+            start=$(( ${{ matrix.chunk }} * CHUNK + 1 )); end=$(( start + CHUNK - 1 ))
+            RECIPES="$(grep -vE '^[[:space:]]*(#|$)' recipes.txt | sed -n "${start},${end}p" | tr '\n' ' ')"
+          fi
+          # shellcheck disable=SC2086  # RECIPES is intentionally word-split to count projects
+          echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects"
+          export RECIPES
+          bash factory.sh
 
-      # The pkgx dist tree factory.sh writes (bk build --dist dist) — deployed to
-      # the GitHub Pages mirror by the central pages.yml aggregator. Uploaded per
-      # platform so the aggregator can union all four build workflows' trees.
       - name: upload dist tree
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.dist_name }}
+          name: dist-${{ matrix.slug }}-${{ matrix.chunk }}
           path: dist
           if-no-files-found: ignore
 
@@ -93,6 +111,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: failures-${{ strategy.job-index }}
+          name: failures-${{ matrix.slug }}-${{ matrix.chunk }}
           path: failures.txt
           if-no-files-found: ignore

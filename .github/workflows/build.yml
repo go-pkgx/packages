@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       recipes:
-        description: "space-separated projects to build (blank = recipes.txt)"
+        description: "space-separated projects to build (blank = the whole recipes.txt, chunked)"
         required: false
         default: ""
   # Continuous population: rebuild recipes.txt daily. skip-if-published means
@@ -15,19 +15,44 @@ permissions:
   contents: read
   packages: write
 
+env:
+  CHUNK: "50"   # projects per matrix job (chunked so the full pantry fans out)
+
 jobs:
+  # Split recipes.txt into CHUNK-sized slices and emit a matrix over both linux
+  # arches × every chunk, so the whole pantry is built best-effort in parallel.
+  # A manual `recipes` input bypasses chunking (one job per arch with just those).
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.gen.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        run: |
+          if [ -n "${{ github.event.inputs.recipes }}" ]; then
+            m='{"include":[{"runner":"ubuntu-latest","platform":"linux/x86-64","slug":"linux-x86-64","chunk":"manual"},{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","chunk":"manual"}]}'
+          else
+            total=$(grep -vcE '^[[:space:]]*(#|$)' recipes.txt)
+            n=$(( (total + CHUNK - 1) / CHUNK ))
+            m=$(jq -cn --argjson n "$n" '{include: [range(0;$n) as $c
+              | ({runner:"ubuntu-latest",platform:"linux/x86-64",slug:"linux-x86-64"},
+                 {runner:"ubuntu-24.04-arm",platform:"linux/aarch64",slug:"linux-aarch64"})
+              + {chunk:($c|tostring)}]}')
+          fi
+          echo "matrix=$m" >> "$GITHUB_OUTPUT"
+          echo "$m" | jq '.include | length | "\(.) build jobs"'
+
   build:
+    needs: setup
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { runner: ubuntu-latest,    platform: linux/x86-64,  dist_name: dist-linux-x86-64 }
-          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, dist_name: dist-linux-aarch64 }
-    runs-on: ${{ matrix.runner }}
+      max-parallel: 20
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
     # Phase A isolation: build inside a pinned, controlled debian base (bookworm,
     # glibc 2.36) instead of the drifting runner host — reproducible, no host-tool
-    # leakage, and a known glibc floor. (Phase B — building against pkgx's OWN
-    # glibc for truly self-contained FROM-scratch bottles — is a bk change.)
+    # leakage, and a known glibc floor.
     container:
       image: debian:stable-slim
     steps:
@@ -58,35 +83,37 @@ jobs:
           GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
-      - name: tool versions
-        run: |
-          pkgx --version
-          bk 2>&1 | head -1 || true
-
       - name: clone pantry
         run: git clone --depth 1 https://github.com/pkgxdev/pantry
 
-      - name: build + publish bottles
+      - name: build + publish this chunk
         env:
           PLATFORM: ${{ matrix.platform }}
-          RECIPES: ${{ github.event.inputs.recipes }}
           OCI_USERNAME: ${{ github.actor }}
-          # The workflow's built-in token (permissions.packages: write above) —
-          # no long-lived PAT to manage, auto-rotated per run. Requires the
-          # go-pkgx/packages package to grant this repo write access once
-          # (package → settings → Manage Actions access → add go-pkgx/factory).
+          # The workflow's native token — no long-lived PAT; the go-pkgx/packages
+          # packages are owned by this repo, so GITHUB_TOKEN writes natively.
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
-        run: bash factory.sh
+        run: |
+          if [ "${{ matrix.chunk }}" = "manual" ]; then
+            RECIPES="${{ github.event.inputs.recipes }}"
+          else
+            start=$(( ${{ matrix.chunk }} * CHUNK + 1 )); end=$(( start + CHUNK - 1 ))
+            RECIPES="$(grep -vE '^[[:space:]]*(#|$)' recipes.txt | sed -n "${start},${end}p" | tr '\n' ' ')"
+          fi
+          # shellcheck disable=SC2086  # RECIPES is intentionally word-split to count projects
+          echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects"
+          export RECIPES
+          bash factory.sh
 
-      # The pkgx dist tree factory.sh writes (bk build --dist dist) — deployed to
-      # the GitHub Pages mirror by the central pages.yml aggregator. Uploaded per
-      # platform so the aggregator can union all four build workflows' trees.
+      # The pkgx dist tree factory.sh writes (bk build --dist dist) — unioned into
+      # the GitHub Pages mirror by pages.yml. Named per arch+chunk so pages.yml
+      # discovers every slice (it globs dist-*).
       - name: upload dist tree
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.dist_name }}
+          name: dist-${{ matrix.slug }}-${{ matrix.chunk }}
           path: dist
           if-no-files-found: ignore
 
@@ -94,6 +121,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: failures-${{ strategy.job-index }}
+          name: failures-${{ matrix.slug }}-${{ matrix.chunk }}
           path: failures.txt
           if-no-files-found: ignore
