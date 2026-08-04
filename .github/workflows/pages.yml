@@ -30,6 +30,8 @@ jobs:
     environment: { name: github-pages, url: "${{ steps.dep.outputs.page_url }}" }
     env: { GH_TOKEN: "${{ github.token }}" }
     steps:
+      - uses: actions/checkout@v4 # provides the catalog tool + go.mod for `go run ./catalog`
+
       - name: Download dist-* artifacts from every build workflow's latest success
         run: |
           mkdir -p dl
@@ -69,39 +71,25 @@ jobs:
             done
           done
 
-      - name: Generate registry.json
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+
+      - name: Generate registry.json from the ghcr OCI registry + build list.html
+        env: { GITHUB_TOKEN: "${{ github.token }}" }
         run: |
           # Static Pages (workflow source, no Jekyll) serves files verbatim.
           touch site/.nojekyll
-          # registry.json: one row per (name, os, arch, version) — the data the
-          # WASM tree-view viewer fetches. name may contain '/', but os and arch
-          # are always the last two path components before v<ver>.tar.gz.
-          # shellcheck disable=SC2016  # backrefs in the sed replacement are literal
-          find site -name 'v*.tar.gz' \
-            | sed -E 's|site/(.*)/([^/]+)/([^/]+)/v(.*)\.tar\.gz|{"name":"\1","os":"\2","arch":"\3","version":"\4"}|' \
-            | jq -s 'sort_by(.name,.os,.arch,.version)' > site/registry.json
-          echo "registry.json rows: $(jq 'length' site/registry.json)"
-
-      - name: Stamp rows with ghcr publish dates + build the no-JS list.html
-        run: |
-          # Annotate each row with `published` (the date the OCI version was first
-          # pushed, from the ghcr container version's created_at). One API call per
-          # distinct package; a package with no ghcr version just gets "".
-          : > /tmp/stamps.tsv
-          for name in $(jq -r '.[].name' site/registry.json | sort -u); do
-            enc=$(jq -rn --arg p "packages/$name" '$p|@uri')
-            gh api "/orgs/${GITHUB_REPOSITORY_OWNER}/packages/container/$enc/versions" --paginate 2>/dev/null \
-              | jq -r --arg n "$name" '.[] | .created_at as $c
-                  | (.metadata.container.tags[]? | select(startswith("sha256-")|not))
-                  | [$n+"|"+., ($c|split("T")[0])] | @tsv' >> /tmp/stamps.tsv || true
-          done
-          jq -Rn '[inputs|split("\t")|{key:.[0],value:.[1]}]|from_entries' /tmp/stamps.tsv > /tmp/stamps.json
-          jq --slurpfile s /tmp/stamps.json \
-            'map(. + {published: ($s[0][(.name+"|"+.version)] // "")})' \
-            site/registry.json > /tmp/reg.json && mv /tmp/reg.json site/registry.json
-          echo "stamped $(jq '[.[]|select(.published!="")]|length') of $(jq 'length' site/registry.json) rows with a publish date"
+          # registry.json is the data the WASM viewer counts and renders. Build it
+          # from the AUTHORITATIVE catalog — the ghcr OCI registry — not from this
+          # run's dist artifacts: the linux/darwin factories skip already-published
+          # packages, so their per-run dist tree is nearly empty and undercounts the
+          # catalog. The catalog tool enumerates every container package + version
+          # in ghcr and emits one {name,os,arch,version,published} row per platform.
+          # (The dist-tree union above still serves the actual tarballs.)
+          go run ./catalog > site/registry.json
+          echo "registry.json rows: $(jq 'length' site/registry.json) across $(jq '[.[].name]|unique|length' site/registry.json) packages"
           # list.html: a plain, no-JS/accessible table fallback (package · platform
-          # · version · published), built from the stamped registry.json.
+          # · version · published), built from registry.json.
           n=$(jq 'length' site/registry.json)
           rows=$(jq -r '.[] | "<tr><td>\(.name)</td><td>\(.os)/\(.arch)</td><td>\(.version)</td><td>\(.published)</td></tr>"' site/registry.json)
           {
@@ -114,9 +102,6 @@ jobs:
             echo "$rows"
             echo '</tbody></table>'
           } > site/list.html
-
-      - uses: actions/setup-go@v5
-        with: { go-version: stable }
 
       - name: Build the WASM tree-view viewer (go-widgets) → site root
         run: |
