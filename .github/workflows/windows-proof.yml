@@ -10,7 +10,8 @@ name: windows-proof
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 9 * * 1"
+    # Weekly; after the daily Rust factory (09:00) to avoid overlapping it.
+    - cron: "0 10 * * 1"
 
 permissions:
   contents: read
