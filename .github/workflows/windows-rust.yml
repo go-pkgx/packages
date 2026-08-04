@@ -1,0 +1,127 @@
+# Windows package factory (Rust) — cross-builds pantry Rust projects to Windows
+# packages with mingw-w64 and publishes to this repo's GitHub Pages dist,
+# overlaying the sibling Go packages from windows.yml into one combined registry.
+#
+# Trigger mirrors build.yml (the linux factory): workflow_dispatch + a daily
+# schedule, NOT on:push — so landing this file does not immediately fire a run.
+name: windows-rust
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 8 * * *"
+permissions: { contents: read, pages: write, id-token: write }
+env:
+  CHUNK: "6"   # cargo builds are heavy — smaller chunks stay under the 6h job cap
+  TRIPLE: "x86_64-pc-windows-gnu"
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs: { chunks: "${{ steps.gen.outputs.chunks }}" }
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        run: |
+          total=$(grep -c . windows/rust-projects.txt)
+          n=$(( (total + CHUNK - 1) / CHUNK ))
+          echo "chunks=$(seq 0 $((n-1)) | jq -R . | jq -c -s .)" >> "$GITHUB_OUTPUT"
+          echo "$total rust projects → $n chunks"
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        chunk: ${{ fromJson(needs.setup.outputs.chunks) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain (rust + mingw)
+        run: |
+          rustup target add "$TRIPLE"
+          sudo apt-get update -qq && sudo apt-get install -y -qq gcc-mingw-w64-x86-64
+          echo "CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER=x86_64-w64-mingw32-gcc" >> "$GITHUB_ENV"
+          # locate the mingw runtime DLLs to colocate for self-containment
+          mgw=$(dirname "$(x86_64-w64-mingw32-gcc -print-libgcc-file-name)")
+          echo "MGW_LIB=$mgw" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ matrix.chunk }}-${{ hashFiles('windows/rust-projects.txt') }}
+      - name: Cross-build chunk ${{ matrix.chunk }} → Windows packages
+        run: |
+          start=$(( ${{ matrix.chunk }} * CHUNK + 1 )); end=$(( start + CHUNK - 1 ))
+          # mingw dir holding libwinpthread etc. (sibling of libgcc)
+          dlldir=$(dirname "$(dpkg -L gcc-mingw-w64-x86-64 | grep 'libwinpthread-1.dll' | head -1)")
+          [ -n "$dlldir" ] || dlldir=/usr/x86_64-w64-mingw32/lib
+          sed -n "${start},${end}p" windows/rust-projects.txt | while IFS='|' read -r slug repo bin; do
+            [ -n "$slug" ] || continue
+            echo "::group::$slug ($repo, bin=$bin)"
+            rm -rf src
+            ver=$(git ls-remote --tags --refs "https://github.com/$repo" 2>/dev/null \
+                  | awk -F/ '{print $NF}' | sed 's/^v//' \
+                  | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -1)
+            [ -n "$ver" ] || { echo "no tag; skip"; echo "::endgroup::"; continue; }
+            git clone --depth 1 --branch "v$ver" "https://github.com/$repo" src 2>/dev/null \
+              || git clone --depth 1 --branch "$ver" "https://github.com/$repo" src 2>/dev/null \
+              || { echo "clone failed"; echo "::endgroup::"; continue; }
+            ( cd src
+              timeout 40m cargo build --release --locked --target "$TRIPLE" 2>/tmp/err \
+                || timeout 40m cargo build --release --target "$TRIPLE" 2>/tmp/err || true )
+            exe=$(find "src/target/$TRIPLE/release" -maxdepth 1 -name "$bin.exe" 2>/dev/null | head -1)
+            [ -n "$exe" ] || exe=$(find "src/target/$TRIPLE/release" -maxdepth 1 -name '*.exe' 2>/dev/null | head -1)
+            [ -n "$exe" ] || { echo "no windows build"; tail -5 /tmp/err 2>/dev/null; echo "::endgroup::"; continue; }
+            realbin=$(basename "$exe" .exe)
+            stage="stage/$slug/v$ver/bin"; rm -rf stage; mkdir -p "$stage"
+            cp "$exe" "$stage/"
+            # colocate mingw runtime DLLs → self-contained on Windows
+            for dll in libwinpthread-1.dll libgcc_s_seh-1.dll libstdc++-6.dll; do
+              f=$(find /usr -name "$dll" 2>/dev/null | grep -i mingw | head -1)
+              [ -n "$f" ] && cp "$f" "$stage/" 2>/dev/null || true
+            done
+            d="$GITHUB_WORKSPACE/out/$slug/windows/x86-64"; mkdir -p "$d"
+            tar -czf "$d/v$ver.tar.gz" -C stage "$slug/v$ver"
+            echo "$ver" > "$d/versions.txt"
+            mkdir -p "$GITHUB_WORKSPACE/out/$slug"
+            printf 'provides:\n  - bin/%s\n' "$realbin" > "$GITHUB_WORKSPACE/out/$slug/package.yml"
+            echo "OK $slug v$ver"; echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('out/**') != ''
+        with:
+          name: rust-pkg-${{ matrix.chunk }}
+          path: out
+          if-no-files-found: ignore
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read, pages: write, id-token: write }
+    concurrency: { group: registry-deploy, cancel-in-progress: false }
+    environment: { name: github-pages, url: "${{ steps.dep.outputs.page_url }}" }
+    env: { GH_TOKEN: "${{ github.token }}" }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { pattern: rust-pkg-*, path: dist, merge-multiple: true }
+      - name: Overlay sibling Go packages (latest successful windows.yml run)
+        run: |
+          rid=$(gh run list --workflow windows.yml --status success -L1 --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$rid" ]; then
+            gh run download "$rid" --repo "$GITHUB_REPOSITORY" -p 'pkg-*' -D sib 2>/dev/null || true
+            for d in sib/*/; do [ -d "$d" ] && cp -r "$d". dist/ 2>/dev/null || true; done
+            echo "overlaid Go artifacts from run $rid"
+          fi
+      - name: Combined index
+        run: |
+          n=$(find dist -name 'v*.tar.gz' | wc -l | tr -d ' ')
+          # shellcheck disable=SC2016  # \1/\2 are sed backrefs, single quotes are intentional
+          { echo "# go-pkgx Windows package registry"; echo; echo "**$n** self-contained Windows packages (Go + Rust), cross-built from pantry recipes. Use with \`PKGX_DIST=https://go-pkgx.github.io/packages\` or push to an OCI registry via \`go-pkgx/mirror --to\`."; echo; \
+            find dist -name 'v*.tar.gz' | sed -E 's|dist/(.*)/windows/x86-64/v(.*)\.tar\.gz|- `\1` v\2|' | sort; } > dist/index.md
+          echo "deploying $n packages"
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist }
+      - id: dep
+        uses: actions/deploy-pages@v4

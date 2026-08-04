@@ -1,0 +1,92 @@
+# End-to-end proof that pkgx Windows packages work, entirely in our own infra:
+# cross-build a REAL tool (sqlite3) into a pkgx Windows package with the same
+# llvm-mingw toolchain the pantry ships (llvm.org/mingw-w64), then FETCH + RUN it
+# on a real windows-latest runner via go-pkgx/pkgx. Self-contained: the dist is
+# served locally over http on the Windows runner, so this does not touch the
+# repo's GitHub Pages site (that is owned by windows.yml / windows-rust.yml).
+#
+# Trigger mirrors build.yml: workflow_dispatch + a weekly schedule, NOT on:push.
+name: windows-proof
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  SQLITE_VER: "3.50.4"
+  SQLITE_TARBALL: "https://sqlite.org/2025/sqlite-autoconf-3500400.tar.gz"
+  LLVM_MINGW: "llvm-mingw-20260616-ucrt-ubuntu-22.04-x86_64"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch the llvm-mingw toolchain (== pantry's llvm.org/mingw-w64)
+        run: |
+          curl -fsSL "https://github.com/mstorsjo/llvm-mingw/releases/download/20260616/${LLVM_MINGW}.tar.xz" | tar xJ
+          echo "$PWD/${LLVM_MINGW}/bin" >> "$GITHUB_PATH"
+      - name: Cross-build sqlite3.exe → pkgx Windows packages (x86-64 + aarch64)
+        run: |
+          set -eux
+          curl -fsSL "$SQLITE_TARBALL" | tar xz
+          cd sqlite-autoconf-*
+          for pair in "x86_64-w64-mingw32 x86-64" "aarch64-w64-mingw32 aarch64"; do
+            # shellcheck disable=SC2086  # word-splitting $pair into triple+slug is intentional
+            set -- $pair; triple=$1; slug=$2
+            "$triple-clang" shell.c sqlite3.c -O2 \
+              -DSQLITE_ENABLE_FTS5 -DSQLITE_ENABLE_RTREE -DSQLITE_ENABLE_COLUMN_METADATA=1 \
+              -o sqlite3.exe
+            file sqlite3.exe
+            mkdir -p "stage/sqlite.org/v${SQLITE_VER}/bin"
+            mv sqlite3.exe "stage/sqlite.org/v${SQLITE_VER}/bin/"
+            d="${GITHUB_WORKSPACE}/dist/sqlite.org/windows/${slug}"
+            mkdir -p "$d"
+            tar -czf "$d/v${SQLITE_VER}.tar.gz" -C stage "sqlite.org/v${SQLITE_VER}"
+            echo "${SQLITE_VER}" > "$d/versions.txt"
+            rm -rf stage
+          done
+          mkdir -p "${GITHUB_WORKSPACE}/dist/sqlite.org"
+          printf 'provides:\n  - bin/sqlite3\n' > "${GITHUB_WORKSPACE}/dist/sqlite.org/package.yml"
+          find "${GITHUB_WORKSPACE}/dist" -type f
+      - uses: actions/upload-artifact@v4
+        with: { name: windows-dist, path: dist }
+
+  # THE PROOF: consume the cross-built package on a real Windows runner.
+  consume-windows:
+    needs: build
+    runs-on: windows-latest
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v4
+        with: { repository: go-pkgx/pkgx, path: pkgx }
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+      - name: Build pkgx.exe
+        working-directory: pkgx
+        env: { CGO_ENABLED: "0" }
+        run: go build -o pkgx.exe .
+      - uses: actions/download-artifact@v4
+        with: { name: windows-dist, path: dist }
+      - name: Serve the dist and run the sqlite3 Windows package
+        shell: pwsh
+        run: |
+          $srv = Start-Process python -PassThru -ArgumentList '-m','http.server','8213' -WorkingDirectory (Resolve-Path dist)
+          Start-Sleep -Seconds 3
+          $env:PKGX_DIST   = "http://127.0.0.1:8213"
+          $env:PKGX_PANTRY = "http://127.0.0.1:8213"
+          $env:PKGX_DIR    = "$PWD\store"
+          try {
+            $out = (& .\pkgx\pkgx.exe sqlite.org ':memory:' "select 'win-sqlite '|| sqlite_version();" 2>&1 | Out-String).Trim()
+            Write-Host "pkgx.exe sqlite.org => $out"
+            if ($out -notmatch "win-sqlite $([regex]::Escape($env:SQLITE_VER))") {
+              throw "expected 'win-sqlite $env:SQLITE_VER', got: $out"
+            }
+            Write-Host "PROOF PASS: a cross-built sqlite3 Windows package ran on real Windows via pkgx"
+          } finally {
+            Stop-Process -Id $srv.Id -ErrorAction SilentlyContinue
+          }
+          exit 0

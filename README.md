@@ -60,6 +60,37 @@ or pull a package directly:
 
     docker pull ghcr.io/go-pkgx/packages/lz4.org:1.10.0
 
+## Windows
+
+pkgx ships no Windows packages, so this repo also runs a **Windows factory** that
+cross-builds pantry projects to Windows PE packages and publishes a browsable pkgx
+dist to this repo's GitHub Pages (`https://go-pkgx.github.io/packages`). It is
+separate from the linux/ghcr pipeline above and additive to it.
+
+- **`.github/workflows/windows.yml` (Go).** Go tools cross-build to Windows *for
+  free* — `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build` yields a
+  self-contained `.exe` with no libc and no DLLs — so a large slice of the pantry
+  (**351 Go projects** in `windows/go-projects.txt`) becomes Windows packages with
+  no per-recipe work. For each `slug|github-repo|bin` row it finds the newest tag,
+  clones it, builds, and lays the `.exe` out as a pkgx dist tree
+  `<slug>/windows/x86-64/{versions.txt, v<ver>.tar.gz}` + `package.yml`.
+- **`.github/workflows/windows-rust.yml` (Rust).** Cross-builds the Rust projects
+  in `windows/rust-projects.txt` with mingw-w64 (colocating the mingw runtime DLLs
+  for self-containment) and overlays them onto the Go packages into one combined
+  dist.
+- **`.github/workflows/windows-proof.yml` (e2e proof).** Cross-builds a *real* tool
+  (`sqlite3`, x86-64 + aarch64) with the same llvm-mingw toolchain the pantry ships,
+  then on a `windows-latest` runner builds `pkgx.exe`, serves the dist locally, and
+  **fetches + runs the package on real Windows** — the guarantee that a cross-built
+  Windows package actually runs via pkgx.
+
+Like `build.yml`, all three trigger on `workflow_dispatch` + a schedule (no
+`on: push`). The data files live under `windows/` (`go-projects.txt`,
+`go-projects-all.txt`, `rust-projects.txt`, `rust-projects-all.txt`); add rows to
+scale. Consume the Windows dist with any go-pkgx tool via `PKGX_DIST`:
+
+    PKGX_DIST=https://go-pkgx.github.io/packages pkgx syft.exe --version
+
 ## License
 
 BSD-3-Clause © the go-pkgx authors.

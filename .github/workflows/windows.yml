@@ -1,0 +1,110 @@
+# Windows package factory (Go) — cross-builds pantry Go projects to Windows PE
+# packages and publishes a browsable pkgx dist to this repo's GitHub Pages.
+# Go tools cross-build to Windows for free (GOOS=windows CGO_ENABLED=0 → a
+# self-contained .exe, no libc, no DLLs), so a large slice of the pantry becomes
+# Windows packages with no per-recipe work.
+#
+# Trigger mirrors build.yml (the linux factory): workflow_dispatch + a daily
+# schedule, NOT on:push — so landing this file does not immediately fire a run.
+name: windows
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"
+permissions: { contents: read, pages: write, id-token: write }
+env:
+  CHUNK: "25"   # projects per matrix job (chunked so we scale past the 256-job matrix cap)
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      chunks: ${{ steps.gen.outputs.chunks }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: gen
+        run: |
+          total=$(grep -c . windows/go-projects.txt)
+          n=$(( (total + CHUNK - 1) / CHUNK ))
+          echo "chunks=$(seq 0 $((n-1)) | jq -R . | jq -c -s .)" >> "$GITHUB_OUTPUT"
+          echo "$total projects → $n chunks of $CHUNK"
+
+  build:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix:
+        chunk: ${{ fromJson(needs.setup.outputs.chunks) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+      - name: Cross-build chunk ${{ matrix.chunk }} → Windows packages
+        run: |
+          start=$(( ${{ matrix.chunk }} * CHUNK + 1 )); end=$(( start + CHUNK - 1 ))
+          sed -n "${start},${end}p" windows/go-projects.txt | while IFS='|' read -r slug repo bin; do
+            [ -n "$slug" ] || continue
+            echo "::group::$slug ($repo, bin=$bin)"
+            rm -rf src
+            ver=$(git ls-remote --tags --refs "https://github.com/$repo" 2>/dev/null \
+                  | awk -F/ '{print $NF}' | sed 's/^v//' \
+                  | grep -E '^[0-9]+\.[0-9]+(\.[0-9]+)?$' | sort -V | tail -1)
+            if [ -z "$ver" ]; then echo "no tag; skip"; echo "::endgroup::"; continue; fi
+            git clone --depth 1 --branch "v$ver" "https://github.com/$repo" src 2>/dev/null \
+              || git clone --depth 1 --branch "$ver" "https://github.com/$repo" src 2>/dev/null \
+              || { echo "clone failed; skip"; echo "::endgroup::"; continue; }
+            ( cd src
+              export GOOS=windows GOARCH=amd64 CGO_ENABLED=0
+              out="/tmp/$bin.exe"; rm -f "$out"
+              ( go build -o "$out" . \
+                || go build -o "$out" "./cmd/$bin" \
+                || { m=$(go list -f '{{if eq .Name "main"}}{{.Dir}}{{end}}' ./... 2>/dev/null | head -1); [ -n "$m" ] && go build -o "$out" "$m"; } ) 2>/tmp/err || true
+            )
+            out="/tmp/$bin.exe"
+            if [ ! -f "$out" ]; then echo "no windows build"; echo "::endgroup::"; continue; fi
+            stage="stage/$slug/v$ver/bin"; rm -rf stage; mkdir -p "$stage"; cp "$out" "$stage/$bin.exe"
+            d="$GITHUB_WORKSPACE/out/$slug/windows/x86-64"; mkdir -p "$d"
+            tar -czf "$d/v$ver.tar.gz" -C stage "$slug/v$ver"
+            echo "$ver" > "$d/versions.txt"
+            mkdir -p "$GITHUB_WORKSPACE/out/$slug"
+            printf 'provides:\n  - bin/%s\n' "$bin" > "$GITHUB_WORKSPACE/out/$slug/package.yml"
+            echo "OK $slug v$ver"; echo "::endgroup::"
+          done
+      - uses: actions/upload-artifact@v4
+        if: hashFiles('out/**') != ''
+        with:
+          name: pkg-${{ matrix.chunk }}
+          path: out
+          if-no-files-found: ignore
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions: { contents: read, actions: read, pages: write, id-token: write }
+    concurrency: { group: registry-deploy, cancel-in-progress: false }
+    environment: { name: github-pages, url: "${{ steps.dep.outputs.page_url }}" }
+    env: { GH_TOKEN: "${{ github.token }}" }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { pattern: pkg-*, path: dist, merge-multiple: true }
+      - name: Overlay sibling Rust packages (latest successful windows-rust.yml run)
+        run: |
+          rid=$(gh run list --workflow windows-rust.yml --status success -L1 --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.[0].databaseId // empty')
+          if [ -n "$rid" ]; then
+            gh run download "$rid" --repo "$GITHUB_REPOSITORY" -p 'rust-pkg-*' -D sib 2>/dev/null || true
+            for d in sib/*/; do [ -d "$d" ] && cp -r "$d". dist/ 2>/dev/null || true; done
+            echo "overlaid Rust artifacts from run $rid"
+          fi
+      - name: Combined index
+        run: |
+          n=$(find dist -name 'v*.tar.gz' | wc -l | tr -d ' ')
+          # shellcheck disable=SC2016  # \1/\2 are sed backrefs, single quotes are intentional
+          { echo "# go-pkgx Windows package registry"; echo; echo "**$n** self-contained Windows packages (Go + Rust), cross-built from pantry recipes. Use with \`PKGX_DIST=https://go-pkgx.github.io/packages\` or push to an OCI registry via \`go-pkgx/mirror --to\`."; echo; \
+            find dist -name 'v*.tar.gz' | sed -E 's|dist/(.*)/windows/x86-64/v(.*)\.tar\.gz|- `\1` v\2|' | sort; } > dist/index.md
+          echo "deploying $n packages"
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: dist }
+      - id: dep
+        uses: actions/deploy-pages@v4
