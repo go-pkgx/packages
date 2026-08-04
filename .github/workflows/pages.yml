@@ -1,95 +1,48 @@
-# GitHub Pages deployer / aggregator — the single place the pkgx dist mirror at
-# https://go-pkgx.github.io/packages is built and published.
+# GitHub Pages deployer — publishes the browsable registry at
+# https://go-pkgx.github.io/packages : the go-pkgx/registry-viewer WASM app (a
+# filterable go-widgets tree) as the site root, its registry.json data, and a
+# no-JS list.html fallback.
 #
-# For each of the four build workflows (build.yml, darwin.yml, windows.yml,
-# windows-rust.yml) it downloads the `dist-*` artifacts of that workflow's latest
-# SUCCESSFUL run and unions every dist tree into one combined site
-# (`<project>/<os>/<arch>/…`, `versions.txt` unioned+sorted so all platforms
-# coexist). It then emits registry.json and builds the go-pkgx/registry-viewer
-# WASM app (a filterable go-widgets tree, name/os/arch/version) as the site root,
-# with a no-JS list.html fallback. The same packages are also published as signed
-# OCI artifacts to ghcr.io/go-pkgx/packages by those build workflows.
-#
-# Runs on its own daily schedule AFTER the builds (linux 06:00 … rust 09:00), so
-# it always deploys the freshest successful run of each platform.
+# registry.json is built from the AUTHORITATIVE catalog — the ghcr OCI registry
+# (ghcr.io/go-pkgx/packages) — via the `catalog` tool, which probes ghcr
+# ANONYMOUSLY (public packages grant an anonymous pull token), so no token is
+# needed. The actual package tarballs are NOT served here: every package is a
+# signed OCI artifact in ghcr for all platforms (linux/darwin/windows), consumed
+# with PKGX_DIST=oci://ghcr.io/go-pkgx/packages. Keeping the multi-GB tarball tree
+# off Pages is deliberate — it exceeds the Pages site-size limit and is redundant
+# with OCI. The site stays small (viewer + JSON + HTML).
 name: pages
 on:
   workflow_dispatch:
   schedule:
-    # After all four build factories (06:00–09:00).
     - cron: "0 11 * * *"
 
-permissions: { contents: read, actions: read, packages: read, pages: write, id-token: write }
+permissions: { contents: read, pages: write, id-token: write }
 
-# Only one Pages deploy at a time (the build workflows no longer deploy Pages).
+# Only one Pages deploy at a time.
 concurrency: { group: registry-deploy, cancel-in-progress: false }
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: { name: github-pages, url: "${{ steps.dep.outputs.page_url }}" }
-    env: { GH_TOKEN: "${{ github.token }}" }
     steps:
       - uses: actions/checkout@v4 # provides the catalog tool + go.mod for `go run ./catalog`
-
-      - name: Download dist-* artifacts from every build workflow's latest success
-        run: |
-          mkdir -p dl
-          for wf in build.yml darwin.yml windows.yml windows-rust.yml; do
-            rid=$(gh run list --workflow "$wf" --status success -L1 \
-                    --repo "$GITHUB_REPOSITORY" --json databaseId \
-                    --jq '.[0].databaseId // empty')
-            if [ -z "$rid" ]; then
-              echo "no successful run for $wf yet — skipping"; continue
-            fi
-            echo "downloading dist-* from $wf run $rid"
-            # gh run download exits non-zero if the pattern matches nothing —
-            # tolerate it so a run with no dist artifacts does not fail the deploy.
-            gh run download "$rid" --repo "$GITHUB_REPOSITORY" \
-              -p 'dist-*' -D "dl/$wf" 2>/dev/null \
-              || echo "no dist-* artifacts in $wf run $rid"
-          done
-
-      - name: Merge all dist trees into one site/ (versions.txt unioned+sorted)
-        run: |
-          mkdir -p site
-          # gh run download lays each artifact at dl/<wf>/<artifact-name>/…; each
-          # such dir is a pkgx dist tree rooted at <project>/<os>/<arch>/…. Walk
-          # every file: copy through, except versions.txt which is union+sorted so
-          # the same <project>/<os>/<arch> from multiple sources coexists.
-          find dl -mindepth 2 -maxdepth 2 -type d | while read -r src; do
-            [ -d "$src" ] || continue
-            ( cd "$src" && find . -type f ) | while read -r rel; do
-              rel=${rel#./}
-              mkdir -p "site/$(dirname "$rel")"
-              if [ "$(basename "$rel")" = versions.txt ]; then
-                cat "$src/$rel" "site/$rel" 2>/dev/null \
-                  | sort -u -V > "site/$rel.tmp" && mv "site/$rel.tmp" "site/$rel"
-              else
-                cp "$src/$rel" "site/$rel"
-              fi
-            done
-          done
 
       - uses: actions/setup-go@v5
         with: { go-version: stable }
 
-      - name: Generate registry.json from the ghcr OCI registry + build list.html
+      - name: Generate registry.json from the ghcr OCI catalog + build list.html
         run: |
+          mkdir -p site
           # Static Pages (workflow source, no Jekyll) serves files verbatim.
           touch site/.nojekyll
-          # registry.json is the data the WASM viewer counts and renders. Build it
-          # from the AUTHORITATIVE catalog — the ghcr OCI registry — not from this
-          # run's dist artifacts: the linux/darwin factories skip already-published
-          # packages, so their per-run dist tree is nearly empty and undercounts the
-          # catalog. The catalog tool needs NO GitHub token: it probes ghcr
-          # anonymously (public packages grant an anonymous pull token) for every
-          # recipe/windows candidate and emits one {name,os,arch,version} row per
-          # platform. (The dist-tree union above still serves the actual tarballs.)
+          # registry.json: the data the WASM viewer counts and renders — one
+          # {name,os,arch,version} row per published platform, enumerated from ghcr
+          # anonymously (no token). The AUTHORITATIVE source, so counts are exact.
           go run ./catalog > site/registry.json
           echo "registry.json rows: $(jq 'length' site/registry.json) across $(jq '[.[].name]|unique|length' site/registry.json) packages"
-          # list.html: a plain, no-JS/accessible table fallback (package · platform
-          # · version), built from registry.json.
+          # list.html: a plain, no-JS/accessible table fallback (package · platform · version).
           n=$(jq 'length' site/registry.json)
           rows=$(jq -r '.[] | "<tr><td>\(.name)</td><td>\(.os)/\(.arch)</td><td>\(.version)</td></tr>"' site/registry.json)
           {
@@ -97,7 +50,7 @@ jobs:
             echo '<style>body{font:15px/1.5 system-ui,sans-serif;max-width:64rem;margin:2rem auto;padding:0 1rem}'
             echo 'table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:.25rem .75rem;border-bottom:1px solid #8884}'
             echo '@media(prefers-color-scheme:dark){body{background:#111;color:#eee}}</style>'
-            echo "<h1>go-pkgx package registry</h1><p><b>$n</b> platform builds · <a href=\"./\">interactive tree view</a></p>"
+            echo "<h1>go-pkgx package registry</h1><p><b>$n</b> platform builds · <a href=\"./\">interactive tree view</a> · installed from <code>oci://ghcr.io/go-pkgx/packages</code></p>"
             echo '<table><thead><tr><th>package</th><th>platform</th><th>version</th></tr></thead><tbody>'
             echo "$rows"
             echo '</tbody></table>'
@@ -106,14 +59,13 @@ jobs:
       - name: Build the WASM tree-view viewer (go-widgets) → site root
         run: |
           git clone --depth 1 https://github.com/go-pkgx/registry-viewer
-          # build.sh consumes our real registry.json and emits dist/{app.wasm,
-          # wasm_exec.js, index.html, registry.json}. index.html becomes the site
-          # root (the interactive viewer); the dist tree + registry.json stay for
-          # PKGX_DIST consumers and the no-JS list.html.
+          # build.sh consumes registry.json and emits dist/{app.wasm, wasm_exec.js,
+          # index.html, registry.json}. index.html becomes the site root (the
+          # interactive viewer); registry.json feeds it and the no-JS list.html.
           ( cd registry-viewer && bash build.sh "$GITHUB_WORKSPACE/site/registry.json" )
           cp registry-viewer/dist/app.wasm registry-viewer/dist/wasm_exec.js \
              registry-viewer/dist/index.html site/
-          echo "viewer wired:"; ls -la site/app.wasm site/index.html
+          echo "site contents:"; du -sh site; ls -la site
 
       - uses: actions/upload-pages-artifact@v3
         with: { path: site }
