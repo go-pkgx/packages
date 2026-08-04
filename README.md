@@ -22,11 +22,14 @@ an unsigned or badly-signed package is refused rather than installed.
 
 ## How it runs
 
-`.github/workflows/build.yml` runs a `linux/x86-64` + `linux/aarch64` matrix on a
-**daily** schedule (`cron: "0 6 * * *"`, plus `workflow_dispatch`). Auth to ghcr
-uses the workflow's **native `GITHUB_TOKEN`** (`permissions.packages: write`) — no
-long-lived PAT to rotate. Each run installs pkgx (bk sources its own toolchain via
-`pkgx +deps`) and bk, clones the pantry, then `factory.sh`:
+`.github/workflows/build.yml` runs a `linux/x86-64` + `linux/aarch64` matrix, and
+`.github/workflows/darwin.yml` a `darwin/aarch64` + `darwin/x86-64` matrix on native
+macOS runners — both on a **daily** schedule (`workflow_dispatch` + cron) and both
+publishing signed bottles to the same `ghcr.io/go-pkgx/packages` OCI registry via the
+identical, platform-agnostic `factory.sh`. Auth to ghcr uses the workflow's **native
+`GITHUB_TOKEN`** (`permissions.packages: write`) — no long-lived PAT to rotate. Each
+run installs pkgx (bk sources its own toolchain via `pkgx +deps`) and bk, clones the
+pantry, then `factory.sh`:
 
 - expands the requested projects to their **topologically-ordered runtime-dependency
   closure** (deps built before dependents), and
@@ -38,9 +41,10 @@ Per-recipe failures are logged (`failures.txt`) but never fail the run. Grow
 
 ## Build isolation
 
-- **Phase A (shipped, in use).** Builds run inside a pinned `debian:stable-slim`
+- **Phase A (shipped, in use).** Linux builds run inside a pinned `debian:stable-slim`
   container — a controlled glibc floor instead of the drifting runner host, with no
-  host-tool leakage and reproducible output.
+  host-tool leakage and reproducible output. macOS builds run directly on GitHub's
+  ephemeral macOS runners (each a clean, throwaway VM), which are the isolation there.
 - **Phase B (experimental / proven feasible).** Building against pkgx's *own* glibc
   toolchain for truly self-contained `FROM scratch` packages. It is a `bk` change on
   branch `feat/pkgx-glibc-toolchain`, off by default (`BK_PKGX_LIBC=1`); design note:
