@@ -55,6 +55,7 @@ alreadyPublished() {
 
 ok=0 fail=0 skip=0
 : > failures.txt
+: > failures-detail.txt
 for proj in "${LIST[@]}"; do
   rec="$PANTRY/projects/$proj/package.yml"
   [ -f "$rec" ] || { echo "SKIP $proj (no recipe)"; continue; }
@@ -68,7 +69,13 @@ for proj in "${LIST[@]}"; do
   out="$(bk --platform "$PLATFORM" build --recipe "$rec" --dist dist "$proj" 2>&1)"; rc=$?
   printf '%s\n' "$out" | tail -20
   echo "::endgroup::"
-  [ $rc -eq 0 ] || { echo "❌ BUILD FAIL $proj"; echo "$proj build" >> failures.txt; fail=$((fail+1)); continue; }
+  if [ $rc -ne 0 ]; then
+    echo "❌ BUILD FAIL $proj"; echo "$proj build" >> failures.txt; fail=$((fail+1))
+    # Capture the error tail so failures are diagnosable from the artifact alone
+    # (container-job logs are not retrievable via the GitHub API).
+    { echo "########## $proj ($PLATFORM) — build failed rc=$rc"; printf '%s\n' "$out" | tail -30; echo; } >> failures-detail.txt
+    continue
+  fi
 
   bottle="$(printf '%s\n' "$out" | sed -n 's/^bottle: //p' | tail -1)"
   bver="$(basename "${bottle:-}" | sed -E 's/^v(.*)\.tar\.(gz|xz)$/\1/')"

@@ -124,3 +124,13 @@ jobs:
           name: failures-${{ matrix.slug }}-${{ matrix.chunk }}
           path: failures.txt
           if-no-files-found: ignore
+
+      # Per-recipe error tails, so build failures are diagnosable from the
+      # artifact alone (container-job logs are not retrievable via the API).
+      - name: upload failure details
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failures-detail-${{ matrix.slug }}-${{ matrix.chunk }}
+          path: failures-detail.txt
+          if-no-files-found: ignore
