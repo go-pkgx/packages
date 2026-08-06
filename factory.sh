@@ -27,6 +27,27 @@ else
   echo "signing: disabled (no SIGNING_KEY)"
 fi
 
+# Local recipe overrides: candidate fixes for genuine upstream-recipe bugs,
+# applied to the pantry before building so we can validate them here before
+# proposing them upstream to pkgxdev/pantry. Each overrides/*.patch is a
+# `git apply`-able diff against the pantry root (paths like
+# projects/<proj>/package.yml) — i.e. exactly the future upstream PR. Idempotent:
+# tracked pantry files are reset first so re-runs against a persistent local
+# clone (the docker repro harness mounts one) apply cleanly; a fresh CI clone is
+# already clean. A patch that no longer applies (upstream moved) is skipped loud,
+# not fatal — the recipe just falls back to upstream as-is.
+OVERRIDES_DIR="$(pwd)/overrides"
+if ls "$OVERRIDES_DIR"/*.patch >/dev/null 2>&1; then
+  git -C "$PANTRY" checkout -- . 2>/dev/null || true
+  for p in "$OVERRIDES_DIR"/*.patch; do
+    if git -C "$PANTRY" apply --check "$p" 2>/dev/null; then
+      git -C "$PANTRY" apply "$p" && echo "override applied: $(basename "$p")"
+    else
+      echo "override SKIP (does not apply): $(basename "$p")" >&2
+    fi
+  done
+fi
+
 # Requested list: workflow input, else recipes.txt (minus blanks/comments).
 # NB: `mapfile` is bash 4+, absent from macOS's stock bash 3.2 — read portably.
 WANT=()
