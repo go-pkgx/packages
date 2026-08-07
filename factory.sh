@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
 # Build pkgx pantry recipes with bk and publish signed, attested bottles to
-# ghcr.io/go-pkgx/packages. The requested projects are expanded to their full
-# runtime-dependency closure (deps built before dependents), and a
-# (project,version,platform) already in ghcr is skipped — so shared deps build
-# once. Per-recipe failures are logged (failures.txt) but never fail the run:
-# the pantry is built progressively.
+# ghcr.io/go-pkgx/packages. Each REQUESTED project builds EVERY available
+# upstream version (all git tags / listed versions, newest first via
+# `bk versions`), not just the latest; the requested set is also expanded to its
+# full runtime-dependency closure (deps built before dependents), and those
+# dep-only projects build at their resolved latest. A (project,version,platform)
+# already in ghcr is skipped — so shared deps build once and, across cron runs,
+# only missing (proj,ver,platform) tuples are (re)built (incremental). Per-build
+# failures are logged (failures.txt) but never fail the run: the pantry is built
+# progressively.
 #
 # Env: PLATFORM=linux/x86-64|linux/aarch64  (required)
 #      RECIPES="p1 p2 ..."   (optional; blank = recipes.txt)
 #      PANTRY=<dir>          (default: pantry)
+#      MAX_VERSIONS=<n>      (optional; cap versions/requested-project, newest
+#                             first; blank/unset = all — a package with hundreds
+#                             of tags stays tractable per run since the missing
+#                             ones are picked up incrementally on later runs)
 #      OCI_USERNAME/OCI_PASSWORD  ghcr creds
 #      SIGNING_KEY           (optional; org secret → bk publish --sign)
 set -uo pipefail
@@ -61,6 +69,15 @@ while IFS= read -r line; do LIST+=("$line"); done \
   < <(PANTRY="$PANTRY" PLATFORM="$PLATFORM" go run ./closure "${WANT[@]}")
 echo "closure: ${#LIST[@]} project(s) for $PLATFORM (from ${#WANT[@]} requested)"
 
+# inWant proj → 0 if proj was explicitly requested (so it builds ALL versions);
+# closure-only deps (return 1) build just their resolved latest. WANT is never
+# empty (RECIPES or recipes.txt), so the expansion is bash-3.2-safe.
+inWant() {
+  local x="$1" w
+  for w in "${WANT[@]}"; do [ "$w" = "$x" ] && return 0; done
+  return 1
+}
+
 # alreadyPublished proj ver → 0 if ghcr already has this platform for that version.
 alreadyPublished() {
   local proj="$1" ver="$2" tok man
@@ -77,39 +94,75 @@ alreadyPublished() {
 ok=0 fail=0 skip=0
 : > failures.txt
 : > failures-detail.txt
-for proj in "${LIST[@]}"; do
-  rec="$PANTRY/projects/$proj/package.yml"
-  [ -f "$rec" ] || { echo "SKIP $proj (no recipe)"; continue; }
 
-  ver=$(curl -fsSL "https://dist.pkgx.dev/${proj}/${OS}/${ARCH}/versions.txt" 2>/dev/null | tail -1)
-  if [ -n "$ver" ] && alreadyPublished "$proj" "$ver"; then
-    echo "⏭  SKIP $proj $ver ($PLATFORM) — already in ghcr"; skip=$((skip+1)); continue
+# buildOne proj rec ver → skip-if-published, else build (pinned to ver when
+# non-empty) and publish. An empty ver means "resolved latest" (dep-only path):
+# the skip check then uses dist.pkgx.dev's latest version. ${arr[@]+...} is the
+# bash-3.2 + set -u safe empty-array expansion.
+buildOne() {
+  local proj="$1" rec="$2" ver="$3" checkver out rc bottle bver
+  local verflag=()
+  if [ -n "$ver" ]; then
+    checkver="$ver"; verflag=(--version "$ver")
+  else
+    checkver=$(curl -fsSL "https://dist.pkgx.dev/${proj}/${OS}/${ARCH}/versions.txt" 2>/dev/null | tail -1)
   fi
 
-  echo "::group::build $proj ($PLATFORM)"
-  out="$(bk --platform "$PLATFORM" build --recipe "$rec" --dist dist "$proj" 2>&1)"; rc=$?
+  if [ -n "$checkver" ] && alreadyPublished "$proj" "$checkver"; then
+    echo "⏭  SKIP $proj $checkver ($PLATFORM) — already in ghcr"; skip=$((skip+1)); return
+  fi
+
+  echo "::group::build $proj ${ver:-latest} ($PLATFORM)"
+  out="$(bk --platform "$PLATFORM" build --recipe "$rec" ${verflag[@]+"${verflag[@]}"} --dist dist "$proj" 2>&1)"; rc=$?
   printf '%s\n' "$out" | tail -20
   echo "::endgroup::"
   if [ $rc -ne 0 ]; then
-    echo "❌ BUILD FAIL $proj"; echo "$proj build" >> failures.txt; fail=$((fail+1))
+    echo "❌ BUILD FAIL $proj ${ver:-latest}"; echo "$proj ${ver:-latest} build" >> failures.txt; fail=$((fail+1))
     # Capture the error tail so failures are diagnosable from the artifact alone
     # (container-job logs are not retrievable via the GitHub API).
-    { echo "########## $proj ($PLATFORM) — build failed rc=$rc"; printf '%s\n' "$out" | tail -30; echo; } >> failures-detail.txt
-    continue
+    { echo "########## $proj ${ver:-latest} ($PLATFORM) — build failed rc=$rc"; printf '%s\n' "$out" | tail -30; echo; } >> failures-detail.txt
+    return
   fi
 
   bottle="$(printf '%s\n' "$out" | sed -n 's/^bottle: //p' | tail -1)"
   bver="$(basename "${bottle:-}" | sed -E 's/^v(.*)\.tar\.(gz|xz)$/\1/')"
-  [ -n "${bottle:-}" ] && [ -n "${bver:-}" ] || { echo "❌ PARSE FAIL $proj"; echo "$proj parse" >> failures.txt; fail=$((fail+1)); continue; }
+  [ -n "${bottle:-}" ] && [ -n "${bver:-}" ] || { echo "❌ PARSE FAIL $proj ${ver:-latest}"; echo "$proj ${ver:-latest} parse" >> failures.txt; fail=$((fail+1)); return; }
 
   echo "::group::publish $proj $bver"
   if SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
      bk publish --to "$DIST" --project "$proj" --version "$bver" --platform "$PLATFORM" "${SIGN_ARGS[@]}" "$bottle"; then
     echo "✅ OK $proj $bver $PLATFORM"; ok=$((ok+1))
   else
-    echo "❌ PUBLISH FAIL $proj"; echo "$proj publish" >> failures.txt; fail=$((fail+1))
+    echo "❌ PUBLISH FAIL $proj $bver"; echo "$proj $bver publish" >> failures.txt; fail=$((fail+1))
   fi
   echo "::endgroup::"
+}
+
+for proj in "${LIST[@]}"; do
+  rec="$PANTRY/projects/$proj/package.yml"
+  [ -f "$rec" ] || { echo "SKIP $proj (no recipe)"; continue; }
+
+  # Requested projects build every available version (newest first, capped by
+  # MAX_VERSIONS); closure-only deps build a single resolved-latest (ver="").
+  VERS=()
+  if inWant "$proj"; then
+    while IFS="$(printf '\t')" read -r v _tag; do
+      [ -n "$v" ] && VERS+=("$v")
+    done < <(bk versions --recipe "$rec" 2>/dev/null \
+             | { if [ -n "${MAX_VERSIONS:-}" ]; then head -n "$MAX_VERSIONS"; else cat; fi; })
+    if [ ${#VERS[@]} -eq 0 ]; then
+      echo "⚠ $proj: bk versions found none — falling back to resolved latest" >&2
+      VERS=("")
+    else
+      echo "versions $proj: ${#VERS[@]} to consider ($PLATFORM)"
+    fi
+  else
+    VERS=("")
+  fi
+
+  for ver in ${VERS[@]+"${VERS[@]}"}; do
+    buildOne "$proj" "$rec" "$ver"
+  done
 done
 
 echo "=== summary ($PLATFORM): $ok built, $skip skipped, $fail failed ==="
