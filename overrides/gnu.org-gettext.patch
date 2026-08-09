@@ -1,0 +1,17 @@
+diff --git a/projects/gnu.org/gettext/package.yml b/projects/gnu.org/gettext/package.yml
+index 81359bc..37a937a 100644
+--- a/projects/gnu.org/gettext/package.yml
++++ b/projects/gnu.org/gettext/package.yml
+@@ -9,6 +9,12 @@ dependencies:
+ 
+ versions:
+   github: autotools-mirror/gettext/tags
++  # gettext has stayed on the 0.x line for 30 years, but an ancient `v1.0` tag
++  # exists and outranks every modern 0.x release under semver (1.0 > 0.26), so
++  # the resolver builds the wrong (ancient) version. Ignore any 1.x tag. (The
++  # ignore runs pre-v-normalization, so match the raw `v1.` candidate form.)
++  ignore:
++    - /^v?1\./
+ 
+ build:
+   dependencies:
