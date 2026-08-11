@@ -1,0 +1,61 @@
+name: fromscratch
+# Continuous PROOF that the published ghcr bottles run in a genuine
+# `docker FROM scratch` image — only pkgx bottles, no debian, no system libc.
+# Resolves each witness tool's runtime closure (fromscratch/mkclosure.sh) to
+# published bottles, builds a scratch image (fromscratch/mkscratch.sh) and
+# smoke-tests it. A failed smoke test FAILS the job.
+on:
+  workflow_dispatch:
+  schedule:
+    # 12:00 UTC daily — the 06-11h slots are taken by the other factory workflows.
+    - cron: "0 12 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  scratch:
+    # ubuntu-latest is linux/x86-64 with docker preinstalled → build+run the
+    # amd64 scratch images natively (no qemu). The bottles are pulled anonymously
+    # from the public ghcr.io/go-pkgx/packages registry.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # mkclosure.sh parses the pantry recipes' runtime dependencies.
+      - name: clone pantry
+        run: git clone --depth 1 https://github.com/pkgxdev/pantry
+
+      - name: lz4.org — build FROM scratch + smoke test
+        run: |
+          set -euo pipefail
+          bash fromscratch/mkclosure.sh amd64 scratch-lz4 \
+            '/pkgx/lz4.org/{V}/bin/lz4' lz4.org
+          echo "::group::lz4 --version"
+          docker run --rm --platform linux/amd64 scratch-lz4 --version
+          echo "::endgroup::"
+          # Real operation: compress then decompress must round-trip exactly.
+          printf 'from-scratch-lz4-%s' "$RANDOM" > in.txt
+          docker run --rm --platform linux/amd64 -v "$PWD:/data" scratch-lz4 \
+            -f /data/in.txt /data/in.lz4
+          docker run --rm --platform linux/amd64 -v "$PWD:/data" scratch-lz4 \
+            -d -f /data/in.lz4 /data/out.txt
+          cmp in.txt out.txt
+          echo "lz4 round-trip OK (FROM scratch)"
+
+      - name: openssl.org — build FROM scratch + smoke test
+        run: |
+          set -euo pipefail
+          bash fromscratch/mkclosure.sh amd64 scratch-openssl \
+            '/pkgx/openssl.org/{V}/bin/openssl' openssl.org
+          echo "::group::openssl version"
+          docker run --rm --platform linux/amd64 scratch-openssl version
+          echo "::endgroup::"
+          # Real operation: the from-scratch dgst must match the runner's sha256.
+          printf 'from-scratch-openssl-proof' > msg.txt
+          want=$(sha256sum msg.txt | cut -d' ' -f1)
+          got=$(docker run --rm --platform linux/amd64 -v "$PWD:/data" \
+            scratch-openssl dgst -sha256 /data/msg.txt | sed 's/.*= *//')
+          echo "want=$want got=$got"
+          test "$want" = "$got"
+          echo "openssl dgst OK (FROM scratch)"
