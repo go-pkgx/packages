@@ -1,11 +1,14 @@
 name: fromscratch
 # Continuous PROOF + COVERAGE that published ghcr bottles run in a genuine
 # `docker FROM scratch` image — only pkgx bottles, no debian, no system libc.
-# For each witness tool, `bk fromscratch` resolves its runtime closure to
-# published bottles, builds a scratch image, and (via -run) smoke-tests it in
-# one pure-Go step. A closure that is not fully published yet is SKIPPED
-# (coverage gap, reported, exit 3); a tool that builds but whose smoke test
-# fails FAILS the job (a real regression, exit 1).
+#
+# For each witness tool, `pkgm image` emits a `FROM scratch` Containerfile whose
+# `RUN` step uses pkgm ITSELF, inside the image, to install the tool's whole
+# runtime closure over HTTPS and wire the pkgx loader. So the from-scratch
+# install (and this proof) run in the container, exactly like an end user's
+# `pkgm install` — no host-side rootfs staging, no bespoke builder. A closure
+# not yet fully published makes the `docker build` fail → reported as a coverage
+# gap (SKIP); a tool that builds but whose smoke run fails FAILS the job.
 on:
   workflow_dispatch:
   # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
@@ -19,62 +22,67 @@ jobs:
   scratch:
     # ubuntu-latest is linux/x86-64 with docker preinstalled → build+run the
     # amd64 scratch images natively (no qemu). Bottles are pulled anonymously
-    # from the public ghcr.io/go-pkgx/packages registry by `bk fromscratch`.
+    # from the public ghcr.io/go-pkgx/packages registry by pkgm, in-image.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/setup-go@v5
         with: { go-version: stable }
 
-      # The whole from-scratch flow (closure-resolve → OCI pull → layout →
-      # loader symlink → LD_LIBRARY_PATH → readelf-driven completion →
-      # FROM-scratch Dockerfile → docker build → smoke run) lives in pure Go.
-      - name: install bk
-        run: GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
-
-      # bk fromscratch parses the pantry recipes' runtime dependencies.
-      - name: clone pantry
-        run: git clone --depth 1 https://github.com/pkgxdev/pantry
+      # ONE static (CGO_ENABLED=0) pkgm binary serves both roles: the host
+      # `pkgm image` that emits the Containerfile, and the `/pkgm` copied INTO the
+      # scratch image (it must run with no system libc). GOPROXY=direct pulls the
+      # current main straight from GitHub (the module proxy can serve a stale
+      # cached @main).
+      - name: install pkgm (static)
+        run: |
+          CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/pkgm@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: FROM-scratch coverage panel
         run: |
           set -uo pipefail
-          # Each entry: <project>|<in-image entrypoint, {V}=root version dir>|<smoke args>
-          # Smoke args default to a version flag — enough to prove the binary
-          # loads its whole closure and runs under the pkgx glibc loader. bk
-          # -run checks the REAL container exit code (no `| head` masking).
-          TOOLS='
-          lz4.org|/pkgx/lz4.org/{V}/bin/lz4|--version
-          openssl.org|/pkgx/openssl.org/{V}/bin/openssl|version
-          tukaani.org/xz|/pkgx/tukaani.org/xz/{V}/bin/xz|--version
-          facebook.com/zstd|/pkgx/facebook.com/zstd/{V}/bin/zstd|--version
-          sqlite.org|/pkgx/sqlite.org/{V}/bin/sqlite3|--version
-          rsync.samba.org|/pkgx/rsync.samba.org/{V}/bin/rsync|--version
-          perl.org|/pkgx/perl.org/{V}/bin/perl|--version
-          jqlang.github.io|/pkgx/jqlang.github.io/{V}/bin/jq|--version
-          gnu.org/wget|/pkgx/gnu.org/wget/{V}/bin/wget|--version
-          curl.se|/pkgx/curl.se/{V}/bin/curl|--version
-          git-scm.org|/pkgx/git-scm.org/{V}/bin/git|--version
-          '
+          PKGM="$(command -v pkgm)"
+          # <project> then its smoke args (space-separated). No `|`/`xargs` trim:
+          # `xargs` with no command runs /bin/echo, and GNU echo eats a leading
+          # --version as its own flag — the value must never be executed.
+          TOOLS=(
+            "lz4.org --version"
+            "openssl.org version"
+            "tukaani.org/xz --version"
+            "facebook.com/zstd --version"
+            "sqlite.org --version"
+            "rsync.samba.org --version"
+            "perl.org --version"
+            "jqlang.github.io --version"
+            "gnu.org/wget --version"
+            "curl.se --version"
+            "git-scm.org --version"
+          )
+          work="$(mktemp -d)"; cp "$PKGM" "$work/pkgm"
           PASS=""; SKIP=""; FAIL=""
-          while IFS='|' read -r proj entry smoke; do
-            [ -n "${proj:-}" ] || continue
-            proj="$(echo "$proj" | xargs)"; entry="$(echo "$entry" | xargs)"; smoke="$(echo "$smoke" | xargs)"
-            tag="scratch-$(echo "$proj" | tr '/.' '--')"
+          for entry in "${TOOLS[@]}"; do
+            # shellcheck disable=SC2086  # deliberate word-split: proj + smoke args
+            set -- $entry
+            proj="$1"; shift; smoke=("$@")
+            tag="scratch-$(printf '%s' "$proj" | tr '/.' '--')"
             echo "::group::$proj"
-            # shellcheck disable=SC2086  # $smoke is an intentional arg list
-            bk fromscratch -arch amd64 -tag "$tag" -entrypoint "$entry" -run "$proj" -- $smoke
-            rc=$?
-            if [ "$rc" = "0" ]; then
-              echo "PASS $proj"; PASS="$PASS $proj"
-            elif [ "$rc" = "3" ]; then
+            # Vendor-neutral OCI Containerfile (podman/buildah pick it up by
+            # name; docker builds it with -f).
+            pkgm image "$proj" > "$work/Containerfile"
+            # A failed build == the closure is not fully published for amd64 yet
+            # (a coverage gap, not a regression). Guarded so `bash -e` never aborts
+            # the panel mid-loop — every witness is exercised.
+            if ! docker build --platform linux/amd64 -f "$work/Containerfile" -t "$tag" "$work"; then
               echo "SKIP $proj (closure not fully published for amd64)"; SKIP="$SKIP $proj"
+              echo "::endgroup::"; continue
+            fi
+            if docker run --rm --platform linux/amd64 "$tag" "${smoke[@]}"; then
+              echo "PASS $proj"; PASS="$PASS $proj"
             else
-              echo "FAILED $proj (rc=$rc)"; FAIL="$FAIL $proj"
+              echo "FAILED $proj (built but smoke run broke)"; FAIL="$FAIL $proj"
             fi
             echo "::endgroup::"
-          done <<< "$TOOLS"
+          done
           echo "================ FROM-scratch coverage ================"
           echo "PASS (run from scratch):$PASS"
           echo "SKIP (closure gap):$SKIP"
