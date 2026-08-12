@@ -1,11 +1,11 @@
 name: fromscratch
 # Continuous PROOF + COVERAGE that published ghcr bottles run in a genuine
 # `docker FROM scratch` image — only pkgx bottles, no debian, no system libc.
-# For each witness tool: resolve its runtime closure to published bottles
-# (fromscratch/mkclosure.sh), build a scratch image (fromscratch/mkscratch.sh),
-# and smoke-test it. A closure that is not fully published yet is SKIPPED
-# (coverage gap, reported); a tool that builds but whose smoke test fails FAILS
-# the job (a real regression).
+# For each witness tool, `bk fromscratch` resolves its runtime closure to
+# published bottles, builds a scratch image, and (via -run) smoke-tests it in
+# one pure-Go step. A closure that is not fully published yet is SKIPPED
+# (coverage gap, reported, exit 3); a tool that builds but whose smoke test
+# fails FAILS the job (a real regression, exit 1).
 on:
   workflow_dispatch:
   # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
@@ -19,12 +19,21 @@ jobs:
   scratch:
     # ubuntu-latest is linux/x86-64 with docker preinstalled → build+run the
     # amd64 scratch images natively (no qemu). Bottles are pulled anonymously
-    # from the public ghcr.io/go-pkgx/packages registry.
+    # from the public ghcr.io/go-pkgx/packages registry by `bk fromscratch`.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # mkclosure.sh parses the pantry recipes' runtime dependencies.
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+
+      # The whole from-scratch flow (closure-resolve → OCI pull → layout →
+      # loader symlink → LD_LIBRARY_PATH → readelf-driven completion →
+      # FROM-scratch Dockerfile → docker build → smoke run) lives in pure Go.
+      - name: install bk
+        run: GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
+
+      # bk fromscratch parses the pantry recipes' runtime dependencies.
       - name: clone pantry
         run: git clone --depth 1 https://github.com/pkgxdev/pantry
 
@@ -33,7 +42,8 @@ jobs:
           set -uo pipefail
           # Each entry: <project>|<in-image entrypoint, {V}=root version dir>|<smoke args>
           # Smoke args default to a version flag — enough to prove the binary
-          # loads its whole closure and runs under the pkgx glibc loader.
+          # loads its whole closure and runs under the pkgx glibc loader. bk
+          # -run checks the REAL container exit code (no `| head` masking).
           TOOLS='
           lz4.org|/pkgx/lz4.org/{V}/bin/lz4|--version
           openssl.org|/pkgx/openssl.org/{V}/bin/openssl|version
@@ -41,6 +51,7 @@ jobs:
           facebook.com/zstd|/pkgx/facebook.com/zstd/{V}/bin/zstd|--version
           sqlite.org|/pkgx/sqlite.org/{V}/bin/sqlite3|--version
           rsync.samba.org|/pkgx/rsync.samba.org/{V}/bin/rsync|--version
+          perl.org|/pkgx/perl.org/{V}/bin/perl|--version
           jqlang.github.io|/pkgx/jqlang.github.io/{V}/bin/jq|--version
           gnu.org/wget|/pkgx/gnu.org/wget/{V}/bin/wget|--version
           curl.se|/pkgx/curl.se/{V}/bin/curl|--version
@@ -52,19 +63,15 @@ jobs:
             proj="$(echo "$proj" | xargs)"; entry="$(echo "$entry" | xargs)"; smoke="$(echo "$smoke" | xargs)"
             tag="scratch-$(echo "$proj" | tr '/.' '--')"
             echo "::group::$proj"
-            if bash fromscratch/mkclosure.sh amd64 "$tag" "$entry" "$proj"; then
-              if docker run --rm --platform linux/amd64 "$tag" $smoke; then
-                echo "PASS $proj"; PASS="$PASS $proj"
-              else
-                echo "SMOKE FAILED $proj"; FAIL="$FAIL $proj"
-              fi
+            # shellcheck disable=SC2086  # $smoke is an intentional arg list
+            bk fromscratch -arch amd64 -tag "$tag" -entrypoint "$entry" -run "$proj" -- $smoke
+            rc=$?
+            if [ "$rc" = "0" ]; then
+              echo "PASS $proj"; PASS="$PASS $proj"
+            elif [ "$rc" = "3" ]; then
+              echo "SKIP $proj (closure not fully published for amd64)"; SKIP="$SKIP $proj"
             else
-              rc=$?
-              if [ "$rc" = "3" ]; then
-                echo "SKIP $proj (closure not fully published for amd64)"; SKIP="$SKIP $proj"
-              else
-                echo "BUILD FAILED $proj (rc=$rc)"; FAIL="$FAIL $proj"
-              fi
+              echo "FAILED $proj (rc=$rc)"; FAIL="$FAIL $proj"
             fi
             echo "::endgroup::"
           done <<< "$TOOLS"
