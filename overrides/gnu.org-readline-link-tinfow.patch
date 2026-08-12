@@ -1,0 +1,13 @@
+diff --git a/projects/gnu.org/readline/package.yml b/projects/gnu.org/readline/package.yml
+index f63a1cd..ab40ada 100644
+--- a/projects/gnu.org/readline/package.yml
++++ b/projects/gnu.org/readline/package.yml
+@@ -21,7 +21,7 @@ build:
+     linux:
+       # otherwise it weirdly omits the linkage
+       # https://stackoverflow.com/a/65623630
+-      LDFLAGS: '$LDFLAGS -lncursesw'
++      LDFLAGS: '$LDFLAGS -Wl,--no-as-needed -ltinfow -Wl,--as-needed'
+ 
+ test:
+   - run:
