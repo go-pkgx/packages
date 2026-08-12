@@ -1,0 +1,12 @@
+diff --git a/projects/libcxx.llvm.org/package.yml b/projects/libcxx.llvm.org/package.yml
+index 9b7188c..74c6a3e 100644
+--- a/projects/libcxx.llvm.org/package.yml
++++ b/projects/libcxx.llvm.org/package.yml
+@@ -36,6 +36,7 @@ build:
+       - -DLLVM_ENABLE_RUNTIMES="libcxx;libcxxabi;libunwind"
+       - -DLLVM_INCLUDE_TESTS=OFF
+       - -DLLVM_ENABLE_RTTI=ON
++      - -DLIBCXX_HAS_ATOMIC_LIB=OFF
+ 
+ test:
+   dependencies:
