@@ -95,15 +95,17 @@ jobs:
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: |
+          FORCE=""
           if [ "${{ matrix.chunk }}" = "manual" ]; then
             RECIPES="${{ github.event.inputs.recipes }}"
+            FORCE=1   # explicit manual dispatch always rebuilds (bypass skip-if-published → refresh stale bottles)
           else
             start=$(( ${{ matrix.chunk }} * CHUNK + 1 )); end=$(( start + CHUNK - 1 ))
             RECIPES="$(grep -vE '^[[:space:]]*(#|$)' recipes.txt | sed -n "${start},${end}p" | tr '\n' ' ')"
           fi
           # shellcheck disable=SC2086  # RECIPES is intentionally word-split to count projects
-          echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects"
-          export RECIPES
+          echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects${FORCE:+ (FORCE rebuild)}"
+          export RECIPES FORCE
           bash factory.sh
 
       # The pkgx dist tree factory.sh writes (bk build --dist dist) — unioned into

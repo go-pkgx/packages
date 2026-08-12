@@ -108,7 +108,12 @@ buildOne() {
     checkver=$(curl -fsSL "https://dist.pkgx.dev/${proj}/${OS}/${ARCH}/versions.txt" 2>/dev/null | tail -1)
   fi
 
-  if [ -n "$checkver" ] && alreadyPublished "$proj" "$checkver"; then
+  # FORCE (set for explicit manual dispatches) rebuilds+republishes even when the
+  # bottle is already in ghcr — needed to refresh a STALE bottle, e.g. a library
+  # published static-only before the shared-lib build worked (breaks from-scratch
+  # dynamic consumers). The daily cron leaves FORCE unset so skip-if-published
+  # keeps the full sweep incremental.
+  if [ -z "${FORCE:-}" ] && [ -n "$checkver" ] && alreadyPublished "$proj" "$checkver"; then
     echo "⏭  SKIP $proj $checkver ($PLATFORM) — already in ghcr"; skip=$((skip+1)); return
   fi
 
