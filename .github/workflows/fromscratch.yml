@@ -2,7 +2,7 @@ name: fromscratch
 # Continuous PROOF + COVERAGE that published ghcr bottles run in a genuine
 # `docker FROM scratch` image — only pkgx bottles, no debian, no system libc.
 #
-# For each witness tool, `pkgm image` emits a `FROM scratch` Dockerfile whose
+# For each witness tool, `pkgm image` emits a `FROM scratch` Containerfile whose
 # `RUN` step uses pkgm ITSELF, inside the image, to install the tool's whole
 # runtime closure over HTTPS and wire the pkgx loader. So the from-scratch
 # install (and this proof) run in the container, exactly like an end user's
@@ -29,7 +29,7 @@ jobs:
         with: { go-version: stable }
 
       # ONE static (CGO_ENABLED=0) pkgm binary serves both roles: the host
-      # `pkgm image` that emits the Dockerfile, and the `/pkgm` copied INTO the
+      # `pkgm image` that emits the Containerfile, and the `/pkgm` copied INTO the
       # scratch image (it must run with no system libc). GOPROXY=direct pulls the
       # current main straight from GitHub (the module proxy can serve a stale
       # cached @main).
