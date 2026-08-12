@@ -9,9 +9,9 @@
 name: windows-proof
 on:
   workflow_dispatch:
-  schedule:
+  # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
     # Weekly; after the daily Rust factory (09:00) to avoid overlapping it.
-    - cron: "0 10 * * 1"
+    # - cron: "0 10 * * 1"
 
 permissions:
   contents: read

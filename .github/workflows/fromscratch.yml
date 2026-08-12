@@ -6,9 +6,9 @@ name: fromscratch
 # smoke-tests it. A failed smoke test FAILS the job.
 on:
   workflow_dispatch:
-  schedule:
+  # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
     # 12:00 UTC daily — the 06-11h slots are taken by the other factory workflows.
-    - cron: "0 12 * * *"
+    # - cron: "0 12 * * *"
 
 permissions:
   contents: read

@@ -12,10 +12,10 @@
 name: windows
 on:
   workflow_dispatch:
-  schedule:
+  # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
     # Staggered after the ghcr factories (linux 06:00, darwin 07:00). Go runs
     # before Rust (08:00 < 09:00). The Pages mirror is deployed later by pages.yml.
-    - cron: "0 8 * * *"
+    # - cron: "0 8 * * *"
 permissions: { contents: read, packages: write }
 env:
   CHUNK: "25"   # projects per matrix job (chunked so we scale past the 256-job matrix cap)

@@ -9,9 +9,9 @@
 name: windows-rust
 on:
   workflow_dispatch:
-  schedule:
+  # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
     # After the Go factory (08:00). The Pages mirror is deployed later by pages.yml.
-    - cron: "0 9 * * *"
+    # - cron: "0 9 * * *"
 permissions: { contents: read, packages: write }
 env:
   CHUNK: "6"   # cargo builds are heavy — smaller chunks stay under the 6h job cap

@@ -13,8 +13,8 @@ on:
         description: "space-separated projects to build (blank = the whole recipes.txt, chunked)"
         required: false
         default: ""
-  schedule:
-    - cron: "0 7 * * *"
+  # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
+    # - cron: "0 7 * * *"
 
 permissions:
   contents: read

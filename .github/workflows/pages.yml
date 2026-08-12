@@ -14,8 +14,8 @@
 name: pages
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 11 * * *"
+  # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
+    # - cron: "0 11 * * *"
 
 permissions: { contents: read, pages: write, id-token: write }
 
