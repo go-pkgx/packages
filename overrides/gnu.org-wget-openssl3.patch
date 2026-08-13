@@ -1,0 +1,13 @@
+diff --git a/projects/gnu.org/wget/package.yml b/projects/gnu.org/wget/package.yml
+index 0a6658e..db77596 100644
+--- a/projects/gnu.org/wget/package.yml
++++ b/projects/gnu.org/wget/package.yml
+@@ -13,7 +13,7 @@ provides:
+   - bin/wget
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

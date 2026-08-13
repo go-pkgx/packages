@@ -6,6 +6,10 @@ on:
         description: "space-separated projects to build (blank = the whole recipes.txt, chunked)"
         required: false
         default: ""
+      max_versions:
+        description: "cap versions per requested project, newest first (blank = all). Use 1 for a lean latest-only fill."
+        required: false
+        default: ""
   # Continuous population: rebuild recipes.txt daily. skip-if-published means
   # only new/updated (project,version,platform) are actually built.
   # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
@@ -105,7 +109,9 @@ jobs:
           fi
           # shellcheck disable=SC2086  # RECIPES is intentionally word-split to count projects
           echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects${FORCE:+ (FORCE rebuild)}"
-          export RECIPES FORCE
+          # Optional per-project version cap (manual dispatch), honoured by factory.sh.
+          MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
+          export RECIPES FORCE MAX_VERSIONS
           bash factory.sh
 
       # The pkgx dist tree factory.sh writes (bk build --dist dist) — unioned into

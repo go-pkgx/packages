@@ -53,7 +53,7 @@ jobs:
             "sqlite.org --version"
             "rsync.samba.org --version"
             "perl.org --version"
-            "jqlang.github.io --version"
+            "stedolan.github.io/jq --version"
             "gnu.org/wget --version"
             "curl.se --version"
             "git-scm.org --version"
