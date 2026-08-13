@@ -6,9 +6,10 @@ factory *before* proposing them upstream.
 
 ## How it works
 
-`factory.sh` applies every `overrides/*.patch` to the pantry with `git apply`
-before computing the closure and building. Each patch is a normal `git diff`
-against the **pantry root**, so its paths look like
+`bk factory` applies every `overrides/*.patch` to the pantry before computing
+the closure and building — in pure Go, via bk's `overrides` package, with no
+`git apply` shell-out. Each patch is a normal `git diff` against the
+**pantry root**, so its paths look like
 `projects/<project>/package.yml`. That is exactly the diff we later submit as a
 pull request to `pkgxdev/pantry` — the override file *is* the upstream PR.
 

@@ -26,11 +26,11 @@ an unsigned or badly-signed package is refused rather than installed.
 `.github/workflows/darwin.yml` a `darwin/aarch64` + `darwin/x86-64` matrix on native
 macOS runners — both on a **daily** schedule (`workflow_dispatch` + cron) and both
 publishing signed packages to the same `ghcr.io/go-pkgx/packages` OCI registry via the
-identical, platform-agnostic `factory.sh` (which also writes a pkgx dist tree, uploaded
+identical, platform-agnostic `bk factory` (which also writes a pkgx dist tree, uploaded
 as a `dist-*` artifact for the Pages mirror). Auth to ghcr uses the workflow's **native
 `GITHUB_TOKEN`** (`permissions.packages: write`) — no long-lived PAT to rotate. Each
 run installs pkgx (bk sources its own toolchain via `pkgx +deps`) and bk, clones the
-pantry, then `factory.sh`:
+pantry, then runs `bk factory` — one pure-Go command (no bash, no curl/jq, no `git apply`), which:
 
 - expands the requested projects to their **topologically-ordered runtime-dependency
   closure** (deps built before dependents), and
