@@ -14,6 +14,10 @@ on:
         description: "build the whole closure against this exact glibc, e.g. 2.27.0 (blank = the container's). Publishes tools under <version>-glibc<ver>."
         required: false
         default: ""
+      mirror_from:
+        description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — republished signed + attested (used for the glibc sweep)."
+        required: false
+        default: ""
   # Continuous population: rebuild recipes.txt daily. skip-if-published means
   # only new/updated (project,version,platform) are actually built.
   # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
@@ -103,6 +107,7 @@ jobs:
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
           GLIBC: ${{ github.event.inputs.glibc }}
+          MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
         run: |
           FORCE=""
           if [ "${{ matrix.chunk }}" = "manual" ]; then
@@ -123,7 +128,8 @@ jobs:
             --overrides overrides \
             --to oci://ghcr.io/go-pkgx/packages \
             --bottles dist \
-            ${GLIBC:+--glibc "$GLIBC"}
+            ${GLIBC:+--glibc "$GLIBC"} \
+            ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"}
 
       # The pkgx dist tree `bk factory --bottles dist` writes — unioned into
       # the GitHub Pages mirror by pages.yml. Named per arch+chunk so pages.yml
