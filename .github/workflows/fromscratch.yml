@@ -42,6 +42,9 @@ jobs:
         run: |
           set -uo pipefail
           PKGM="$(command -v pkgm)"
+          # Corrected-recipe overlay (e.g. curl/wget openssl constraint) consulted
+          # by the in-image `pkgm install` before the upstream pantry.
+          OVERLAY="https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects"
           # <project> then its smoke args (space-separated). No `|`/`xargs` trim:
           # `xargs` with no command runs /bin/echo, and GNU echo eats a leading
           # --version as its own flag — the value must never be executed.
@@ -68,7 +71,7 @@ jobs:
             echo "::group::$proj"
             # Vendor-neutral OCI Containerfile (podman/buildah pick it up by
             # name; docker builds it with -f).
-            pkgm image "$proj" > "$work/Containerfile"
+            pkgm image -overlay "$OVERLAY" "$proj" > "$work/Containerfile"
             # A failed build == the closure is not fully published for amd64 yet
             # (a coverage gap, not a regression). Guarded so `bash -e` never aborts
             # the panel mid-loop — every witness is exercised.
