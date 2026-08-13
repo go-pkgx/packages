@@ -10,6 +10,10 @@ on:
         description: "cap versions per requested project, newest first (blank = all). Use 1 for a lean latest-only fill."
         required: false
         default: ""
+      glibc:
+        description: "build the whole closure against this exact glibc, e.g. 2.27.0 (blank = the container's). Publishes tools under <version>-glibc<ver>."
+        required: false
+        default: ""
   # Continuous population: rebuild recipes.txt daily. skip-if-published means
   # only new/updated (project,version,platform) are actually built.
   # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
@@ -98,6 +102,7 @@ jobs:
           # packages are owned by this repo, so GITHUB_TOKEN writes natively.
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+          GLIBC: ${{ github.event.inputs.glibc }}
         run: |
           FORCE=""
           if [ "${{ matrix.chunk }}" = "manual" ]; then
@@ -109,12 +114,18 @@ jobs:
           fi
           # shellcheck disable=SC2086  # RECIPES is intentionally word-split to count projects
           echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects${FORCE:+ (FORCE rebuild)}"
-          # Optional per-project version cap (manual dispatch), honoured by factory.sh.
+          # RECIPES / FORCE / MAX_VERSIONS / PLATFORM are read from the env by
+          # `bk factory` itself; the rest is passed explicitly.
           MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
           export RECIPES FORCE MAX_VERSIONS
-          bash factory.sh
+          bk factory \
+            --pantry pantry \
+            --overrides overrides \
+            --to oci://ghcr.io/go-pkgx/packages \
+            --bottles dist \
+            ${GLIBC:+--glibc "$GLIBC"}
 
-      # The pkgx dist tree factory.sh writes (bk build --dist dist) — unioned into
+      # The pkgx dist tree `bk factory --bottles dist` writes — unioned into
       # the GitHub Pages mirror by pages.yml. Named per arch+chunk so pages.yml
       # discovers every slice (it globs dist-*).
       - name: upload dist tree

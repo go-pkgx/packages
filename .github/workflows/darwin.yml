@@ -3,7 +3,7 @@ name: darwin
 # macOS bottles for ghcr.io/go-pkgx/packages. Same pure-Go bk pipeline and the
 # same signed-OCI registry as the linux factory (build.yml) — the ONLY difference
 # is native macOS runners instead of a debian container (GitHub's macOS runners
-# are already clean, ephemeral VMs, so they are the isolation). factory.sh is
+# are already clean, ephemeral VMs, so they are the isolation). `bk factory` is
 # platform-agnostic (PLATFORM=darwin/<arch>). The whole recipes.txt is chunked
 # across both arches; macOS runner concurrency is scarce so max-parallel is low.
 on:
@@ -96,8 +96,13 @@ jobs:
           fi
           # shellcheck disable=SC2086  # RECIPES is intentionally word-split to count projects
           echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects"
+          # RECIPES and PLATFORM are read from the env by `bk factory` itself.
           export RECIPES
-          bash factory.sh
+          bk factory \
+            --pantry pantry \
+            --overrides overrides \
+            --to oci://ghcr.io/go-pkgx/packages \
+            --bottles dist
 
       - name: upload dist tree
         if: always()
