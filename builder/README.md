@@ -38,3 +38,37 @@ Each of these was found by running the thing, not by reading code:
 Several toolchain packages (gawk, m4, bison, texinfo, autoconf, libtool) had no
 **linux** bottle in our registry at all — only darwin ones. `bk factory
 --mirror-from https://dist.pkgx.dev` filled them.
+
+## A local pull-through cache
+
+Rebuilding the image re-pulls llvm (~1.7 GiB) whenever the toolchain list
+changes. Run a [zot](https://zotregistry.dev) in front of ghcr and point the
+build at it:
+
+```jsonc
+// ~/.cache/pkgx-registry/config.json
+{
+  "distSpecVersion": "1.1.0",
+  "storage": { "rootDirectory": "…/data", "dedupe": true },
+  "http": { "address": "0.0.0.0", "port": "5111" },
+  "extensions": { "sync": { "enable": true, "registries": [
+    { "urls": ["https://ghcr.io"], "onDemand": true, "tlsVerify": true,
+      "content": [ { "prefix": "/go-pkgx/packages/**" } ] }
+  ] } }
+}
+```
+
+```
+pkgx zot serve ~/.cache/pkgx-registry/config.json &
+docker build -f builder/Containerfile \
+  --build-arg DIST=oci://http://host.docker.internal:5111/go-pkgx/packages \
+  -t bk-builder builder
+```
+
+Measured: the same install takes **45.7 s** the first time and **2.2 s** after,
+and **signature verification stays on** — the cache proxies the cosign referrer
+alongside the bottle (checked: the referrer tag in the cache carries
+`application/vnd.dev.cosign.artifact.sig.v1+json`).
+
+llvm.org also gets its own `RUN` layer, so editing the rest of the toolchain
+re-uses it rather than pulling it again.

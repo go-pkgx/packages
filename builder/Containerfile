@@ -22,6 +22,13 @@
 FROM scratch
 ENV PKGX_DIR=/pkgx
 ENV HOME=/root
+# PKGX_DIST can point at a local pull-through cache so a rebuild does not fetch
+# gigabytes from ghcr again (see README): build with
+#   --build-arg DIST=oci://http://host.docker.internal:5111/go-pkgx/packages
+# Signature verification stays ON through the cache — it proxies the cosign
+# referrer as well as the bottle.
+ARG DIST=oci://ghcr.io/go-pkgx/packages
+ENV PKGX_DIST=$DIST
 
 COPY pkgm /pkgm
 COPY pkgx /usr/local/bin/pkgx
@@ -38,13 +45,23 @@ COPY bk /usr/local/bin/bk
 #                                             llvm-ar, not a plain `ar`
 #   gnu.org/bash                              `make` runs every recipe line
 #                                             through /bin/sh, which pkgm poses
+#   gnu.org/diffutils                         `cmp`, called by recipes' own test
+#                                             steps (bzip2's, for one)
+#
+# --prefix /usr matters: bk runs a build under a SANITISED PATH of
+# /usr/bin:/bin:/usr/sbin:/sbin, so stubs linked into /usr/local/bin would be
+# invisible to it and even `mkdir` would come up "not found".
 #
 # Bottles come from the default registry: OUR signed one, verified fail-closed.
-RUN ["/pkgm","install","-s", \
-     "llvm.org","gnu.org/glibc","kernel.org/linux-headers","gnu.org/binutils", \
+# llvm.org alone first, and on its own layer: it is ~1.7 GiB of the image, and
+# it changes far less often than the rest of the list — so editing the toolchain
+# below re-uses this layer instead of pulling it again.
+RUN ["/pkgm","install","-s","--prefix","/usr","llvm.org"]
+RUN ["/pkgm","install","-s","--prefix","/usr", \
+     "gnu.org/glibc","kernel.org/linux-headers","gnu.org/binutils", \
      "gnu.org/make","gnu.org/coreutils","gnu.org/sed","gnu.org/grep","gnu.org/gawk", \
      "gnu.org/m4","gnu.org/bash","gnu.org/autoconf","gnu.org/automake","gnu.org/libtool", \
-     "gnu.org/bison","gnu.org/texinfo","freedesktop.org/pkg-config"]
+     "gnu.org/bison","gnu.org/texinfo","freedesktop.org/pkg-config","gnu.org/diffutils"]
 
 # bk runs THROUGH pkgx, which composes PATH/LD_LIBRARY_PATH/CPATH from the
 # installed bottles at run time. Hardcoding a library path would pin a glibc
