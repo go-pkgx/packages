@@ -1,0 +1,54 @@
+# A build environment with NO distribution in it: `FROM scratch`, three static
+# CGO_ENABLED=0 Go binaries, and every build tool coming from a pkgx bottle.
+#
+#   bk    the build driver — fetch, patch, script, fix-up and bottle, all in Go
+#   pkgx  materialises a recipe's build deps and prints the environment bk's
+#         generated script evals
+#   pkgm  bootstraps the toolchain closure into the image, and poses the loader
+#         and /bin/sh so the rootfs can actually run something
+#
+# Build it with the three binaries in the context:
+#
+#   for r in bk pkgm pkgx; do
+#     GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o builder/$r github.com/go-pkgx/$r/...
+#   done
+#   docker build -f builder/Containerfile -t bk-builder builder
+#
+# and compile with it (the pantry mounted, the output bind-mounted out):
+#
+#   docker run --rm -v "$PWD/pantry:/pantry:ro" -v "$PWD/out:/out" bk-builder \
+#     factory --platform linux/aarch64 --pantry /pantry --recipes lz4.org \
+#             --libc pkgx --bottles /out/dist --to oci://…
+FROM scratch
+ENV PKGX_DIR=/pkgx
+ENV HOME=/root
+
+COPY pkgm /pkgm
+COPY pkgx /usr/local/bin/pkgx
+COPY bk /usr/local/bin/bk
+
+# The toolchain, from bottles only — and the proof: if it installs and runs
+# here, no distribution is involved. Note what a scratch image forces us to be
+# explicit about:
+#
+#   gnu.org/glibc + kernel.org/linux-headers  glibc's own headers include
+#                                             <linux/limits.h>, and there is no
+#                                             /usr/include to fall back on
+#   gnu.org/binutils                          ar/ranlib — the llvm bottle ships
+#                                             llvm-ar, not a plain `ar`
+#   gnu.org/bash                              `make` runs every recipe line
+#                                             through /bin/sh, which pkgm poses
+#
+# Bottles come from the default registry: OUR signed one, verified fail-closed.
+RUN ["/pkgm","install","-s", \
+     "llvm.org","gnu.org/glibc","kernel.org/linux-headers","gnu.org/binutils", \
+     "gnu.org/make","gnu.org/coreutils","gnu.org/sed","gnu.org/grep","gnu.org/gawk", \
+     "gnu.org/m4","gnu.org/bash","gnu.org/autoconf","gnu.org/automake","gnu.org/libtool", \
+     "gnu.org/bison","gnu.org/texinfo","freedesktop.org/pkg-config"]
+
+# bk runs THROUGH pkgx, which composes PATH/LD_LIBRARY_PATH/CPATH from the
+# installed bottles at run time. Hardcoding a library path would pin a glibc
+# version into the image; this stays correct when the toolchain moves.
+ENTRYPOINT ["/usr/local/bin/pkgx", \
+            "+gnu.org/glibc","+gnu.org/coreutils","+gnu.org/make","+llvm.org", \
+            "--","/usr/local/bin/bk"]
