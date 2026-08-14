@@ -123,6 +123,16 @@ jobs:
           # `bk factory` itself; the rest is passed explicitly.
           MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
           export RECIPES FORCE MAX_VERSIONS
+          # A glibc-pinned build links the pkgx glibc bottle directly, which bakes
+          # an ABSOLUTE PT_INTERP pointing into $PKGX_DIR. Under the default
+          # ($HOME/.pkgx) that is the RUNNER's home — a path no consumer has, so
+          # the bottle could only start through an explicit loader invocation.
+          # Build such bottles under the canonical /pkgx prefix instead: the same
+          # one `pkgm image` bakes into a from-scratch image, so the interpreter
+          # resolves where the package is actually installed.
+          # (an `if`, not `[ … ] &&`: the runner wraps this in `bash -e {0}`, so a
+          # false test as a bare statement would abort the whole step)
+          if [ -n "$GLIBC" ]; then export PKGX_DIR=/pkgx; fi
           bk factory \
             --pantry pantry \
             --overrides overrides \
