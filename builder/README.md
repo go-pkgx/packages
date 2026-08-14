@@ -4,8 +4,9 @@ A `FROM scratch` image that compiles pantry recipes with **only pkgx packages** 
 no debian, no apt, no system libc. `Containerfile` builds it; the header there
 shows how to run it.
 
-Proven on `lz4.org` (linux/aarch64): the build completes inside the image and the
-bottle it produces carries
+Measured on a six-recipe panel (nine with their closure), built inside this image
+in sovereign mode. `lz4.org` (linux/aarch64) is the reference case: the build
+completes inside the image and the bottle it produces carries
 
 ```
 PT_INTERP  /pkgx/gnu.org/glibc/v2.44.0/lib/glibc-2.44/ld-linux-aarch64.so.1
@@ -30,6 +31,9 @@ Each of these was found by running the thing, not by reading code:
 | `mkdir: libc.so.6: cannot open shared object file` | the sanitised build env dropped an explicitly-set `LD_LIBRARY_PATH` (bk#27) |
 | `make: /bin/sh: No such file or directory` | `pkgm install -s` now poses the loader **and** `/bin/sh` (pkgm#9) |
 | `linux/limits.h` not found | glibc's headers need the kernel headers; mirrored `kernel.org/linux-headers` into our registry |
+| `"mkdir": executable file not found in $PATH` | bk builds under a sanitised `PATH=/usr/bin:/bin:…`, so the stubs must go to `/usr`, not `/usr/local` — hence `install -s --prefix /usr` |
+| `make: cmp: No such file or directory` | recipes' own test steps call `cmp`: added `gnu.org/diffutils` |
+| `ls-remote …/openssl: context deadline exceeded` | github's ref advertisement for a big repository stalls under HTTP/2, like the big ghcr blobs did — bk now uses HTTP/1.1 (bk#28) |
 
 Several toolchain packages (gawk, m4, bison, texinfo, autoconf, libtool) had no
 **linux** bottle in our registry at all — only darwin ones. `bk factory
