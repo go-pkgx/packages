@@ -270,3 +270,112 @@ func TestMain_(t *testing.T) {
 		t.Errorf("main() exit = %d, want 1", code)
 	}
 }
+
+// TestOverlayMode: the install side. pkgx does not read overrides/ — it fetches
+// the recipe itself — so the corrected recipe has to exist WHOLE in the overlay
+// or every consumer of those packages still fails to resolve.
+func TestOverlayMode(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "nested/b.org", "dependencies:\n  openssl.org: ^1.1\n  zlib.net: ^1\nbuild:\n  dependencies:\n    openssl.org: '^1'\n")
+	out, ovl := filepath.Join(p, "overrides"), filepath.Join(p, "overlay", "projects")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer null.Close()
+	if code := run([]string{"-pantry", p, "-overrides", out, "-overlay", ovl}, null, null); code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	got, err := os.ReadFile(filepath.Join(ovl, "nested/b.org", "package.yml"))
+	if err != nil {
+		t.Fatalf("overlay recipe not written: %v", err)
+	}
+	want := "dependencies:\n  openssl.org: ^3\n  zlib.net: ^1\nbuild:\n  dependencies:\n    openssl.org: '^3'\n"
+	if string(got) != want {
+		t.Errorf("overlay recipe =\n%q\nwant\n%q", got, want)
+	}
+	// without -overlay nothing is written there
+	ovl2 := filepath.Join(p, "overlay2")
+	if code := run([]string{"-pantry", p, "-overrides", out}, null, null); code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	if _, err := os.Stat(ovl2); err == nil {
+		t.Error("overlay written without -overlay")
+	}
+}
+
+// A recipe that vanishes between listing and writing is an error, not a silent
+// half-fix: the build side would be corrected and the install side would not.
+func TestWriteOverlayMissingRecipe(t *testing.T) {
+	if err := writeOverlay(t.TempDir(), t.TempDir(), "absent.org"); err == nil {
+		t.Error("expected an error for a missing recipe")
+	}
+}
+
+// An overlay directory that cannot be created is an error, not a silent
+// half-fix that corrects the build side and leaves the install side broken.
+func TestOverlayUnwritable(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "a.org", "dependencies:\n  openssl.org: ^1.1\n")
+	out := filepath.Join(p, "overrides")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// a regular file where the overlay tree should go: MkdirAll cannot proceed
+	blocker := filepath.Join(p, "blocked")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer null.Close()
+	if code := run([]string{"-pantry", p, "-overrides", out, "-overlay", blocker}, null, null); code != 1 {
+		t.Errorf("code = %d, want 1", code)
+	}
+	// and so is a recipe that cannot be read back
+	file := filepath.Join(p, "projects", "a.org", "package.yml")
+	if err := os.Chmod(file, 0o000); err != nil {
+		t.Skip("cannot drop read permission here")
+	}
+	defer os.Chmod(file, 0o644)
+	if err := writeOverlay(p, filepath.Join(p, "ovl"), "a.org"); err == nil {
+		t.Error("expected an error for an unreadable recipe")
+	}
+}
+
+// TestOverlayKeepsAHandWrittenEntry: regeneration must not trade a hand-written
+// explanation for nothing. curl.se's overlay entry says WHY its openssl is ^3
+// rather than '*'; an entry that is already correct is left untouched.
+func TestOverlayKeepsAHandWrittenEntry(t *testing.T) {
+	p, ovl := t.TempDir(), t.TempDir()
+	writeRecipe(t, p, "a.org", "dependencies:\n  openssl.org: ^1.1\n")
+	annotated := "dependencies:\n  # ^3 because the published bottle links libssl.so.3\n  openssl.org: ^3\n"
+	if err := os.MkdirAll(filepath.Join(ovl, "a.org"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ovl, "a.org", "package.yml"), []byte(annotated), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeOverlay(p, ovl, "a.org"); err != nil {
+		t.Fatal(err)
+	}
+	got, _ := os.ReadFile(filepath.Join(ovl, "a.org", "package.yml"))
+	if string(got) != annotated {
+		t.Errorf("a corrected entry was overwritten:\n%s", got)
+	}
+	// but one that still carries a stale pin IS rewritten (upstream drifted back)
+	if err := os.WriteFile(filepath.Join(ovl, "a.org", "package.yml"), []byte("dependencies:\n  openssl.org: ^1.1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeOverlay(p, ovl, "a.org"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(ovl, "a.org", "package.yml")); strings.Contains(string(got), "^1.1") {
+		t.Errorf("a stale entry was not refreshed:\n%s", got)
+	}
+}

@@ -13,8 +13,14 @@
 // directory's convention (a `git diff` against the pantry root, one project per
 // patch, ready to be proposed upstream as-is).
 //
-//	go run ./openssl3            # write the patches
-//	go run ./openssl3 -n         # list what would change, write nothing
+//	go run ./openssl3                         # write the build-side patches
+//	go run ./openssl3 -overlay <dir>/projects # and the install-side recipes
+//	go run ./openssl3 -n                      # list what would change, write nothing
+//
+// There are two halves and they are not interchangeable: `overrides/` patches
+// the pantry bk BUILDS from, while pkgx resolves an INSTALL by fetching the
+// recipe itself through PKGX_PANTRY_OVERLAY. Fixing only the build half leaves
+// every CONSUMER of those packages broken.
 //
 // The rewrite is deliberately narrow: it touches ONLY the constraint value on a
 // dependency line naming openssl.org, and preserves the line's indentation,
@@ -63,6 +69,7 @@ func run(args []string, stdout, stderr *os.File) int {
 	fs.SetOutput(stderr)
 	pantry := fs.String("pantry", "pantry", "pantry checkout to read recipes from")
 	out := fs.String("overrides", "overrides", "directory the patches are written to")
+	overlay := fs.String("overlay", "", "ALSO write each corrected recipe whole into this pantry-overlay projects/ dir")
 	dry := fs.Bool("n", false, "report what would change, write nothing")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -89,6 +96,14 @@ func run(args []string, stdout, stderr *os.File) int {
 			return 1
 		}
 		fmt.Fprintln(stdout, name)
+		if *overlay == "" {
+			continue
+		}
+		if err := writeOverlay(*pantry, *overlay, proj); err != nil {
+			fmt.Fprintln(stderr, "openssl3:", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, filepath.Join(*overlay, proj, "package.yml"))
 	}
 	fmt.Fprintf(stdout, "%d project(s) pin an openssl that does not exist\n", len(projects))
 	return 0
@@ -175,4 +190,51 @@ func ranges(hit []int, n int) []hunkRange {
 		out = append(out, r)
 	}
 	return out
+}
+
+// writeOverlay writes the corrected recipe WHOLE into a pantry-overlay tree.
+// The two halves are not interchangeable: `overrides/` patches the pantry that
+// bk BUILDS from, while pkgx resolves an INSTALL by fetching the recipe itself,
+// through PKGX_PANTRY_OVERLAY. Fixing only the build half leaves every consumer
+// of those packages broken at install time — measured three times over in the
+// sovereign builder, where gnutls, p11-kit and linux-pam each died on
+// "no version of openssl.org satisfies ^1.1" AFTER the build-side patches had
+// been applied, because the dependency's own recipe still asked for it.
+func writeOverlay(pantry, overlayDir, proj string) error {
+	dest := filepath.Join(overlayDir, filepath.FromSlash(proj), "package.yml")
+	// An overlay entry that is ALREADY corrected is left exactly as it is. Some
+	// were written by hand and carry their reasoning in comments -- curl.se
+	// explains why its openssl is ^3 and not '*' -- and regenerating over them
+	// would trade that explanation for nothing. Only an entry still carrying a
+	// stale pin (upstream drifted back) gets rewritten.
+	if b, err := os.ReadFile(dest); err == nil && !hasStalePin(b) {
+		return nil
+	}
+	b, err := os.ReadFile(filepath.Join(pantry, "projects", filepath.FromSlash(proj), "package.yml"))
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(string(b), "\n")
+	for i, line := range lines {
+		if m := depLine.FindStringSubmatch(line); m != nil {
+			lines[i] = m[1] + m[2] + want + m[4] + m[5]
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dest, []byte(strings.Join(lines, "\n")), 0o644)
+}
+
+// hasStalePin reports whether a recipe still pins openssl to a 1.x line.
+// depLine is anchored per LINE, and Go's ^/$ match the whole text unless the
+// multiline flag is set — matching against the file as one blob would never
+// hit, and would silently declare every recipe already corrected.
+func hasStalePin(recipe []byte) bool {
+	for _, line := range strings.Split(string(recipe), "\n") {
+		if depLine.MatchString(line) {
+			return true
+		}
+	}
+	return false
 }
