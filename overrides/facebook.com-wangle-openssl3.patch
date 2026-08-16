@@ -1,0 +1,12 @@
+diff --git a/projects/facebook.com/wangle/package.yml b/projects/facebook.com/wangle/package.yml
+--- a/projects/facebook.com/wangle/package.yml
++++ b/projects/facebook.com/wangle/package.yml
+@@ -17,7 +17,7 @@
+   libevent.org: "*"
+   libsodium.org: "*"
+   lz4.org: ^1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   google.github.io/snappy: "*"
+   facebook.com/zstd: ^1
+   darwin:

@@ -1,0 +1,12 @@
+diff --git a/projects/systemd.io/package.yml b/projects/systemd.io/package.yml
+--- a/projects/systemd.io/package.yml
++++ b/projects/systemd.io/package.yml
+@@ -17,7 +17,7 @@
+   libexpat.github.io: "*"
+   google.com/fullycapable: "*"
+   lz4.org: "*"
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   github.com/util-linux/util-linux: "*"
+   tukaani.org/xz: "*"
+   facebook.com/zstd: "*"

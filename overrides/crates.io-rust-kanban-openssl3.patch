@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/rust-kanban/package.yml b/projects/crates.io/rust-kanban/package.yml
+--- a/projects/crates.io/rust-kanban/package.yml
++++ b/projects/crates.io/rust-kanban/package.yml
+@@ -9,7 +9,7 @@
+   github: yashs662/rust_kanban/tags
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

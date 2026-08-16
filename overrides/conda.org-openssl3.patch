@@ -1,0 +1,12 @@
+diff --git a/projects/conda.org/package.yml b/projects/conda.org/package.yml
+--- a/projects/conda.org/package.yml
++++ b/projects/conda.org/package.yml
+@@ -15,7 +15,7 @@
+ 
+ dependencies:
+   pkgx.sh: ">=1"
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ runtime:
+   env:

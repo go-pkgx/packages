@@ -1,0 +1,20 @@
+diff --git a/projects/crates.io/sccache/package.yml b/projects/crates.io/sccache/package.yml
+--- a/projects/crates.io/sccache/package.yml
++++ b/projects/crates.io/sccache/package.yml
+@@ -10,14 +10,14 @@
+   strip: /v/
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   curl.se/ca-certs: '*'
+ 
+ build:
+   dependencies:
+     rust-lang.org: '>=1.70'
+     rust-lang.org/cargo: '*'
+-    openssl.org: ^1.1
++    openssl.org: ^3
+     curl.se/ca-certs: '*'
+   script: |
+     cargo install --locked --path . --root {{prefix}}

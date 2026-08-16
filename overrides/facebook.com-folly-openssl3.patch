@@ -1,0 +1,12 @@
+diff --git a/projects/facebook.com/folly/package.yml b/projects/facebook.com/folly/package.yml
+--- a/projects/facebook.com/folly/package.yml
++++ b/projects/facebook.com/folly/package.yml
+@@ -11,7 +11,7 @@
+   google.com/glog: ^0.7 # since 2026.4.20
+   libevent.org: "*"
+   lz4.org: 1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   tukaani.org/xz: 5
+   facebook.com/zstd: 1
+   gnu.org/coreutils: 9

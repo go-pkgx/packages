@@ -1,0 +1,12 @@
+diff --git a/projects/nushell.sh/package.yml b/projects/nushell.sh/package.yml
+--- a/projects/nushell.sh/package.yml
++++ b/projects/nushell.sh/package.yml
+@@ -6,7 +6,7 @@
+   github: nushell/nushell/tags
+ 
+ dependencies:
+-  openssl.org: ^1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

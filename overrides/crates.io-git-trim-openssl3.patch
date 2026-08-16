@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/git-trim/package.yml b/projects/crates.io/git-trim/package.yml
+--- a/projects/crates.io/git-trim/package.yml
++++ b/projects/crates.io/git-trim/package.yml
+@@ -13,7 +13,7 @@
+   strip: /v/
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   zlib.net: ^1
+ 
+ build:

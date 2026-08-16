@@ -1,0 +1,12 @@
+diff --git a/projects/grpc.io/package.yml b/projects/grpc.io/package.yml
+--- a/projects/grpc.io/package.yml
++++ b/projects/grpc.io/package.yml
+@@ -31,7 +31,7 @@
+   # package protobuf is built against 20250512.
+   abseil.io: ^20250512
+   c-ares.org: "*"
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   github.com/google/re2: "*"
+   zlib.net: "*"
+   linux:

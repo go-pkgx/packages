@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/sqlx-cli/package.yml b/projects/crates.io/sqlx-cli/package.yml
+--- a/projects/crates.io/sqlx-cli/package.yml
++++ b/projects/crates.io/sqlx-cli/package.yml
+@@ -10,7 +10,7 @@
+   github: launchbadge/sqlx/tags
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

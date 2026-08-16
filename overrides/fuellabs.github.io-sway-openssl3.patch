@@ -1,0 +1,12 @@
+diff --git a/projects/fuellabs.github.io/sway/package.yml b/projects/fuellabs.github.io/sway/package.yml
+--- a/projects/fuellabs.github.io/sway/package.yml
++++ b/projects/fuellabs.github.io/sway/package.yml
+@@ -10,7 +10,7 @@
+ 
+ dependencies:
+   zlib.net: ^1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

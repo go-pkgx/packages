@@ -1,8 +1,7 @@
 diff --git a/projects/gnu.org/wget/package.yml b/projects/gnu.org/wget/package.yml
-index 0a6658e..425bdc4 100644
 --- a/projects/gnu.org/wget/package.yml
 +++ b/projects/gnu.org/wget/package.yml
-@@ -13,7 +13,7 @@ provides:
+@@ -13,7 +13,7 @@
    - bin/wget
  
  dependencies:
@@ -11,17 +10,3 @@ index 0a6658e..425bdc4 100644
  
  build:
    dependencies:
-@@ -29,6 +29,13 @@ build:
-     - --without-libps1
-     - --without-included-regex
-     - --with-ssl=openssl
-+    # wget probes openssl through pkg-config, and the UPSTREAM linux/x86-64
-+    # openssl bottle ships no lib/pkgconfig at all (the aarch64 one does) — so
-+    # configure fails "No package 'openssl' found" on x86-64 only. Hand it the
-+    # flags directly, which is exactly what its own error message suggests; this
-+    # is arch-independent and stops depending on a third-party bottle's layout.
-+    OPENSSL_CFLAGS: -I{{deps.openssl.org.prefix}}/include
-+    OPENSSL_LIBS: -L{{deps.openssl.org.prefix}}/lib -lssl -lcrypto
- 
- test:
-   wget tea.xyz

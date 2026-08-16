@@ -1,0 +1,12 @@
+diff --git a/projects/github.com/facebookincubator/fizz/package.yml b/projects/github.com/facebookincubator/fizz/package.yml
+--- a/projects/github.com/facebookincubator/fizz/package.yml
++++ b/projects/github.com/facebookincubator/fizz/package.yml
+@@ -15,7 +15,7 @@
+   libevent.org: "*"
+   libsodium.org: "*"
+   lz4.org: 1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   google.github.io/snappy: "*"
+   facebook.com/zstd: 1
+   sourceware.org/bzip2: 1

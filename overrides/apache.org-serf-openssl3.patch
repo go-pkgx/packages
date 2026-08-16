@@ -1,0 +1,12 @@
+diff --git a/projects/apache.org/serf/package.yml b/projects/apache.org/serf/package.yml
+--- a/projects/apache.org/serf/package.yml
++++ b/projects/apache.org/serf/package.yml
+@@ -14,7 +14,7 @@
+ dependencies:
+   apache.org/apr: ^1
+   apache.org/apr-util: ^1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   zlib.net: ^1.2
+   #  github.com/google/brotli: '*'
+   kerberos.org: ^1.20

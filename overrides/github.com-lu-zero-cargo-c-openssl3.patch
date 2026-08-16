@@ -1,0 +1,12 @@
+diff --git a/projects/github.com/lu-zero/cargo-c/package.yml b/projects/github.com/lu-zero/cargo-c/package.yml
+--- a/projects/github.com/lu-zero/cargo-c/package.yml
++++ b/projects/github.com/lu-zero/cargo-c/package.yml
+@@ -8,7 +8,7 @@
+ dependencies:
+   libgit2.org: ~1.7 # links to libgit2.so.1.7
+   libssh2.org: "*"
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   zlib.net: "*"
+   curl.se: 8 # as of v0.10.20 for libcurl
+ 

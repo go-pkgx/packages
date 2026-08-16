@@ -1,0 +1,12 @@
+diff --git a/projects/reacher.email/check-if-email-exists-cli/package.yml b/projects/reacher.email/check-if-email-exists-cli/package.yml
+--- a/projects/reacher.email/check-if-email-exists-cli/package.yml
++++ b/projects/reacher.email/check-if-email-exists-cli/package.yml
+@@ -9,7 +9,7 @@
+   github: reacherhq/check-if-email-exists
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   working-directory: cli

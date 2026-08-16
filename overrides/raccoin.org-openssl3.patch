@@ -1,0 +1,12 @@
+diff --git a/projects/raccoin.org/package.yml b/projects/raccoin.org/package.yml
+--- a/projects/raccoin.org/package.yml
++++ b/projects/raccoin.org/package.yml
+@@ -7,7 +7,7 @@
+ 
+ dependencies:
+   gnu.org/libiconv: ^1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ versions:
+   github: bjorn/raccoin

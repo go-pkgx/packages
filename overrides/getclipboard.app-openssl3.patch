@@ -1,0 +1,12 @@
+diff --git a/projects/getclipboard.app/package.yml b/projects/getclipboard.app/package.yml
+--- a/projects/getclipboard.app/package.yml
++++ b/projects/getclipboard.app/package.yml
+@@ -6,7 +6,7 @@
+   github: Slackadays/Clipboard
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   linux:
+     alsa-project.org/alsa-lib: 1
+     x.org/x11: 1

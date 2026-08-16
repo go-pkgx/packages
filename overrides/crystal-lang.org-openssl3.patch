@@ -1,0 +1,12 @@
+diff --git a/projects/crystal-lang.org/package.yml b/projects/crystal-lang.org/package.yml
+--- a/projects/crystal-lang.org/package.yml
++++ b/projects/crystal-lang.org/package.yml
+@@ -19,7 +19,7 @@
+   libevent.org: ^2
+   pyyaml.org/libyaml: ^0
+   llvm.org: <17
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   pcre.org/v2: ^10
+   freedesktop.org/pkg-config: ^0
+   sourceware.org/libffi: ^3

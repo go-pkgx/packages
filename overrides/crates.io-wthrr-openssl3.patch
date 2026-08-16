@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/wthrr/package.yml b/projects/crates.io/wthrr/package.yml
+--- a/projects/crates.io/wthrr/package.yml
++++ b/projects/crates.io/wthrr/package.yml
+@@ -9,7 +9,7 @@
+   github: ttytm/wthrr-the-weathercrab
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

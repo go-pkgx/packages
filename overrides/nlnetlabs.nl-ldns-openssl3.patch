@@ -1,0 +1,12 @@
+diff --git a/projects/nlnetlabs.nl/ldns/package.yml b/projects/nlnetlabs.nl/ldns/package.yml
+--- a/projects/nlnetlabs.nl/ldns/package.yml
++++ b/projects/nlnetlabs.nl/ldns/package.yml
+@@ -6,7 +6,7 @@
+   github: NLnetLabs/ldns/tags
+ 
+ dependencies:
+-  openssl.org: ^1
++  openssl.org: ^3
+ 
+ build:
+   # ldns's public API is namespaced (`#include <ldns/…>`), so brewkit's default

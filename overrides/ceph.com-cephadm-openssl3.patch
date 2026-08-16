@@ -1,0 +1,12 @@
+diff --git a/projects/ceph.com/cephadm/package.yml b/projects/ceph.com/cephadm/package.yml
+--- a/projects/ceph.com/cephadm/package.yml
++++ b/projects/ceph.com/cephadm/package.yml
+@@ -8,7 +8,7 @@
+   github: ceph/ceph/tags
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   python.org: ^3
+ 
+ build:

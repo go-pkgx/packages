@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/gitopolis/package.yml b/projects/crates.io/gitopolis/package.yml
+--- a/projects/crates.io/gitopolis/package.yml
++++ b/projects/crates.io/gitopolis/package.yml
+@@ -7,7 +7,7 @@
+   strip: /^v/
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   zlib.net: ^1
+   git-scm.org: ^2
+   libgit2.org: ~1.7 # links to libgit2.so.1.7

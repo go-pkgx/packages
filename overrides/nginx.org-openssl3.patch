@@ -1,0 +1,12 @@
+diff --git a/projects/nginx.org/package.yml b/projects/nginx.org/package.yml
+--- a/projects/nginx.org/package.yml
++++ b/projects/nginx.org/package.yml
+@@ -9,7 +9,7 @@
+ dependencies:
+   pcre.org: 8.45 # switch to pcre.org/pcre2 once it's available
+   zlib.net: ^1.2.13
+-  openssl.org: ^1.1.1k
++  openssl.org: ^3
+ 
+ build:
+   script: |

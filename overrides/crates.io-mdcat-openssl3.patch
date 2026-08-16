@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/mdcat/package.yml b/projects/crates.io/mdcat/package.yml
+--- a/projects/crates.io/mdcat/package.yml
++++ b/projects/crates.io/mdcat/package.yml
+@@ -6,7 +6,7 @@
+   - bin/mdcat
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   curl.se: 8 # since 2.7.0
+ 
+ versions:

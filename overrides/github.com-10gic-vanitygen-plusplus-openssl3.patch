@@ -1,0 +1,12 @@
+diff --git a/projects/github.com/10gic/vanitygen-plusplus/package.yml b/projects/github.com/10gic/vanitygen-plusplus/package.yml
+--- a/projects/github.com/10gic/vanitygen-plusplus/package.yml
++++ b/projects/github.com/10gic/vanitygen-plusplus/package.yml
+@@ -6,7 +6,7 @@
+   github: 10gic/vanitygen-plusplus/tags
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   curl.se: ^8
+   pcre.org: ^8
+ 

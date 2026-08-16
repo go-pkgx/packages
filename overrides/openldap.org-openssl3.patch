@@ -1,0 +1,12 @@
+diff --git a/projects/openldap.org/package.yml b/projects/openldap.org/package.yml
+--- a/projects/openldap.org/package.yml
++++ b/projects/openldap.org/package.yml
+@@ -10,7 +10,7 @@
+     - /\.tgz/
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   linux:
+     github.com/util-linux/util-linux: '*'
+ 

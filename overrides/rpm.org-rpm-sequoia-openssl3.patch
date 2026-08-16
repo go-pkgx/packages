@@ -1,0 +1,12 @@
+diff --git a/projects/rpm.org/rpm-sequoia/package.yml b/projects/rpm.org/rpm-sequoia/package.yml
+--- a/projects/rpm.org/rpm-sequoia/package.yml
++++ b/projects/rpm.org/rpm-sequoia/package.yml
+@@ -10,7 +10,7 @@
+ platforms: [linux]
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

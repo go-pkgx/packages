@@ -1,0 +1,12 @@
+diff --git a/projects/cyrusimap.org/cyrus-sasl/package.yml b/projects/cyrusimap.org/cyrus-sasl/package.yml
+--- a/projects/cyrusimap.org/cyrus-sasl/package.yml
++++ b/projects/cyrusimap.org/cyrus-sasl/package.yml
+@@ -11,7 +11,7 @@
+ build:
+   dependencies:
+     kerberos.org: '*'
+-    openssl.org: ^1.1.1
++    openssl.org: ^3
+   script:
+     - ./configure $ARGS
+     - make --jobs {{ hw.concurrency }} install

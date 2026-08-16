@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/drill/package.yml b/projects/crates.io/drill/package.yml
+--- a/projects/crates.io/drill/package.yml
++++ b/projects/crates.io/drill/package.yml
+@@ -9,7 +9,7 @@
+   github: fcsonline/drill
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

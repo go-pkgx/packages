@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/tiny/package.yml b/projects/crates.io/tiny/package.yml
+--- a/projects/crates.io/tiny/package.yml
++++ b/projects/crates.io/tiny/package.yml
+@@ -7,7 +7,7 @@
+   strip: /^v/
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

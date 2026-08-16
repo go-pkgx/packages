@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/gitui/package.yml b/projects/crates.io/gitui/package.yml
+--- a/projects/crates.io/gitui/package.yml
++++ b/projects/crates.io/gitui/package.yml
+@@ -10,7 +10,7 @@
+ 
+ dependencies:
+   perl.org: '*'
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   zlib.net: ^1
+   libgit2.org: ~1.7 # links to libgit2.so.1.7
+ 

@@ -1,0 +1,12 @@
+diff --git a/projects/leo-lang.org/package.yml b/projects/leo-lang.org/package.yml
+--- a/projects/leo-lang.org/package.yml
++++ b/projects/leo-lang.org/package.yml
+@@ -6,7 +6,7 @@
+   github: AleoHQ/leo
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   curl.se: ^8.4
+ 
+ build:

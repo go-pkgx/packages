@@ -1,0 +1,12 @@
+diff --git a/projects/microsoft.com/PowerShell/package.yml b/projects/microsoft.com/PowerShell/package.yml
+--- a/projects/microsoft.com/PowerShell/package.yml
++++ b/projects/microsoft.com/PowerShell/package.yml
+@@ -19,7 +19,7 @@
+   args: pwsh
+ 
+ dependencies:
+-  openssl.org: "^1.1"
++  openssl.org: "^3"
+   linux:
+     unicode.org: ^71
+ 

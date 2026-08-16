@@ -1,0 +1,12 @@
+diff --git a/projects/facebook.com/watchman/package.yml b/projects/facebook.com/watchman/package.yml
+--- a/projects/facebook.com/watchman/package.yml
++++ b/projects/facebook.com/watchman/package.yml
+@@ -18,7 +18,7 @@
+   google.com/glog: ^0.7
+   libevent.org: ^2.1
+   libsodium.org: ^1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   pcre.org/v2: ^10
+   python.org: ~3.11
+   linux:

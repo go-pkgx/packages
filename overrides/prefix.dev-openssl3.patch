@@ -1,0 +1,12 @@
+diff --git a/projects/prefix.dev/package.yml b/projects/prefix.dev/package.yml
+--- a/projects/prefix.dev/package.yml
++++ b/projects/prefix.dev/package.yml
+@@ -6,7 +6,7 @@
+   github: prefix-dev/pixi
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   libgit2.org: ~1.7 # links to libgit2.so.1.7
+ 
+ build:
