@@ -14,6 +14,10 @@ on:
         description: "build the whole closure against this exact glibc, e.g. 2.27.0 (blank = the container's). Publishes tools under <version>-glibc<ver>."
         required: false
         default: ""
+      versions:
+        description: "only consider versions matching this pkgx constraint, e.g. ^3 — the handle for an OLD line, which max_versions (newest-first) can never reach."
+        required: false
+        default: ""
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — republished signed + attested (used for the glibc sweep)."
         required: false
@@ -108,6 +112,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
           GLIBC: ${{ github.event.inputs.glibc }}
           MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
+          VERSIONS: ${{ github.event.inputs.versions }}
         run: |
           FORCE=""
           if [ "${{ matrix.chunk }}" = "manual" ]; then
@@ -139,6 +144,7 @@ jobs:
             --to oci://ghcr.io/go-pkgx/packages \
             --bottles dist \
             ${GLIBC:+--glibc "$GLIBC"} \
+            ${VERSIONS:+--versions "$VERSIONS"} \
             ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"}
 
       # The pkgx dist tree `bk factory --bottles dist` writes — unioned into
