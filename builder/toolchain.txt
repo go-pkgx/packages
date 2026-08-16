@@ -27,6 +27,8 @@ gnu.org/automake
 gnu.org/libtool
 gnu.org/bison
 gnu.org/texinfo             # makeinfo: some recipes INSTALL .info manuals
+gnu.org/help2man            # generates a man page from --help; gnu.org/libidn2
+                            # calls it during `make`, and dies 127 without it
 freedesktop.org/pkg-config  # configure scripts probe deps through it
 
 curl.se                     # recipes that fetch in their own script (ca-certs)
