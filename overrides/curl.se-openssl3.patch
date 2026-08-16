@@ -1,8 +1,7 @@
 diff --git a/projects/curl.se/package.yml b/projects/curl.se/package.yml
-index d454fff..0032f2e 100644
 --- a/projects/curl.se/package.yml
 +++ b/projects/curl.se/package.yml
-@@ -15,7 +15,7 @@ versions:
+@@ -15,7 +15,7 @@
      - /9\.\d+\.\d+/
  
  dependencies:

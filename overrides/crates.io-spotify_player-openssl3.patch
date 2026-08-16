@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/spotify_player/package.yml b/projects/crates.io/spotify_player/package.yml
+--- a/projects/crates.io/spotify_player/package.yml
++++ b/projects/crates.io/spotify_player/package.yml
+@@ -9,7 +9,7 @@
+   github: aome510/spotify-player
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   github.com/libsixel/libsixel: ^1
+   linux:
+     alsa-project.org/alsa-lib: ^1

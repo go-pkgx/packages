@@ -1,0 +1,12 @@
+diff --git a/projects/chompbuild.com/package.yml b/projects/chompbuild.com/package.yml
+--- a/projects/chompbuild.com/package.yml
++++ b/projects/chompbuild.com/package.yml
+@@ -8,7 +8,7 @@
+   github: guybedford/chomp
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

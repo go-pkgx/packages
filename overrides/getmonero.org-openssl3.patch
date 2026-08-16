@@ -1,0 +1,12 @@
+diff --git a/projects/getmonero.org/package.yml b/projects/getmonero.org/package.yml
+--- a/projects/getmonero.org/package.yml
++++ b/projects/getmonero.org/package.yml
+@@ -7,7 +7,7 @@
+ 
+ dependencies:
+   boost.org: ^1.66
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   libsodium.org: '*'
+   gnu.org/readline: '*'
+   unbound.net: ^1.4

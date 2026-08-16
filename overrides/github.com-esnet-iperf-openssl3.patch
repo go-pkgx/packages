@@ -1,0 +1,12 @@
+diff --git a/projects/github.com/esnet/iperf/package.yml b/projects/github.com/esnet/iperf/package.yml
+--- a/projects/github.com/esnet/iperf/package.yml
++++ b/projects/github.com/esnet/iperf/package.yml
+@@ -14,7 +14,7 @@
+ dependencies:
+   # iperf3 uses OpenSSL for authenticated tests (-A / RSA public-key auth).
+   # configure auto-detects it; we include it for the full feature set.
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   script:

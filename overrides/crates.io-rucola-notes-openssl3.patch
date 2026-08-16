@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/rucola-notes/package.yml b/projects/crates.io/rucola-notes/package.yml
+--- a/projects/crates.io/rucola-notes/package.yml
++++ b/projects/crates.io/rucola-notes/package.yml
+@@ -9,7 +9,7 @@
+   github: Linus-Mussmaecher/rucola
+ 
+ dependencies:
+-  openssl.org: ^1.1 # as of 0.6.0
++  openssl.org: ^3 # as of 0.6.0
+ 
+ build:
+   dependencies:

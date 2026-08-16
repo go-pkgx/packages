@@ -1,0 +1,12 @@
+diff --git a/projects/printfn.github.io/fend/package.yml b/projects/printfn.github.io/fend/package.yml
+--- a/projects/printfn.github.io/fend/package.yml
++++ b/projects/printfn.github.io/fend/package.yml
+@@ -7,7 +7,7 @@
+   strip: /^v/
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

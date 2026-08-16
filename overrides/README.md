@@ -45,3 +45,22 @@ loudly and the recipe falls back to upstream as-is — never fatal.
   `memcmp`/`memcpy` with pre-standard signatures that conflict with modern
   glibc's `<string.h>`. Tracked; the recipe does not build to a bottle yet.
 
+
+## Generated: the openssl 1.1 pins
+
+`*-openssl3.patch` is **generated**, not hand-written: 117 pantry recipes pin
+`openssl.org` to a 1.x line that no published bottle satisfies, so each of them
+fails in the resolver before a compiler runs. Regenerate with
+
+    go run ./openssl3          # -n to see what would change
+
+which rewrites only the constraint on a dependency line naming `openssl.org`,
+preserving indentation, quoting and any trailing comment — these patches are
+meant to be proposed upstream, and a gratuitous reformat is a reason to reject
+one. A recipe pinning openssl twice (`crates.io/sccache`) gets both lines.
+
+What this does NOT claim: that those 117 recipes BUILD against openssl 3. It
+makes them resolve. openssl 1.1.1 has been end-of-life since September 2023, so
+mirroring it is not a real alternative; a recipe that used an API removed in 3.x
+now fails in the compiler instead of the resolver, which is the factory's job to
+measure, project by project.

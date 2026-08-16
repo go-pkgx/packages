@@ -1,0 +1,12 @@
+diff --git a/projects/solana.com/package.yml b/projects/solana.com/package.yml
+--- a/projects/solana.com/package.yml
++++ b/projects/solana.com/package.yml
+@@ -8,7 +8,7 @@
+ dependencies:
+   protobuf.dev: ^21
+   zlib.net: ^1.2
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

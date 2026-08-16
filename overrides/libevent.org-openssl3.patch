@@ -1,0 +1,12 @@
+diff --git a/projects/libevent.org/package.yml b/projects/libevent.org/package.yml
+--- a/projects/libevent.org/package.yml
++++ b/projects/libevent.org/package.yml
+@@ -9,7 +9,7 @@
+     - /-stable$/
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

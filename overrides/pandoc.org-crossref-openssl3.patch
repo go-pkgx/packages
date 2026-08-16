@@ -1,0 +1,12 @@
+diff --git a/projects/pandoc.org/crossref/package.yml b/projects/pandoc.org/crossref/package.yml
+--- a/projects/pandoc.org/crossref/package.yml
++++ b/projects/pandoc.org/crossref/package.yml
+@@ -15,7 +15,7 @@
+   dependencies:
+     haskell.org: ~9.8.4 # since v0.3.21
+     haskell.org/cabal: ^3
+-    openssl.org: ^1.1
++    openssl.org: ^3
+     linux:
+       gnu.org/gcc: 14
+       gnu.org/binutils: ~2.44 # 2.45 removes ld.gold

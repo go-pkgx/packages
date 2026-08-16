@@ -1,8 +1,7 @@
 diff --git a/projects/libzip.org/package.yml b/projects/libzip.org/package.yml
-index 1ccc375..1822601 100644
 --- a/projects/libzip.org/package.yml
 +++ b/projects/libzip.org/package.yml
-@@ -18,7 +18,7 @@ dependencies:
+@@ -18,7 +18,7 @@
      tukaani.org/xz: '>=5.2.7'
      zlib.net: '>=1.2.13'
    linux:

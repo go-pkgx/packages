@@ -1,0 +1,12 @@
+diff --git a/projects/bittensor.com/package.yml b/projects/bittensor.com/package.yml
+--- a/projects/bittensor.com/package.yml
++++ b/projects/bittensor.com/package.yml
+@@ -9,7 +9,7 @@
+ 
+ dependencies:
+   pkgx.sh: ">=1"
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ runtime:
+   env:

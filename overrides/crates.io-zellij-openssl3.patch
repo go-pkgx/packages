@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/zellij/package.yml b/projects/crates.io/zellij/package.yml
+--- a/projects/crates.io/zellij/package.yml
++++ b/projects/crates.io/zellij/package.yml
+@@ -17,7 +17,7 @@
+   dependencies:
+     rust-lang.org: '>=1.60'
+     rust-lang.org/cargo: '*'
+-    openssl.org: ^1.1
++    openssl.org: ^3
+     perl.org: ^5
+   script: cargo install --path . --root {{prefix}}
+ 

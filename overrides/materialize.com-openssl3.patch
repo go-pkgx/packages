@@ -1,0 +1,12 @@
+diff --git a/projects/materialize.com/package.yml b/projects/materialize.com/package.yml
+--- a/projects/materialize.com/package.yml
++++ b/projects/materialize.com/package.yml
+@@ -9,7 +9,7 @@
+   github: MaterializeInc/materialize
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   working-directory: src/mz

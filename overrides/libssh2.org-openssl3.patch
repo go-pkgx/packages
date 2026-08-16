@@ -1,8 +1,7 @@
 diff --git a/projects/libssh2.org/package.yml b/projects/libssh2.org/package.yml
-index d30c951..ebb20f2 100644
 --- a/projects/libssh2.org/package.yml
 +++ b/projects/libssh2.org/package.yml
-@@ -7,7 +7,7 @@ versions:
+@@ -7,7 +7,7 @@
    strip: /^libssh2-/
  
  dependencies:

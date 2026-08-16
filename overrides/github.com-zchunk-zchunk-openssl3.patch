@@ -1,0 +1,12 @@
+diff --git a/projects/github.com/zchunk/zchunk/package.yml b/projects/github.com/zchunk/zchunk/package.yml
+--- a/projects/github.com/zchunk/zchunk/package.yml
++++ b/projects/github.com/zchunk/zchunk/package.yml
+@@ -9,7 +9,7 @@
+ # DNF/librepo for delta-downloaded repository metadata.
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   facebook.com/zstd: ^1
+   curl.se: ^8
+ 

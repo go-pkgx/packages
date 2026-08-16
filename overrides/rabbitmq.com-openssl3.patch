@@ -1,0 +1,12 @@
+diff --git a/projects/rabbitmq.com/package.yml b/projects/rabbitmq.com/package.yml
+--- a/projects/rabbitmq.com/package.yml
++++ b/projects/rabbitmq.com/package.yml
+@@ -10,7 +10,7 @@
+ 
+ dependencies:
+   erlang.org: ^27 # as of 4.3.3//4.2.9
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   linux:
+     # since v4.2.4 for GCC_12.0.0 and GLIBCXX_3.4.29
+     gnu.org/gcc: 14

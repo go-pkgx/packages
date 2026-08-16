@@ -1,0 +1,12 @@
+diff --git a/projects/libimobiledevice.org/package.yml b/projects/libimobiledevice.org/package.yml
+--- a/projects/libimobiledevice.org/package.yml
++++ b/projects/libimobiledevice.org/package.yml
+@@ -11,7 +11,7 @@
+   libimobiledevice.org/libimobiledevice-glue: ^1.3
+   gnu.org/libtasn1: ^4.19
+   libimobiledevice.org/libusbmuxd: ^2
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   script:

@@ -1,0 +1,12 @@
+diff --git a/projects/ruby-lang.org/package.yml b/projects/ruby-lang.org/package.yml
+--- a/projects/ruby-lang.org/package.yml
++++ b/projects/ruby-lang.org/package.yml
+@@ -8,7 +8,7 @@
+   github: ruby/ruby/tags
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   pyyaml.org: ^0.2
+   zlib.net: ^1
+ 

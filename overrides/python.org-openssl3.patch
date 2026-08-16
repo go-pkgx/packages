@@ -1,0 +1,12 @@
+diff --git a/projects/python.org/package.yml b/projects/python.org/package.yml
+--- a/projects/python.org/package.yml
++++ b/projects/python.org/package.yml
+@@ -36,7 +36,7 @@
+ dependencies:
+   zlib.net: =1.3.1 # match tcl version exactly
+   sourceware.org/bzip2: 1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   sourceware.org/libffi: 3
+   libexpat.github.io: 2
+   bytereef.org/mpdecimal: 2

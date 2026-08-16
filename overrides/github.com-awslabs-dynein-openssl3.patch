@@ -1,0 +1,12 @@
+diff --git a/projects/github.com/awslabs/dynein/package.yml b/projects/github.com/awslabs/dynein/package.yml
+--- a/projects/github.com/awslabs/dynein/package.yml
++++ b/projects/github.com/awslabs/dynein/package.yml
+@@ -11,7 +11,7 @@
+ 
+ dependencies:
+   linux:
+-    openssl.org: ^1.1
++    openssl.org: ^3
+ 
+ build:
+   dependencies:

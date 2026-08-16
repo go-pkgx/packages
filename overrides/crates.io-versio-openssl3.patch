@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/versio/package.yml b/projects/crates.io/versio/package.yml
+--- a/projects/crates.io/versio/package.yml
++++ b/projects/crates.io/versio/package.yml
+@@ -9,7 +9,7 @@
+   github: chaaz/versio
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   gnupg.org/libgpg-error: 1
+   gnupg.org/gpgme: ^1.13
+   gnupg.org/libassuan: '*'

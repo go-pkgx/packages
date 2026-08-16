@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/tea-gpg-wallet/package.yml b/projects/crates.io/tea-gpg-wallet/package.yml
+--- a/projects/crates.io/tea-gpg-wallet/package.yml
++++ b/projects/crates.io/tea-gpg-wallet/package.yml
+@@ -9,7 +9,7 @@
+   github: jhheider/tea-gpg-wallet
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

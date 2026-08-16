@@ -1,0 +1,12 @@
+diff --git a/projects/lavinmq.com/package.yml b/projects/lavinmq.com/package.yml
+--- a/projects/lavinmq.com/package.yml
++++ b/projects/lavinmq.com/package.yml
+@@ -6,7 +6,7 @@
+   github: cloudamqp/lavinmq
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   pcre.org/v2: 10
+   libevent.org: 2
+   hboehm.info/gc: 8

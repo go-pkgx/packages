@@ -1,0 +1,12 @@
+diff --git a/projects/microbrew.org/md5sha1sum/package.yml b/projects/microbrew.org/md5sha1sum/package.yml
+--- a/projects/microbrew.org/md5sha1sum/package.yml
++++ b/projects/microbrew.org/md5sha1sum/package.yml
+@@ -10,7 +10,7 @@
+     - /\.tar\.gz$/
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   script:

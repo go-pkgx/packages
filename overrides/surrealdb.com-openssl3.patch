@@ -1,0 +1,12 @@
+diff --git a/projects/surrealdb.com/package.yml b/projects/surrealdb.com/package.yml
+--- a/projects/surrealdb.com/package.yml
++++ b/projects/surrealdb.com/package.yml
+@@ -9,7 +9,7 @@
+   github: surrealdb/surrealdb
+ 
+ dependencies:
+-  openssl.org: ^1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

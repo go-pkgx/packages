@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/fselect/package.yml b/projects/crates.io/fselect/package.yml
+--- a/projects/crates.io/fselect/package.yml
++++ b/projects/crates.io/fselect/package.yml
+@@ -6,7 +6,7 @@
+   github: jhspetersson/fselect
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

@@ -1,0 +1,12 @@
+diff --git a/projects/tikv.org/package.yml b/projects/tikv.org/package.yml
+--- a/projects/tikv.org/package.yml
++++ b/projects/tikv.org/package.yml
+@@ -11,7 +11,7 @@
+ dependencies:
+   # openssl-sys links the system openssl; pin 1.1 (its SSL_get_peer_certificate
+   # is dropped from openssl 3's default-visible surface, which failed the link).
+-  openssl.org: ^1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

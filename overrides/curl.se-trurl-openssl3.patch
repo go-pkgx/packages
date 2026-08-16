@@ -1,0 +1,12 @@
+diff --git a/projects/curl.se/trurl/package.yml b/projects/curl.se/trurl/package.yml
+--- a/projects/curl.se/trurl/package.yml
++++ b/projects/curl.se/trurl/package.yml
+@@ -11,7 +11,7 @@
+ 
+ build:
+   dependencies:
+-    openssl.org: ^1.1
++    openssl.org: ^3
+   script: |
+     # Makefile is not very flexible, so we have to edit it
+     sed -i.bak -e "s/^\(CFLAGS = .*\)\$/\1 $CFLAGS/" Makefile

@@ -1,0 +1,12 @@
+diff --git a/projects/github.com/upa/mscp/package.yml b/projects/github.com/upa/mscp/package.yml
+--- a/projects/github.com/upa/mscp/package.yml
++++ b/projects/github.com/upa/mscp/package.yml
+@@ -9,7 +9,7 @@
+ 
+ dependencies:
+   zlib.net: ^1.2.11
+-  openssl.org: ^1.1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

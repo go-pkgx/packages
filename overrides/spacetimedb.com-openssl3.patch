@@ -1,0 +1,12 @@
+diff --git a/projects/spacetimedb.com/package.yml b/projects/spacetimedb.com/package.yml
+--- a/projects/spacetimedb.com/package.yml
++++ b/projects/spacetimedb.com/package.yml
+@@ -13,7 +13,7 @@
+   # strip: /v/
+ 
+ dependencies:
+-  openssl.org: ^1
++  openssl.org: ^3
+ 
+ build:
+   working-directory: crates/cli

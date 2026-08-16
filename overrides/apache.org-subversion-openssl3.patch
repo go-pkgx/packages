@@ -1,0 +1,12 @@
+diff --git a/projects/apache.org/subversion/package.yml b/projects/apache.org/subversion/package.yml
+--- a/projects/apache.org/subversion/package.yml
++++ b/projects/apache.org/subversion/package.yml
+@@ -12,7 +12,7 @@
+ dependencies:
+   gnu.org/gettext: ^0.21
+   lz4.org: ^1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   github.com/JuliaStrings/utf8proc: ^2
+   libexpat.github.io: ^2
+   kerberos.org: ^1.20

@@ -1,0 +1,12 @@
+diff --git a/projects/openvpn.net/package.yml b/projects/openvpn.net/package.yml
+--- a/projects/openvpn.net/package.yml
++++ b/projects/openvpn.net/package.yml
+@@ -12,7 +12,7 @@
+ dependencies:
+   lz4.org: ^1.9
+   oberhumer.com/lzo: ^2.10
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   linux:
+     sourceforge.net/net-tools: '*'
+     github.com/thom311/libnl: '*'

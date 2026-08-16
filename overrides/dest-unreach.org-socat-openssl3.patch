@@ -1,0 +1,12 @@
+diff --git a/projects/dest-unreach.org/socat/package.yml b/projects/dest-unreach.org/socat/package.yml
+--- a/projects/dest-unreach.org/socat/package.yml
++++ b/projects/dest-unreach.org/socat/package.yml
+@@ -10,7 +10,7 @@
+     - /\.tar\.gz$/
+ 
+ dependencies:
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   gnu.org/readline: ^8.2
+ 
+ build:

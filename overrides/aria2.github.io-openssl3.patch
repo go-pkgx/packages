@@ -1,0 +1,12 @@
+diff --git a/projects/aria2.github.io/package.yml b/projects/aria2.github.io/package.yml
+--- a/projects/aria2.github.io/package.yml
++++ b/projects/aria2.github.io/package.yml
+@@ -11,7 +11,7 @@
+ 
+ dependencies:
+   zlib.net: ^1
+-  openssl.org: ^1
++  openssl.org: ^3
+   libexpat.github.io: '*'
+   sqlite.org: ^3
+ 

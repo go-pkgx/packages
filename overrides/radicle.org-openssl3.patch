@@ -1,0 +1,12 @@
+diff --git a/projects/radicle.org/package.yml b/projects/radicle.org/package.yml
+--- a/projects/radicle.org/package.yml
++++ b/projects/radicle.org/package.yml
+@@ -6,7 +6,7 @@
+   github: radicle-dev/radicle-cli
+ 
+ dependencies:
+-  openssl.org: ^1.1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

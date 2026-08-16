@@ -1,0 +1,12 @@
+diff --git a/projects/openresty.org/package.yml b/projects/openresty.org/package.yml
+--- a/projects/openresty.org/package.yml
++++ b/projects/openresty.org/package.yml
+@@ -14,7 +14,7 @@
+ 
+ dependencies:
+   pcre.org: 8
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   zlib.net: ^1.2
+   perl.org: '*'
+ 

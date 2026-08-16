@@ -1,0 +1,12 @@
+diff --git a/projects/mupdf.com/package.yml b/projects/mupdf.com/package.yml
+--- a/projects/mupdf.com/package.yml
++++ b/projects/mupdf.com/package.yml
+@@ -7,7 +7,7 @@
+ 
+ dependencies:
+   zlib.net: ^1
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   info-zip.org/unzip: ^6
+   github.com/google/brotli: ^1
+   freetype.org: ^2

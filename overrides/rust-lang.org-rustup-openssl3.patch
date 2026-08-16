@@ -1,0 +1,12 @@
+diff --git a/projects/rust-lang.org/rustup/package.yml b/projects/rust-lang.org/rustup/package.yml
+--- a/projects/rust-lang.org/rustup/package.yml
++++ b/projects/rust-lang.org/rustup/package.yml
+@@ -8,7 +8,7 @@
+ dependencies:
+   linux:
+     curl.se: '*'
+-  openssl.org: ^1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

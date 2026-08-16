@@ -1,0 +1,12 @@
+diff --git a/projects/facebook.com/fb303/package.yml b/projects/facebook.com/fb303/package.yml
+--- a/projects/facebook.com/fb303/package.yml
++++ b/projects/facebook.com/fb303/package.yml
+@@ -15,7 +15,7 @@
+   gflags.github.io: ^2.2.2
+   google.com/glog: ^0.7
+   libsodium.org: ^1.0.19
+-  openssl.org: ^1.1
++  openssl.org: ^3
+   github.com/Cyan4973/xxHash: ^0.8 # since 2024.10.14.0
+   linux:
+     zlib.net: ^1
