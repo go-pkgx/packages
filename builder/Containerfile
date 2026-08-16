@@ -29,39 +29,28 @@ ENV HOME=/root
 # referrer as well as the bottle.
 ARG DIST=oci://ghcr.io/go-pkgx/packages
 ENV PKGX_DIST=$DIST
+# Recipes are read from the upstream pantry, where a few still pin constraints
+# no published bottle satisfies (curl.se asks for openssl ^1.1; openssl is 3.x
+# and 4.x). overrides/ fixes those for BUILDS, but installing reads the pantry
+# directly — so the image consults our small corrected overlay first, exactly as
+# the from-scratch panel does.
+ENV PKGX_PANTRY_OVERLAY=https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
 
 COPY pkgm /pkgm
 COPY pkgx /usr/local/bin/pkgx
 COPY bk /usr/local/bin/bk
 
-# The toolchain, from bottles only — and the proof: if it installs and runs
-# here, no distribution is involved. Note what a scratch image forces us to be
-# explicit about:
+# The toolchain, from bottles only — and the proof: if it installs and runs here,
+# no distribution is involved. The list lives in a committed file rather than in
+# this RUN line, so it can be reviewed and diffed like anything else (and each
+# entry says why it is there).
 #
-#   gnu.org/glibc + kernel.org/linux-headers  glibc's own headers include
-#                                             <linux/limits.h>, and there is no
-#                                             /usr/include to fall back on
-#   gnu.org/binutils                          ar/ranlib — the llvm bottle ships
-#                                             llvm-ar, not a plain `ar`
-#   gnu.org/bash                              `make` runs every recipe line
-#                                             through /bin/sh, which pkgm poses
-#   gnu.org/diffutils                         `cmp`, called by recipes' own test
-#                                             steps (bzip2's, for one)
-#
-# --prefix /usr matters: bk runs a build under a SANITISED PATH of
-# /usr/bin:/bin:/usr/sbin:/sbin, so stubs linked into /usr/local/bin would be
-# invisible to it and even `mkdir` would come up "not found".
-#
-# Bottles come from the default registry: OUR signed one, verified fail-closed.
-# llvm.org alone first, and on its own layer: it is ~1.7 GiB of the image, and
-# it changes far less often than the rest of the list — so editing the toolchain
-# below re-uses this layer instead of pulling it again.
+# llvm.org goes in FIRST, on its own layer: it is the bulk of the image and
+# changes far less often than the rest, so editing the list re-uses this layer
+# instead of pulling ~1.7 GiB again.
 RUN ["/pkgm","install","-s","--prefix","/usr","llvm.org"]
-RUN ["/pkgm","install","-s","--prefix","/usr", \
-     "gnu.org/glibc","kernel.org/linux-headers","gnu.org/binutils", \
-     "gnu.org/make","gnu.org/coreutils","gnu.org/sed","gnu.org/grep","gnu.org/gawk", \
-     "gnu.org/m4","gnu.org/bash","gnu.org/autoconf","gnu.org/automake","gnu.org/libtool", \
-     "gnu.org/bison","gnu.org/texinfo","freedesktop.org/pkg-config","gnu.org/diffutils"]
+COPY toolchain.txt /toolchain.txt
+RUN ["/pkgm","install","-s","--prefix","/usr","-f","/toolchain.txt"]
 
 # bk runs THROUGH pkgx, which composes PATH/LD_LIBRARY_PATH/CPATH from the
 # installed bottles at run time. Hardcoding a library path would pin a glibc
