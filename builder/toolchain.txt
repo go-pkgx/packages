@@ -1,0 +1,32 @@
+# The build toolchain of the sovereign builder image — bottles only, no distro.
+#
+# One <pkg>[@version] per line. This file is the reason the image is
+# reproducible: it is reviewed, diffed and committed like the code it builds,
+# and every entry says why it is here.
+#
+# Installed with:  pkgm install -s --prefix /usr -f builder/toolchain.txt
+
+llvm.org                    # clang, lld, compiler-rt — the compiler itself
+gnu.org/glibc               # libc, crt objects and the dynamic loader
+kernel.org/linux-headers    # glibc's own headers include <linux/limits.h>, and
+                            # a scratch image has no /usr/include to fall back on
+gnu.org/binutils            # ar/ranlib: the llvm bottle ships llvm-ar, not `ar`
+
+gnu.org/make                # the build driver most recipes use
+gnu.org/bash                # `make` runs every recipe line through /bin/sh
+gnu.org/coreutils           # mkdir, install, ln… the vocabulary of a Makefile
+gnu.org/sed
+gnu.org/grep
+gnu.org/gawk                # config-header generation (awk scripts)
+gnu.org/m4                  # autoconf's macro processor
+gnu.org/diffutils           # `cmp`, called by recipes' own test steps
+gnu.org/patch               # recipes that patch their own sources (openssl.org)
+
+gnu.org/autoconf            # the autotools family, for recipes that regenerate
+gnu.org/automake
+gnu.org/libtool
+gnu.org/bison
+gnu.org/texinfo             # makeinfo: some recipes INSTALL .info manuals
+freedesktop.org/pkg-config  # configure scripts probe deps through it
+
+curl.se                     # recipes that fetch in their own script (ca-certs)
