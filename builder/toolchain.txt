@@ -19,6 +19,8 @@ gnu.org/sed
 gnu.org/grep
 gnu.org/gawk                # config-header generation (awk scripts)
 gnu.org/m4                  # autoconf's macro processor
+gnu.org/findutils           # find + xargs: nlnetlabs.nl/ldns walks its own
+                            # man pages with them at install time
 gnu.org/diffutils           # `cmp`, called by recipes' own test steps
 gnu.org/patch               # recipes that patch their own sources (openssl.org)
 
