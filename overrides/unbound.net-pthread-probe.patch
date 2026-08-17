@@ -1,0 +1,18 @@
+diff --git a/projects/unbound.net/package.yml b/projects/unbound.net/package.yml
+index 0d1c279..569f10f 100644
+--- a/projects/unbound.net/package.yml
++++ b/projects/unbound.net/package.yml
+@@ -23,6 +23,13 @@ build:
+     sed -i.bak -e "s|$PKGX_DIR/|\$PKGX_DIR/|g" unbound-control-setup
+     rm unbound-control-setup.bak
+   env:
++    # unbound probes for the FreeBSD spelling pthread_set_name_np by COMPILING a
++    # call to it under -Werror, so an undeclared function MUST be an error for
++    # the answer to mean anything. Our toolchain demotes that diagnostic for the
++    # benefit of older recipes, which makes the probe always answer yes:
++    # HAVE_PTHREAD_SET_NAME_NP gets defined and the link then fails on a symbol
++    # glibc does not have. Re-promote it here, after the demotion.
++    CFLAGS:  -Werror=implicit-function-declaration
+     ARGS:
+       - --prefix={{ prefix }}
+       - --sbindir={{ prefix }}/bin
