@@ -85,12 +85,17 @@ jobs:
       - uses: actions/setup-go@v5
         with: { go-version: stable }
 
+      # OUR pkgx, not upstream's. Upstream resolves dependencies from its own
+      # bundled pantry, so neither overrides/ nor PKGX_PANTRY_OVERLAY reaches it:
+      # bk passes `+perl.org~5.42` (the pin texinfo's XS modules need) and
+      # upstream intersects it with ITS idea of openssl's `perl.org: 5`, answering
+      # "no intersection possible for perl.org" — with no way to correct the
+      # recipe it was reading. Ours honours the overlay, resolves from our signed
+      # registry, and is the runtime we actually ship.
       - name: install pkgx (bk sources its toolchain via `pkgx +deps`)
         run: |
-          curl -fsS https://pkgx.sh | sh
-          for d in "$HOME/.local/bin" /usr/local/bin; do
-            [ -x "$d/pkgx" ] && { echo "$d" >> "$GITHUB_PATH"; break; }
-          done
+          GOPROXY=direct go install github.com/go-pkgx/pkgx@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: install bk
         # GOPROXY=direct: pull the current main straight from GitHub, else the
