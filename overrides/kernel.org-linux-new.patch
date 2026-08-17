@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..d2eca8e
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,69 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -30,7 +30,6 @@ index 0000000..d2eca8e
 +    gnu.org/bison: '*'       # kconfig's parser
 +    github.com/westes/flex: '*'
 +    openssl.org: ^3          # module signing
-+    perl.org: '~5.42'
 +    gnu.org/gawk: '*'
 +  script:
 +    # A microVM kernel, not a distro one: start from the smallest sane base and
