@@ -1,9 +1,9 @@
 diff --git a/projects/kernel.org/linux/package.yml b/projects/kernel.org/linux/package.yml
 new file mode 100644
-index 0000000..d2eca8e
+index 0000000..62fb626
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,77 @@
+@@ -0,0 +1,79 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -63,8 +63,10 @@ index 0000000..d2eca8e
 +    # C23 demotions reach them: scripts/ssl-common.h calls errx() without
 +    # including <err.h> and gcc-14 makes that implicit declaration fatal.
 +    # Demote it here, for the host tools only — the kernel proper still builds
-+    # under its own flags.
-+    KBUILD_HOSTCFLAGS: -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion
++    # under its own flags. HOSTCFLAGS and not KBUILD_HOSTCFLAGS: the Makefile
++    # BUILDS the latter (`KBUILD_HOSTCFLAGS := … $(HOSTCFLAGS) …`), so setting it
++    # from the environment is overwritten, while HOSTCFLAGS is appended.
++    HOSTCFLAGS: -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion
 +    linux/aarch64:
 +      KERNEL_IMAGE: Image
 +      KERNEL_IMAGE_PATH: arch/arm64/boot/Image
