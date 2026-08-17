@@ -1221,6 +1221,7 @@ keda.sh
 keephq.dev
 kerberos.org
 kernel.org/libcap
+kernel.org/linux
 kernel.org/linux-headers
 khanacademy.org/genqlient
 khronos.org/SPIRV-Cross
