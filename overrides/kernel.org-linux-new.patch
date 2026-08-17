@@ -1,0 +1,76 @@
+diff --git a/projects/kernel.org/linux/package.yml b/projects/kernel.org/linux/package.yml
+new file mode 100644
+index 0000000..d2eca8e
+--- /dev/null
++++ b/projects/kernel.org/linux/package.yml
+@@ -0,0 +1,70 @@
++distributable:
++  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
++  strip-components: 1
++
++# Same sources as kernel.org/linux-headers, which packages the headers out of
++# this very tarball. This project packages the KERNEL: a bootable image plus the
++# .config that produced it, so a microVM can pull its kernel from the registry
++# exactly like it pulls any other package.
++versions:
++  - url: "https://cdn.kernel.org/pub/linux/kernel/v6.x/"
++    match: /linux-\d+\.\d+\.\d+\.tar\.xz/
++    strip:
++      - /linux-/
++      - /\.tar\.xz/
++
++platforms: linux
++
++provides:
++  - boot/Image
++
++build:
++  dependencies:
++    gnu.org/bc: '*'          # the build does constant maths with it
++    gnu.org/bison: '*'       # kconfig's parser
++    github.com/westes/flex: '*'
++    openssl.org: ^3          # module signing
++    perl.org: '~5.42'
++    gnu.org/gawk: '*'
++  script:
++    # A microVM kernel, not a distro one: start from the smallest sane base and
++    # enable exactly what a guest needs to mount its rootfs over virtio-fs and
++    # run an OCI container in it. Every option below has a reason — a kernel
++    # config with unexplained lines is a config nobody dares change.
++    - make defconfig
++    - run: |
++        ./scripts/config \
++          --enable VIRTIO --enable VIRTIO_PCI --enable VIRTIO_MMIO \
++          --enable VIRTIO_BLK --enable VIRTIO_NET --enable VIRTIO_CONSOLE \
++          --enable FUSE_FS --enable VIRTIO_FS \
++          --enable CGROUPS --enable BLK_CGROUP --enable CGROUP_SCHED \
++          --enable CGROUP_PIDS --enable CGROUP_FREEZER --enable CGROUP_DEVICE \
++          --enable MEMCG --enable NAMESPACES --enable USER_NS --enable PID_NS \
++          --enable NET_NS --enable UTS_NS --enable IPC_NS \
++          --enable OVERLAY_FS --enable SECCOMP --enable SECCOMP_FILTER \
++          --enable TMPFS --enable TMPFS_POSIX_ACL --enable DEVTMPFS \
++          --enable DEVTMPFS_MOUNT --enable BLK_DEV_INITRD --enable RD_GZIP
++        make olddefconfig
++    # $KERNEL_IMAGE is the target and $KERNEL_IMAGE_PATH where it lands: Image on
++    # arm64, bzImage on x86-64 — the very file the microVM runtime boots.
++    - make --jobs {{ hw.concurrency }} $KERNEL_IMAGE
++    - mkdir -p "{{prefix}}/boot" "{{prefix}}/share/kernel"
++    - cp "$KERNEL_IMAGE_PATH" "{{prefix}}/boot/Image"
++    - cp .config "{{prefix}}/share/kernel/config"
++  env:
++    linux/aarch64:
++      KERNEL_IMAGE: Image
++      KERNEL_IMAGE_PATH: arch/arm64/boot/Image
++    linux/x86-64:
++      KERNEL_IMAGE: bzImage
++      KERNEL_IMAGE_PATH: arch/x86/boot/bzImage
++
++test:
++  # A kernel cannot be run by the test harness, so check the artefact is what it
++  # claims: a bootable image of non-zero size, and a config carrying the options
++  # the microVM runtime depends on.
++  script: |
++    test -s {{prefix}}/boot/Image
++    grep -q "^CONFIG_VIRTIO_FS=y" {{prefix}}/share/kernel/config
++    grep -q "^CONFIG_OVERLAY_FS=y" {{prefix}}/share/kernel/config
++    grep -q "^CONFIG_USER_NS=y" {{prefix}}/share/kernel/config
