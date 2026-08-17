@@ -1,0 +1,19 @@
+diff --git a/projects/openssl.org/package.yml b/projects/openssl.org/package.yml
+index 6bf15a4..34e4f7c 100644
+--- a/projects/openssl.org/package.yml
++++ b/projects/openssl.org/package.yml
+@@ -24,7 +24,13 @@ dependencies:
+ 
+ build:
+   dependencies:
+-    perl.org: 5
++    # ~5.42, not a bare 5: gnu.org/texinfo and gnu.org/gettext both pin that
++    # exact minor (their XS modules are compiled against it), and a resolver
++    # that intersects constraints across the closure cannot reconcile a bare
++    # "5" with "~5.42" — the whole environment then fails with "no intersection
++    # possible for perl.org". openssl only needs *a* perl 5 to run Configure,
++    # so it costs nothing to ask for the one the toolchain already carries.
++    perl.org: ~5.42
+   script:
+     - run: patch -p1 <props/x509_def.c.diff
+       if: <3.4.0
