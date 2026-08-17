@@ -1,0 +1,19 @@
+diff --git a/projects/gnu.org/libtasn1/package.yml b/projects/gnu.org/libtasn1/package.yml
+index 726fc94..1677b41 100644
+--- a/projects/gnu.org/libtasn1/package.yml
++++ b/projects/gnu.org/libtasn1/package.yml
+@@ -10,6 +10,14 @@ versions:
+     - /.tar.gz/
+ 
+ build:
++  env:
++    # Same trap as unbound: libtasn1 probes for the FreeBSD spelling
++    # pthread_set_name_np by COMPILING a call to it under -Werror, so an
++    # undeclared function has to be an ERROR for the answer to mean anything.
++    # Our build demotes that diagnostic for the benefit of older recipes, which
++    # makes the probe always answer yes: the link then fails on a symbol glibc
++    # does not have. Re-promote it here, after the demotion.
++    CFLAGS: $CFLAGS -Werror=implicit-function-declaration
+   script: |
+     ./configure --prefix={{ prefix }}
+     make --jobs {{ hw.concurrency }} install
