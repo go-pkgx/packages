@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..d2eca8e
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,77 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -58,6 +58,13 @@ index 0000000..d2eca8e
 +    - cp "$KERNEL_IMAGE_PATH" "{{prefix}}/boot/Image"
 +    - cp .config "{{prefix}}/share/kernel/config"
 +  env:
++    # The kernel compiles its HOST tools (certs/extract-cert, scripts/dtc…) with
++    # KBUILD_HOSTCFLAGS and the container's own gcc, so none of the toolchain's
++    # C23 demotions reach them: scripts/ssl-common.h calls errx() without
++    # including <err.h> and gcc-14 makes that implicit declaration fatal.
++    # Demote it here, for the host tools only — the kernel proper still builds
++    # under its own flags.
++    KBUILD_HOSTCFLAGS: -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion
 +    linux/aarch64:
 +      KERNEL_IMAGE: Image
 +      KERNEL_IMAGE_PATH: arch/arm64/boot/Image
