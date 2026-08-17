@@ -3,7 +3,7 @@ new file mode 100644
 index 0000000..d2eca8e
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,70 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -48,7 +48,8 @@ index 0000000..d2eca8e
 +          --enable NET_NS --enable UTS_NS --enable IPC_NS \
 +          --enable OVERLAY_FS --enable SECCOMP --enable SECCOMP_FILTER \
 +          --enable TMPFS --enable TMPFS_POSIX_ACL --enable DEVTMPFS \
-+          --enable DEVTMPFS_MOUNT --enable BLK_DEV_INITRD --enable RD_GZIP
++          --enable DEVTMPFS_MOUNT --enable BLK_DEV_INITRD --enable RD_GZIP \
++          --disable MODULES
 +        make olddefconfig
 +    # $KERNEL_IMAGE is the target and $KERNEL_IMAGE_PATH where it lands: Image on
 +    # arm64, bzImage on x86-64 — the very file the microVM runtime boots.
