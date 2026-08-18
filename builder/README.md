@@ -1,8 +1,35 @@
 # The sovereign builder
 
-A `FROM scratch` image that compiles pantry recipes with **only pkgx packages** —
-no debian, no apt, no system libc. `Containerfile` builds it; the header there
-shows how to run it.
+A `FROM scratch` build environment that compiles pantry recipes with **only pkgx
+packages** — no debian, no apt, no system libc.
+
+Two ways to get one. They stage the same thing; pick by what will consume it.
+
+| | `bk builder` | `Containerfile` |
+|---|---|---|
+| produces | a **directory** | an OCI image |
+| runs on | any host, no docker, no root | a container builder of the **target's** arch |
+| consumed by | a micro-VM (`weft microvm run`), or `chroot` | `docker run`, CI |
+
+```
+bk builder --out ./rootfs --platform linux/aarch64 \
+           --toolchain builder/toolchain.txt \
+           --bk ./bk-linux-arm64 --pkgx ./pkgx-linux-arm64 --microvm
+```
+
+The directory is the primitive: what actually consumes a builder rootfs is a
+micro-VM, and weft boots a **directory** it shares over virtio-fs — even an OCI
+image is unpacked back into one before boot. `--microvm` writes
+`.weft-microvm/config.json`, weft's "already materialised" sentinel, so the
+staged directory boots with no registry and no image involved:
+
+```
+mv rootfs ~/.local/share/weft-microvm/images/bk-builder/rootfs
+weft microvm run bk-builder -- /bin/sh -c 'uname -rm'
+```
+
+The `Containerfile` remains the way to get an *image* — its header shows how to
+build and run it, and the rest of this file measures what that image proved.
 
 Measured on a six-recipe panel (nine with their closure), built inside this image
 in sovereign mode. `lz4.org` (linux/aarch64) is the reference case: the build
