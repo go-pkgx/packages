@@ -101,6 +101,19 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 		return a.Version < b.Version
 	})
 
+	// AUDIT=1 reports split multi-platform indexes instead of emitting the
+	// catalogue: the same enumeration answers both questions, and a second
+	// crawler would be a second thing to keep honest.
+	if getenv("AUDIT") != "" {
+		gaps := auditPlatformGaps(rows, stdout)
+		fmt.Fprintf(stderr, "catalog: %d version(s) with a PLATFORM GAP (present older AND newer — the shape a lost index write leaves)\n", gaps)
+		if getenv("AUDIT_ALL") != "" {
+			fmt.Fprintln(stdout, "\n--- every project whose versions disagree (mostly history: a project gaining a platform) ---")
+			n := auditSplitIndexes(rows, stdout)
+			fmt.Fprintf(stderr, "catalog: %d project(s) whose versions disagree on platforms\n", n)
+		}
+		return nil
+	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", " ")
 	return enc.Encode(rows)
