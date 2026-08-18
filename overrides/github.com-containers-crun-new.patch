@@ -1,0 +1,66 @@
+diff --git a/projects/github.com/containers/crun/package.yml b/projects/github.com/containers/crun/package.yml
+new file mode 100644
+index 0000000..d0a1e2a
+--- /dev/null
++++ b/projects/github.com/containers/crun/package.yml
+@@ -0,0 +1,60 @@
++distributable:
++  # The RELEASE tarball, not the git archive: it ships a pre-generated
++  # `configure`, the vendored libocispec sources and the man pages, so the build
++  # needs no autotools regeneration and no go-md2man.
++  url: https://github.com/containers/crun/releases/download/{{version}}/crun-{{version}}.tar.gz
++  strip-components: 1
++
++versions:
++  github: containers/crun
++  ignore:
++    - /^v?0\./ # v0.1–v0.3 (2018) predate the current build system entirely
++
++# crun is a Linux OCI runtime: it drives cgroups, namespaces and seccomp
++# directly. Nothing to build elsewhere.
++platforms:
++  - linux
++
++dependencies:
++  github.com/seccomp/libseccomp: '*'
++  kernel.org/libcap: "*"
++  # crun 1.29 parses the OCI JSON with json-c — it used to embed a modified
++  # yajl, and configure now hard-requires json-c >= 0.14 through pkg-config.
++  github.com/json-c/json-c: "^0.14"
++
++build:
++  dependencies:
++    freedesktop.org/pkg-config: "*"
++    # A real build dependency, not a formality: crun vendors libocispec, which
++    # GENERATES its C sources from the OCI JSON schemas with
++    # src/ocispec/generate.py. The release tarball ships the schemas, not the
++    # generated code, so without an interpreter the nested configure stops at
++    # "no suitable Python interpreter found" — which is exactly what it should
++    # do. python does not appear in the runtime closure below.
++    python.org: "^3"
++  script:
++    - ./configure $ARGS
++    - make --jobs {{hw.concurrency}}
++    - make install
++  env:
++    ARGS:
++      - --prefix={{prefix}}
++      # No systemd in this world — cgroups are driven directly. Without this,
++      # configure looks for libsystemd and fails.
++      - --disable-systemd
++      # CRIU checkpoint/restore has no place in our stack and would add a large
++      # dependency tree.
++      - --disable-criu
++      # seccomp and capabilities stay ON: the microVM kernel we build enables
++      # CONFIG_SECCOMP_FILTER precisely so a container runtime can use it.
++
++provides:
++  - bin/crun
++
++test:
++  script:
++    - crun --version | grep {{version}}
++    # `crun features` reports what the binary was COMPILED with, so it checks
++    # the configure flags above rather than merely that something ran.
++    - crun features | grep -q '"seccomp"'
++    - crun features | grep -q '"apparmor"'

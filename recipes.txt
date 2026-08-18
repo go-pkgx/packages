@@ -625,6 +625,7 @@ github.com/confluentinc/libserdes
 github.com/containerd/nerdctl
 github.com/containers/bubblewrap
 github.com/containers/buildah
+github.com/containers/crun
 github.com/containers/gvisor-tap-vsock
 github.com/containers/podlet
 github.com/containers/skopeo
