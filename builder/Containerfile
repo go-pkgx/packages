@@ -1,6 +1,10 @@
 # A build environment with NO distribution in it: `FROM scratch`, three static
 # CGO_ENABLED=0 Go binaries, and every build tool coming from a pkgx bottle.
 #
+# This file produces an IMAGE. For a DIRECTORY — what a micro-VM actually boots,
+# and what stages on any host with no docker and no root — use `bk builder`
+# instead; see README.md. Both stage the same rootfs from the same toolchain.txt.
+#
 #   bk    the build driver — fetch, patch, script, fix-up and bottle, all in Go
 #   pkgx  materialises a recipe's build deps and prints the environment bk's
 #         generated script evals
