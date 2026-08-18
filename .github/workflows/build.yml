@@ -117,6 +117,14 @@ jobs:
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
           GLIBC: ${{ github.event.inputs.glibc }}
           MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
+          # The overlay is what bk's `--overrides` does for the recipes bk READS,
+          # but for the recipes PKGX reads while materialising a build's
+          # dependency environment. Without it, a dependency whose upstream recipe
+          # still pins `openssl.org: ^1.1` stops the build with "no version of
+          # openssl.org satisfies ^1.1" — which is exactly how
+          # github.com/containers/crun died, through python.org, on a runner
+          # where every other correction WAS applied.
+          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
           VERSIONS: ${{ github.event.inputs.versions }}
         run: |
           FORCE=""
