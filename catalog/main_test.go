@@ -490,3 +490,67 @@ func TestMainSuccessAndFailure(t *testing.T) {
 		t.Fatalf("want exit 1, got %d", exited)
 	}
 }
+
+// TestRunAuditMode: AUDIT=1 reports platform gaps instead of the catalogue, and
+// AUDIT_ALL adds the full disagreement listing. Same enumeration, two questions
+// — a second crawler would be a second thing to keep honest.
+func TestRunAuditMode(t *testing.T) {
+	files := map[string]string{
+		"recipes.txt":               "foo\n",
+		"windows/go-projects.txt":   "",
+		"windows/rust-projects.txt": "",
+	}
+	// foo 1.0 and 1.2 carry both arches; 1.1 lost one — a hole, not growth.
+	both := `{"manifests":[
+	 {"platform":{"os":"linux","architecture":"amd64"},"digest":"sha256:a"},
+	 {"platform":{"os":"linux","architecture":"arm64"},"digest":"sha256:b"}]}`
+	one := `{"manifests":[
+	 {"platform":{"os":"linux","architecture":"amd64"},"digest":"sha256:c"}]}`
+
+	d := mockDoer{fn: func(r *http.Request) (*http.Response, error) {
+		u := r.URL.String()
+		switch {
+		case strings.Contains(u, "/token?"):
+			return resp(200, `{"token":"t"}`, nil), nil
+		case strings.Contains(u, "/packages/foo/tags/list"):
+			return resp(200, `{"name":"acme/packages/foo","tags":["1.0","1.1","1.2"]}`, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/1.1"):
+			return resp(200, one, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/"):
+			return resp(200, both, nil), nil
+		}
+		return resp(404, "nope", nil), nil
+	}}
+	env := map[string]string{
+		"GITHUB_REPOSITORY_OWNER": "acme",
+		"GHCR_URL":                "https://ghcr.test",
+		"AUDIT":                   "1",
+	}
+	getenv := func(k string) string { return env[k] }
+
+	var out, errb strings.Builder
+	if err := run(&out, &errb, getenv, d, fakeFiles(files)); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out.String(), "foo 1.1") || !strings.Contains(out.String(), "linux/aarch64") {
+		t.Errorf("the gap is not reported:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "different platform sets") {
+		t.Errorf("AUDIT alone must not print the full listing:\n%s", out.String())
+	}
+	if !strings.Contains(errb.String(), "PLATFORM GAP") {
+		t.Errorf("no summary on stderr: %q", errb.String())
+	}
+
+	env["AUDIT_ALL"] = "1"
+	var out2, errb2 strings.Builder
+	if err := run(&out2, &errb2, getenv, d, fakeFiles(files)); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(out2.String(), "different platform sets") {
+		t.Errorf("AUDIT_ALL must add the full listing:\n%s", out2.String())
+	}
+	if !strings.Contains(errb2.String(), "disagree on platforms") {
+		t.Errorf("no disagreement summary: %q", errb2.String())
+	}
+}
