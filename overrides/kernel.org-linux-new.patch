@@ -1,9 +1,9 @@
 diff --git a/projects/kernel.org/linux/package.yml b/projects/kernel.org/linux/package.yml
 new file mode 100644
-index 0000000..62fb626
+index 0000000..afbe1cf
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,83 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -31,6 +31,10 @@ index 0000000..62fb626
 +    github.com/westes/flex: '*'
 +    openssl.org: ^3          # module signing
 +    gnu.org/gawk: '*'
++    # objtool (x86 only) includes <gelf.h>: the build container has no libelf
++    # headers, so the whole kernel died there while aarch64 sailed past. The
++    # bottle carries include/gelf.h, and CPATH now reaches it.
++    elfutils.org: '*'
 +  script:
 +    # A microVM kernel, not a distro one: start from the smallest sane base and
 +    # enable exactly what a guest needs to mount its rootfs over virtio-fs and
