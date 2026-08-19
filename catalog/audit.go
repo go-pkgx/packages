@@ -100,6 +100,15 @@ func signature(plats map[string]bool) string {
 // That reads as a step, and there are hundreds of them. A race reads as a GAP:
 // the platform is there before and after, and missing in between. Nothing about
 // building a package produces that shape; losing an index write does.
+// collectPlatformGaps returns every gap, for a caller that wants to classify
+// them; auditPlatformGaps prints them unclassified.
+func collectPlatformGaps(rows []row) []gap {
+	var out []gap
+	forEachGap(rows, func(g gap) { out = append(out, g) })
+	sortGaps(out)
+	return out
+}
+
 func auditPlatformGaps(rows []row, w io.Writer) int {
 	byProject := map[string]map[string]map[string]bool{} // project -> version -> platforms
 	for _, r := range rows {
@@ -119,6 +128,30 @@ func auditPlatformGaps(rows []row, w io.Writer) int {
 	sort.Strings(names)
 
 	found := 0
+	forEachGap(rows, func(g gap) {
+		found++
+		fmt.Fprintf(w, "%s %s: missing %s (present in both older and newer versions)\n", g.project, g.version, g.platform)
+	})
+	return found
+}
+
+// forEachGap walks the gaps in a stable order and hands each to fn.
+func forEachGap(rows []row, fn func(gap)) {
+	byProject := map[string]map[string]map[string]bool{}
+	for _, r := range rows {
+		if byProject[r.Name] == nil {
+			byProject[r.Name] = map[string]map[string]bool{}
+		}
+		if byProject[r.Name][r.Version] == nil {
+			byProject[r.Name][r.Version] = map[string]bool{}
+		}
+		byProject[r.Name][r.Version][r.OS+"/"+r.Arch] = true
+	}
+	var names []string
+	for n := range byProject {
+		names = append(names, n)
+	}
+	sort.Strings(names)
 	for _, name := range names {
 		versions := byProject[name]
 		var ordered []string
@@ -167,12 +200,11 @@ func auditPlatformGaps(rows []row, w io.Writer) int {
 		sort.Slice(gv, func(i, j int) bool { return lessVersion(gv[i], gv[j]) })
 		for _, v := range gv {
 			sort.Strings(gaps[v])
-			found++
-			fmt.Fprintf(w, "%s %s: missing %s (present in both older and newer versions)\n",
-				name, v, strings.Join(gaps[v], ","))
+			for _, p := range gaps[v] {
+				fn(gap{project: name, version: v, platform: p})
+			}
 		}
 	}
-	return found
 }
 
 // lessVersion orders version strings numerically component by component, so
