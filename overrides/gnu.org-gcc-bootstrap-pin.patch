@@ -1,0 +1,19 @@
+diff --git a/projects/gnu.org/gcc/package.yml b/projects/gnu.org/gcc/package.yml
+index 16c20d9..c3e1f26 100644
+--- a/projects/gnu.org/gcc/package.yml
++++ b/projects/gnu.org/gcc/package.yml
+@@ -32,7 +32,13 @@ dependencies:
+ build:
+   dependencies:
+     linux:
+-      gnu.org/gcc: 14
++      # Was `14`, which pins gcc 14 as the compiler that builds EVERY gcc — a
++      # bootstrap seed we would have to import from someone else, since our
++      # registry starts at 16.2.0 and `14` (a caret range) excludes it. `>=14`
++      # lets the newest gcc WE have build the older one, so the seed comes from
++      # our own chain instead of an upstream binary. --disable-bootstrap is
++      # already set, so this is a single-stage build with that compiler.
++      gnu.org/gcc: ">=14"
+     gnu.org/make: "*"
+     perl.org: "^5.6.1"
+     gnu.org/patch: "*"
