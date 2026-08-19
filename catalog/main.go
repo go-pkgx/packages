@@ -105,8 +105,26 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 	// catalogue: the same enumeration answers both questions, and a second
 	// crawler would be a second thing to keep honest.
 	if getenv("AUDIT") != "" {
-		gaps := auditPlatformGaps(rows, stdout)
-		fmt.Fprintf(stderr, "catalog: %d version(s) with a PLATFORM GAP (present older AND newer — the shape a lost index write leaves)\n", gaps)
+		// A gap is the shape a lost index write leaves — and also the shape of a
+		// version upstream only ever published for some platforms. Ask upstream
+		// which it is, because the two call for opposite actions: re-dispatch, or
+		// nothing at all.
+		lost, absent := classifyGaps(collectPlatformGaps(rows), newUpstreamIndex(func(url string) (*http.Response, error) {
+			req, err := http.NewRequest(http.MethodGet, url, nil)
+			if err != nil {
+				return nil, err
+			}
+			return c.doer.Do(req)
+		}))
+		fmt.Fprintf(stdout, "--- LOST: upstream has these, our index does not — a re-dispatch puts them back ---\n")
+		for _, g := range lost {
+			fmt.Fprintf(stdout, "%s %s: missing %s\n", g.project, g.version, g.platform)
+		}
+		fmt.Fprintf(stdout, "\n--- ABSENT: upstream has no such bottle either — nothing to heal ---\n")
+		for _, g := range absent {
+			fmt.Fprintf(stdout, "%s %s: no %s anywhere\n", g.project, g.version, g.platform)
+		}
+		fmt.Fprintf(stderr, "catalog: %d lost index entr(ies), %d genuine absence(s)\n", len(lost), len(absent))
 		if getenv("AUDIT_ALL") != "" {
 			fmt.Fprintln(stdout, "\n--- every project whose versions disagree (mostly history: a project gaining a platform) ---")
 			n := auditSplitIndexes(rows, stdout)

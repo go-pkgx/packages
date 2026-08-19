@@ -518,6 +518,10 @@ func TestRunAuditMode(t *testing.T) {
 			return resp(200, one, nil), nil
 		case strings.Contains(u, "/packages/foo/manifests/"):
 			return resp(200, both, nil), nil
+		// The upstream dist carries every foo version for both arches, so a gap
+		// in OUR index is a LOST entry rather than a version that never existed.
+		case strings.Contains(u, "dist.pkgx.dev/foo/linux/"):
+			return resp(200, "1.0\n1.1\n1.2\n", nil), nil
 		}
 		return resp(404, "nope", nil), nil
 	}}
@@ -538,8 +542,13 @@ func TestRunAuditMode(t *testing.T) {
 	if strings.Contains(out.String(), "different platform sets") {
 		t.Errorf("AUDIT alone must not print the full listing:\n%s", out.String())
 	}
-	if !strings.Contains(errb.String(), "PLATFORM GAP") {
-		t.Errorf("no summary on stderr: %q", errb.String())
+	// Upstream carries foo 1.1 for linux/aarch64, so this gap is a LOST index
+	// entry — the half a re-dispatch can put back.
+	if !strings.Contains(errb.String(), "1 lost index entr") {
+		t.Errorf("not classified as lost: %q", errb.String())
+	}
+	if !strings.Contains(out.String(), "--- LOST") || !strings.Contains(out.String(), "--- ABSENT") {
+		t.Errorf("the two buckets are not both shown:\n%s", out.String())
 	}
 
 	env["AUDIT_ALL"] = "1"
@@ -552,5 +561,57 @@ func TestRunAuditMode(t *testing.T) {
 	}
 	if !strings.Contains(errb2.String(), "disagree on platforms") {
 		t.Errorf("no disagreement summary: %q", errb2.String())
+	}
+}
+
+// TestRunAuditReportsAnAbsence: the other bucket. A version upstream never
+// published for that platform cannot be healed, and saying so is the point —
+// two mirrors and a glibc rebuild were spent on gnu.org/glibc 2.28.0
+// linux/x86-64 before its version lists were consulted.
+func TestRunAuditReportsAnAbsence(t *testing.T) {
+	files := map[string]string{
+		"recipes.txt":               "foo\n",
+		"windows/go-projects.txt":   "",
+		"windows/rust-projects.txt": "",
+	}
+	both := `{"manifests":[
+	 {"platform":{"os":"linux","architecture":"amd64"},"digest":"sha256:a"},
+	 {"platform":{"os":"linux","architecture":"arm64"},"digest":"sha256:b"}]}`
+	one := `{"manifests":[
+	 {"platform":{"os":"linux","architecture":"amd64"},"digest":"sha256:c"}]}`
+
+	d := mockDoer{fn: func(r *http.Request) (*http.Response, error) {
+		u := r.URL.String()
+		switch {
+		case strings.Contains(u, "/token?"):
+			return resp(200, `{"token":"t"}`, nil), nil
+		case strings.Contains(u, "/packages/foo/tags/list"):
+			return resp(200, `{"name":"acme/packages/foo","tags":["1.0","1.1","1.2"]}`, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/1.1"):
+			return resp(200, one, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/"):
+			return resp(200, both, nil), nil
+		// Upstream never had foo 1.1 for aarch64 either.
+		case strings.Contains(u, "dist.pkgx.dev/foo/linux/aarch64"):
+			return resp(200, "1.0\n1.2\n", nil), nil
+		}
+		return resp(404, "nope", nil), nil
+	}}
+	env := map[string]string{
+		"GITHUB_REPOSITORY_OWNER": "acme",
+		"GHCR_URL":                "https://ghcr.test",
+		"AUDIT":                   "1",
+	}
+	var out, errb strings.Builder
+
+	if err := run(&out, &errb, func(k string) string { return env[k] }, d, fakeFiles(files)); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "no linux/aarch64 anywhere") {
+		t.Errorf("the absence is not stated:\n%s", out.String())
+	}
+	if !strings.Contains(errb.String(), "0 lost index entr(ies), 1 genuine absence(s)") {
+		t.Errorf("wrong classification: %q", errb.String())
 	}
 }
