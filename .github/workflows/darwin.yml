@@ -103,7 +103,6 @@ jobs:
           MAX_VERSIONS: ${{ github.event.inputs.max_versions }}
           MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
         run: |
-          if [ "${{ matrix.chunk }}" = "manual" ]; then|
           if [ "${{ matrix.chunk }}" = "manual" ]; then
             RECIPES="${{ github.event.inputs.recipes }}"
           else
