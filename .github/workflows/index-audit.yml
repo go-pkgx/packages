@@ -1,0 +1,48 @@
+name: index-audit
+
+# A GATE on the one defect that hides: a bottle pushed to the registry that its
+# version's OCI index does not list. The bottle is there, valid and signed;
+# `pkgx` says "platform not in index" and the package looks published when it is
+# not.
+#
+# Publishing an index is a read-modify-write on one mutable tag, and four
+# publishers race on it (two arches x build.yml + darwin.yml). bottle confirms
+# each write twice and bk re-checks the whole batch at the end, which narrows the
+# window — it does not close it. Something has to watch.
+#
+# 137 such entries accumulated unnoticed, found by tripping over one of them in
+# a build. They are at 0 now. This is what keeps them there.
+#
+# Not on pull_request: the crawl walks the whole catalogue over the network for
+# several minutes, and a PR cannot change what is already published.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 04:00 UTC, before the other factory lanes would add to it.
+    - cron: "0 4 * * *"
+  # After a publishing run, when a fresh split index is most likely and cheapest
+  # to repair — the operator still has the context.
+  workflow_run:
+    workflows: [build, darwin]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+
+      # No token: the catalog tool probes ghcr anonymously (public packages), and
+      # reads the upstream dist's versions.txt to tell a LOST entry from a
+      # version that never existed for that platform anywhere.
+      - name: audit the published indexes
+        env:
+          AUDIT: "1"
+          CATALOG_CONCURRENCY: "12"
+        run: go run ./catalog

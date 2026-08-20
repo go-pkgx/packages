@@ -533,8 +533,10 @@ func TestRunAuditMode(t *testing.T) {
 	getenv := func(k string) string { return env[k] }
 
 	var out, errb strings.Builder
-	if err := run(&out, &errb, getenv, d, fakeFiles(files)); err != nil {
-		t.Fatalf("run: %v", err)
+	// A lost entry is a DEFECT, so the audit fails: that is what makes a
+	// scheduled run a gate instead of a report.
+	if err := run(&out, &errb, getenv, d, fakeFiles(files)); err == nil {
+		t.Fatal("a lost index entry must fail the audit")
 	}
 	if !strings.Contains(out.String(), "foo 1.1") || !strings.Contains(out.String(), "linux/aarch64") {
 		t.Errorf("the gap is not reported:\n%s", out.String())
@@ -553,8 +555,8 @@ func TestRunAuditMode(t *testing.T) {
 
 	env["AUDIT_ALL"] = "1"
 	var out2, errb2 strings.Builder
-	if err := run(&out2, &errb2, getenv, d, fakeFiles(files)); err != nil {
-		t.Fatalf("run: %v", err)
+	if err := run(&out2, &errb2, getenv, d, fakeFiles(files)); err == nil {
+		t.Fatal("a lost index entry must fail the audit")
 	}
 	if !strings.Contains(out2.String(), "different platform sets") {
 		t.Errorf("AUDIT_ALL must add the full listing:\n%s", out2.String())
@@ -613,5 +615,52 @@ func TestRunAuditReportsAnAbsence(t *testing.T) {
 	}
 	if !strings.Contains(errb.String(), "0 lost index entr(ies), 1 genuine absence(s)") {
 		t.Errorf("wrong classification: %q", errb.String())
+	}
+}
+
+// TestRunAuditPassesWhenOnlyAbsencesRemain: the gate must be green in the state
+// the catalogue is actually in — 0 lost, 145 absences. Gating on absences would
+// mean a permanently red lane, which is a lane everyone learns to ignore.
+func TestRunAuditPassesWhenOnlyAbsencesRemain(t *testing.T) {
+	files := map[string]string{
+		"recipes.txt":               "foo\n",
+		"windows/go-projects.txt":   "",
+		"windows/rust-projects.txt": "",
+	}
+	both := `{"manifests":[
+	 {"platform":{"os":"linux","architecture":"amd64"},"digest":"sha256:a"},
+	 {"platform":{"os":"linux","architecture":"arm64"},"digest":"sha256:b"}]}`
+	one := `{"manifests":[
+	 {"platform":{"os":"linux","architecture":"amd64"},"digest":"sha256:c"}]}`
+
+	d := mockDoer{fn: func(r *http.Request) (*http.Response, error) {
+		u := r.URL.String()
+		switch {
+		case strings.Contains(u, "/token?"):
+			return resp(200, `{"token":"t"}`, nil), nil
+		case strings.Contains(u, "/packages/foo/tags/list"):
+			return resp(200, `{"name":"acme/packages/foo","tags":["1.0","1.1","1.2"]}`, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/1.1"):
+			return resp(200, one, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/"):
+			return resp(200, both, nil), nil
+		// Upstream never had 1.1 for aarch64: an ABSENCE, not a loss.
+		case strings.Contains(u, "dist.pkgx.dev/foo/linux/aarch64"):
+			return resp(200, "1.0\n1.2\n", nil), nil
+		}
+		return resp(404, "nope", nil), nil
+	}}
+	env := map[string]string{
+		"GITHUB_REPOSITORY_OWNER": "acme",
+		"GHCR_URL":                "https://ghcr.test",
+		"AUDIT":                   "1",
+	}
+	var out, errb strings.Builder
+
+	if err := run(&out, &errb, func(k string) string { return env[k] }, d, fakeFiles(files)); err != nil {
+		t.Fatalf("absences must not fail the gate: %v", err)
+	}
+	if !strings.Contains(errb.String(), "0 lost index entr(ies), 1 genuine absence(s)") {
+		t.Errorf("wrong counts: %q", errb.String())
 	}
 }
