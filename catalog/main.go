@@ -130,6 +130,18 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 			n := auditSplitIndexes(rows, stdout)
 			fmt.Fprintf(stderr, "catalog: %d project(s) whose versions disagree on platforms\n", n)
 		}
+		// A LOST entry is a defect: the bottle is in the registry and the index
+		// does not list it, so every install for that platform fails on a package
+		// that looks published. Fail, so a scheduled run is a GATE rather than a
+		// report nobody reads — the count went from 137 to 0 by hand, and the race
+		// that produced them is narrowed, not closed.
+		//
+		// Absences do not fail: upstream never published those bottles either,
+		// there is nothing to do about them, and gating on them would mean a
+		// permanently red lane that everyone learns to ignore.
+		if len(lost) > 0 {
+			return fmt.Errorf("%d index entr(ies) lost a platform the upstream dist still carries — re-dispatch those projects (see the LOST list above)", len(lost))
+		}
 		return nil
 	}
 	enc := json.NewEncoder(stdout)
