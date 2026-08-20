@@ -13,6 +13,18 @@ on:
         description: "space-separated projects to build (blank = the whole recipes.txt, chunked)"
         required: false
         default: ""
+      versions:
+        description: "only consider versions matching this pkgx constraint. A BARE version is a RANGE — use '=1.2.3' for exactly one. Without it a targeted run walks EVERY version of the named projects, which on macOS runners costs hours and fails on the old ones."
+        required: false
+        default: ""
+      max_versions:
+        description: "cap versions per requested project, newest first (blank = all)"
+        required: false
+        default: ""
+      mirror_from:
+        description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — the cheap way to restore a platform an index lost"
+        required: false
+        default: ""
   # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
     # - cron: "0 7 * * *"
 
@@ -87,7 +99,11 @@ jobs:
           OCI_USERNAME: ${{ github.actor }}
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+          VERSIONS: ${{ github.event.inputs.versions }}
+          MAX_VERSIONS: ${{ github.event.inputs.max_versions }}
+          MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
         run: |
+          if [ "${{ matrix.chunk }}" = "manual" ]; then|
           if [ "${{ matrix.chunk }}" = "manual" ]; then
             RECIPES="${{ github.event.inputs.recipes }}"
           else
@@ -102,7 +118,10 @@ jobs:
             --pantry pantry \
             --overrides overrides \
             --to oci://ghcr.io/go-pkgx/packages \
-            --bottles dist
+            --bottles dist \
+            ${VERSIONS:+--versions "$VERSIONS"} \
+            ${MAX_VERSIONS:+--max-versions "$MAX_VERSIONS"} \
+            ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"}
 
       - name: upload dist tree
         if: always()
