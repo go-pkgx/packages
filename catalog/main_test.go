@@ -276,6 +276,18 @@ func TestGhcrToken(t *testing.T) {
 	if tok, err := c.ghcrToken("foo"); err != nil || tok != "" {
 		t.Fatalf("400: tok=%q err=%v, want empty,nil", tok, err)
 	}
+	// 401 -> the package repository exists but refuses an anonymous pull. No
+	// rows, no error — and a line that names the state, because an
+	// authentication failure printed bare reads like the crawl broke.
+	var notes strings.Builder
+	c = testClient(route(when("/token?", resp(401, `{"errors":[{"code":"UNAUTHORIZED"}]}`, nil))))
+	c.stderr = &notes
+	if tok, err := c.ghcrToken("foo"); err != nil || tok != "" {
+		t.Fatalf("401: tok=%q err=%v, want empty,nil", tok, err)
+	}
+	if !strings.Contains(notes.String(), "not publicly pullable") {
+		t.Errorf("the 401 state is not named: %q", notes.String())
+	}
 	// Other non-2xx -> error.
 	c = testClient(route(when("/token?", resp(500, "boom", nil))))
 	if _, err := c.ghcrToken("foo"); err == nil {
