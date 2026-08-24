@@ -109,13 +109,14 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 		// version upstream only ever published for some platforms. Ask upstream
 		// which it is, because the two call for opposite actions: re-dispatch, or
 		// nothing at all.
-		lost, absent := classifyGaps(collectPlatformGaps(rows), newUpstreamIndex(func(url string) (*http.Response, error) {
+		up := newUpstreamIndex(func(url string) (*http.Response, error) {
 			req, err := http.NewRequest(http.MethodGet, url, nil)
 			if err != nil {
 				return nil, err
 			}
 			return c.doer.Do(req)
-		}))
+		})
+		lost, absent := classifyGaps(collectPlatformGaps(rows), up)
 		fmt.Fprintf(stdout, "--- LOST: upstream has these, our index does not — a re-dispatch puts them back ---\n")
 		for _, g := range lost {
 			fmt.Fprintf(stdout, "%s %s: missing %s\n", g.project, g.version, g.platform)
@@ -124,7 +125,15 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 		for _, g := range absent {
 			fmt.Fprintf(stdout, "%s %s: no %s anywhere\n", g.project, g.version, g.platform)
 		}
-		fmt.Fprintf(stderr, "catalog: %d lost index entr(ies), %d genuine absence(s)\n", len(lost), len(absent))
+		// A third bucket, reported and not gated: see newestGaps for why the
+		// evidence that makes an interior hole a defect does not exist here.
+		behind, _ := classifyGaps(newestGaps(rows), up)
+		fmt.Fprintln(stdout, "\n--- BEHIND: our newest version lacks a platform the upstream dist carries — lost, or never built; only a build tells them apart ---")
+		for _, g := range behind {
+			fmt.Fprintf(stdout, "%s %s: no %s\n", g.project, g.version, g.platform)
+		}
+		fmt.Fprintf(stderr, "catalog: %d lost index entr(ies), %d genuine absence(s), %d newest-version gap(s)\n",
+			len(lost), len(absent), len(behind))
 		if getenv("AUDIT_ALL") != "" {
 			fmt.Fprintln(stdout, "\n--- every project whose versions disagree (mostly history: a project gaining a platform) ---")
 			n := auditSplitIndexes(rows, stdout)
