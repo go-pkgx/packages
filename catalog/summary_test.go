@@ -94,3 +94,51 @@ func TestRunSummaryRecipesUnreadable(t *testing.T) {
 		t.Fatal("expected the second recipes.txt read to fail the run")
 	}
 }
+
+// TestRunAuditUnrequestableUpstreamURL closes the audit's last error branch: the
+// upstream lookup builds a URL from data the registry gave us, so a platform
+// string the registry reports can be one http.NewRequest refuses. The audit must
+// treat that as "upstream does not confirm it" — an ABSENCE, which heals nothing
+// and fails nothing — rather than acting on a nil response.
+func TestRunAuditUnrequestableUpstreamURL(t *testing.T) {
+	files := map[string]string{
+		"recipes.txt":               "foo\n",
+		"windows/go-projects.txt":   "",
+		"windows/rust-projects.txt": "",
+	}
+	// A DEL byte in the architecture the index reports (JSON \u007f). It survives
+	// mapArch, which passes unknown values through, so it reaches the upstream
+	// versions.txt URL and url.Parse rejects it as an invalid control character.
+	both := `{"manifests":[
+	 {"platform":{"os":"linux","architecture":"amd64"}},
+	 {"platform":{"os":"linux","architecture":"a\u007fb"}}]}`
+	one := `{"manifests":[{"platform":{"os":"linux","architecture":"amd64"}}]}`
+
+	d := mockDoer{fn: func(r *http.Request) (*http.Response, error) {
+		u := r.URL.String()
+		switch {
+		case strings.Contains(u, "/token?"):
+			return resp(200, `{"token":"t"}`, nil), nil
+		case strings.Contains(u, "/packages/foo/tags/list"):
+			return resp(200, `{"tags":["1.0","1.1","1.2"]}`, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/1.1"):
+			return resp(200, one, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/"):
+			return resp(200, both, nil), nil
+		}
+		return resp(404, "nope", nil), nil
+	}}
+	env := map[string]string{"AUDIT": "1"}
+	var out, errb strings.Builder
+	// No LOST entry, so the audit passes: a gap upstream cannot confirm is not a
+	// defect anyone can act on.
+	if err := run(&out, &errb, func(k string) string { return env[k] }, d, fakeFiles(files)); err != nil {
+		t.Fatalf("an unconfirmable gap must not fail the audit: %v", err)
+	}
+	if !strings.Contains(errb.String(), "0 lost index entr") {
+		t.Errorf("want no lost entries, got %q", errb.String())
+	}
+	if !strings.Contains(out.String(), "foo 1.1: no linux/a") {
+		t.Errorf("the gap is not reported as an absence:\n%q", out.String())
+	}
+}
