@@ -24,8 +24,9 @@ an unsigned or badly-signed package is refused rather than installed.
 
 `.github/workflows/build.yml` runs a `linux/x86-64` + `linux/aarch64` matrix, and
 `.github/workflows/darwin.yml` a `darwin/aarch64` + `darwin/x86-64` matrix on native
-macOS runners — both on a **daily** schedule (`workflow_dispatch` + cron) and both
-publishing signed packages to the same `ghcr.io/go-pkgx/packages` OCI registry via the
+macOS runners — both dispatched on demand (`workflow_dispatch`; the daily crons are
+commented out since 2026-08-12 to leave the runners free for targeted jobs, and only
+`index-audit.yml` still runs on a schedule) and both publishing signed packages to the same `ghcr.io/go-pkgx/packages` OCI registry via the
 identical, platform-agnostic `bk factory` (which also writes a pkgx dist tree, uploaded
 as a `dist-*` artifact for the Pages mirror). Auth to ghcr uses the workflow's **native
 `GITHUB_TOKEN`** (`permissions.packages: write`) — no long-lived PAT to rotate. Each
@@ -37,8 +38,9 @@ pantry, then runs `bk factory` — one pure-Go command (no bash, no curl/jq, no 
 - **skips any `(project, version, platform)` already in ghcr**, so shared deps build
   once and the catalog is populated progressively.
 
-Per-recipe failures are logged (`failures.txt`) but never fail the run. Grow
-`recipes.txt` outward from dependency-free leaves toward the full pantry.
+Per-recipe failures are logged (`failures.txt`) but never fail the run. `recipes.txt`
+holds 1900 candidate projects, **1458 of them published**; the front is the other 442.
+Grow it outward from dependency-free leaves toward the full pantry.
 
 ## Build isolation
 
@@ -46,10 +48,13 @@ Per-recipe failures are logged (`failures.txt`) but never fail the run. Grow
   container — a controlled glibc floor instead of the drifting runner host, with no
   host-tool leakage and reproducible output. macOS builds run directly on GitHub's
   ephemeral macOS runners (each a clean, throwaway VM), which are the isolation there.
-- **Phase B (experimental / proven feasible).** Building against pkgx's *own* glibc
-  toolchain for truly self-contained `FROM scratch` packages. It is a `bk` change on
-  branch `feat/pkgx-glibc-toolchain`, off by default (`BK_PKGX_LIBC=1`); design note:
-  [`bk/docs/from-scratch-toolchain.md`](https://github.com/go-pkgx/bk/blob/feat/pkgx-glibc-toolchain/docs/from-scratch-toolchain.md).
+- **Phase B (shipped).** Building against pkgx's *own* glibc toolchain, for packages
+  self-contained enough to run `FROM scratch`: `bk factory --libc=pkgx` retargets the
+  compiler at the `gnu.org/glibc` bottle — its crt objects, its libc, its dynamic
+  linker — so the output owes nothing to the debian container. `bk builder` stages the
+  sovereign rootfs itself (static Go binaries plus toolchain bottles from this signed
+  registry, nothing else), and `builder/` here is what builds that image. Design note:
+  [`bk/docs/from-scratch-toolchain.md`](https://github.com/go-pkgx/bk/blob/main/docs/from-scratch-toolchain.md).
 
 ## Install pkgm
 
@@ -72,9 +77,21 @@ signed registry by default.
 
 ## Consuming
 
-Packages are OCI artifacts, so any OCI client can pull them; the catalog grows daily
-via the cron, so treat the published set as a moving target. Currently live:
-`zlib.net`, `tukaani.org/xz`, `lz4.org`, `gnu.org/tar`, `sourceware.org/bzip2`.
+Packages are OCI artifacts, so any OCI client can pull them. On 2026-08-24:
+
+    $ SUMMARY=1 go run ./catalog
+    1459 projects, 26398 platform builds
+      linux/aarch64      9010
+      linux/x86-64       7715
+      darwin/x86-64      4731
+      darwin/aarch64     4391
+      windows/x86-64     551
+    recipes.txt: 1458 of 1900 published, 442 remaining
+
+That is a moving target, and the command above is the point: it enumerates ghcr
+anonymously, so re-run it rather than trusting the paste.
+<https://go-pkgx.github.io/packages> browses the same data (its deploy is
+dispatched, so the site can lag the registry).
 
 Point the go-pkgx tools at the registry and verify against the pinned key:
 

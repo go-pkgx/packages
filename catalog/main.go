@@ -144,6 +144,17 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 		}
 		return nil
 	}
+	// SUMMARY=1 counts instead of emitting: the same crawl answers "what is
+	// published" and "how much of recipes.txt is left", and a count derived here
+	// cannot drift from the registry the way one typed into prose does.
+	if getenv("SUMMARY") != "" {
+		recipes, err := recipeNames(readFile)
+		if err != nil {
+			return err
+		}
+		summarize(stdout, rows, recipes)
+		return nil
+	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", " ")
 	return enc.Encode(rows)
@@ -156,19 +167,35 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 // build factories publish each package under its lower-cased slug, so a slug
 // with any upper-case letter (github.com/AOMediaCodec/…) must be probed — and
 // emitted — in lower case to match the actual registry name.
-func candidateNames(readFile func(string) ([]byte, error)) ([]string, error) {
-	set := map[string]bool{}
-
-	recipes, err := readFile("recipes.txt")
+// recipeNames is the recipes.txt half of the candidate list: the projects this
+// factory is asked to build, without the windows-only slugs. summarize reports
+// progress against it, so it is the list the factory's own front is measured on.
+func recipeNames(readFile func(string) ([]byte, error)) ([]string, error) {
+	data, err := readFile("recipes.txt")
 	if err != nil {
 		return nil, err
 	}
-	for _, line := range strings.Split(string(recipes), "\n") {
+	var out []string
+	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		set[strings.ToLower(line)] = true
+		out = append(out, strings.ToLower(line))
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func candidateNames(readFile func(string) ([]byte, error)) ([]string, error) {
+	set := map[string]bool{}
+
+	recipes, err := recipeNames(readFile)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range recipes {
+		set[name] = true
 	}
 
 	for _, path := range []string{"windows/go-projects.txt", "windows/rust-projects.txt"} {
