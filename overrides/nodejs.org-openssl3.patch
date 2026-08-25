@@ -1,0 +1,12 @@
+diff --git a/projects/nodejs.org/package.yml b/projects/nodejs.org/package.yml
+--- a/projects/nodejs.org/package.yml
++++ b/projects/nodejs.org/package.yml
+@@ -10,7 +10,7 @@
+ 
+ dependencies:
+   unicode.org: ^73 # v25
+-  openssl.org: 1.1
++  openssl.org: ^3
+   zlib.net: 1
+   linux:
+     gnu.org/gcc/libstdcxx: 14 # libstdc++, since 22.2.0

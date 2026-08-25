@@ -1,0 +1,12 @@
+diff --git a/projects/go.dev/package.yml b/projects/go.dev/package.yml
+--- a/projects/go.dev/package.yml
++++ b/projects/go.dev/package.yml
+@@ -15,7 +15,7 @@
+   args: [go, run]
+ 
+ dependencies:
+-  openssl.org: 1  # for ca-certificates
++  openssl.org: ^3  # for ca-certificates
+ 
+ companions:
+ 

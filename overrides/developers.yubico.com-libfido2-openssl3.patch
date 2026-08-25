@@ -1,0 +1,12 @@
+diff --git a/projects/developers.yubico.com/libfido2/package.yml b/projects/developers.yubico.com/libfido2/package.yml
+--- a/projects/developers.yubico.com/libfido2/package.yml
++++ b/projects/developers.yubico.com/libfido2/package.yml
+@@ -7,7 +7,7 @@
+ 
+ dependencies:
+   github.com/PJK/libcbor: 0
+-  openssl.org: 1
++  openssl.org: ^3
+   zlib.net: 1
+   linux:
+     systemd.io: '*' # libudev

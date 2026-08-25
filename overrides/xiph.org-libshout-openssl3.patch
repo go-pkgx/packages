@@ -1,0 +1,12 @@
+diff --git a/projects/xiph.org/libshout/package.yml b/projects/xiph.org/libshout/package.yml
+--- a/projects/xiph.org/libshout/package.yml
++++ b/projects/xiph.org/libshout/package.yml
+@@ -10,7 +10,7 @@
+ dependencies:
+   xiph.org/ogg: '*'
+   xiph.org/vorbis: '*'
+-  openssl.org: ~1
++  openssl.org: ^3
+   speex.org: '*'
+   theora.org: '*'
+ build:

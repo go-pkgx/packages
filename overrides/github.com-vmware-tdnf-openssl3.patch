@@ -1,0 +1,12 @@
+diff --git a/projects/github.com/vmware/tdnf/package.yml b/projects/github.com/vmware/tdnf/package.yml
+--- a/projects/github.com/vmware/tdnf/package.yml
++++ b/projects/github.com/vmware/tdnf/package.yml
+@@ -16,7 +16,7 @@
+   opensuse.org/libsolv: "*"
+   gnupg.org/gpgme: "*"
+   gnupg.org/libgpg-error: "*"
+-  openssl.org: ~1.1
++  openssl.org: ^3
+   curl.se: "*"
+ 
+ build:

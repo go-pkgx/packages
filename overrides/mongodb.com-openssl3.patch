@@ -1,0 +1,12 @@
+diff --git a/projects/mongodb.com/package.yml b/projects/mongodb.com/package.yml
+--- a/projects/mongodb.com/package.yml
++++ b/projects/mongodb.com/package.yml
+@@ -9,7 +9,7 @@
+ 
+ dependencies:
+   curl.se: 8
+-  openssl.org: 1.1
++  openssl.org: ^3
+ 
+ build:
+   dependencies:

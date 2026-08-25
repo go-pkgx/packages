@@ -1,0 +1,12 @@
+diff --git a/projects/go.dev/dev-simd/package.yml b/projects/go.dev/dev-simd/package.yml
+--- a/projects/go.dev/dev-simd/package.yml
++++ b/projects/go.dev/dev-simd/package.yml
+@@ -28,7 +28,7 @@
+ # (`+pkg` puts this package's bin/ on PATH regardless of `provides`.)
+ 
+ dependencies:
+-  openssl.org: 1  # for ca-certificates
++  openssl.org: ^3  # for ca-certificates
+ 
+ build:
+   dependencies:

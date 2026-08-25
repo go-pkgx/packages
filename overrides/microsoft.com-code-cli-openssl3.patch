@@ -1,0 +1,12 @@
+diff --git a/projects/microsoft.com/code-cli/package.yml b/projects/microsoft.com/code-cli/package.yml
+--- a/projects/microsoft.com/code-cli/package.yml
++++ b/projects/microsoft.com/code-cli/package.yml
+@@ -8,7 +8,7 @@
+   github: microsoft/vscode
+ 
+ dependencies:
+-  openssl.org: 1.1
++  openssl.org: ^3
+   zlib.net: 1
+ 
+ build:

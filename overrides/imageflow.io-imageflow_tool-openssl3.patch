@@ -1,0 +1,12 @@
+diff --git a/projects/imageflow.io/imageflow_tool/package.yml b/projects/imageflow.io/imageflow_tool/package.yml
+--- a/projects/imageflow.io/imageflow_tool/package.yml
++++ b/projects/imageflow.io/imageflow_tool/package.yml
+@@ -19,7 +19,7 @@
+   # - darwin/x86-64
+ 
+ dependencies:
+-  openssl.org: 1.1
++  openssl.org: ^3
+ 
+ companions:
+   info-zip.org/zip: '*'
