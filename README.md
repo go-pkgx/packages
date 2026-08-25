@@ -39,8 +39,40 @@ pantry, then runs `bk factory` — one pure-Go command (no bash, no curl/jq, no 
   once and the catalog is populated progressively.
 
 Per-recipe failures are logged (`failures.txt`) but never fail the run. `recipes.txt`
-holds 1900 candidate projects, **1458 of them published**; the front is the other 442.
-Grow it outward from dependency-free leaves toward the full pantry.
+holds 1900 candidate projects, **1576 of them published**; the front is the other 324.
+
+## Working the front
+
+What is left is not one problem. `bk depgaps` separates the two, ranks each by how
+many recipes it blocks, and reads satisfiability through bottle's own semver so it
+agrees with what pkgx will decide at install:
+
+    bk depgaps --pantry pantry --overrides overrides --registry registry.json \
+               --platform linux/x86-64
+
+- A **version line** the registry does not carry. `python.org ~3.12` blocked 23
+  recipes; upstream had it, so a mirror closed it.
+- A **project** of which nothing at all is published. This half is usually the
+  bigger one and was invisible until 2026-08-25: on linux/x86-64 it held 797
+  blocked dependencies against the version lines' 333, and `rust-lang.org` alone
+  accounted for 292 of them.
+
+Both are usually a mirror away rather than a build. Check upstream carries the line
+first — two mirrors and a glibc rebuild were once spent healing a bottle that never
+existed — then:
+
+    recipes="python.org@~3.12 rust-lang.org libgit2.org@~1.7"
+    mirror_from=https://dist.pkgx.dev   max_versions=1   no_closure=1
+
+One version per line is enough: a recipe wants *a* version in the line, and an
+unbounded mirror has filled a runner's disk. A project may appear only **once** per
+dispatch — the pin map keeps the last. Never run two dispatches of the same workflow
+at once: four publishers doing a read-modify-write on one mutable index tag is what
+silently lost `cmake.org 4.4.2 linux/amd64`.
+
+Measured over 39 such waves on 2026-08-25: **4–8 minutes each**, against 45 minutes
+to 4 hours for a batch of builds — and the blocked-dependency count fell from 1130
+to 125 on linux/x86-64, and from 2265 to 312 on darwin/aarch64.
 
 ## Build isolation
 
@@ -77,16 +109,16 @@ signed registry by default.
 
 ## Consuming
 
-Packages are OCI artifacts, so any OCI client can pull them. On 2026-08-24:
+Packages are OCI artifacts, so any OCI client can pull them. On 2026-08-25:
 
     $ SUMMARY=1 go run ./catalog
-    1459 projects, 26398 platform builds
-      linux/aarch64      9010
-      linux/x86-64       7715
-      darwin/x86-64      4731
-      darwin/aarch64     4391
+    1577 projects, 27278 platform builds
+      linux/aarch64      9235
+      linux/x86-64       7957
+      darwin/x86-64      4934
+      darwin/aarch64     4601
       windows/x86-64     551
-    recipes.txt: 1458 of 1900 published, 442 remaining
+    recipes.txt: 1576 of 1900 published, 324 remaining
 
 That is a moving target, and the command above is the point: it enumerates ghcr
 anonymously, so re-run it rather than trusting the paste.
