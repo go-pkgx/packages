@@ -21,6 +21,10 @@ on:
         description: "cap versions per requested project, newest first (blank = all)"
         required: false
         default: ""
+      no_closure:
+        description: "build ONLY the projects named in recipes, not their dependency closure. For a REPAIR run: the dependencies are already published, and walking to them costs a version resolution each and can drag a toolchain in behind them."
+        required: false
+        default: ""
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — the cheap way to restore a platform an index lost"
         required: false
@@ -111,8 +115,9 @@ jobs:
           fi
           # shellcheck disable=SC2086  # RECIPES is intentionally word-split to count projects
           echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects"
-          # RECIPES and PLATFORM are read from the env by `bk factory` itself.
-          export RECIPES
+          # RECIPES, NO_CLOSURE and PLATFORM are read from the env by `bk factory` itself.
+          NO_CLOSURE="${{ github.event.inputs.no_closure }}"
+          export RECIPES NO_CLOSURE
           bk factory \
             --pantry pantry \
             --overrides overrides \

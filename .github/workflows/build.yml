@@ -18,6 +18,10 @@ on:
         description: "only consider versions matching this pkgx constraint, e.g. ^3 — the handle for an OLD line, which max_versions (newest-first) can never reach."
         required: false
         default: ""
+      no_closure:
+        description: "build ONLY the projects named in recipes, not their dependency closure. For a REPAIR run: the dependencies are already published, and walking to them costs a version resolution each and can drag a toolchain in behind them."
+        required: false
+        default: ""
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — republished signed + attested (used for the glibc sweep)."
         required: false
@@ -140,7 +144,8 @@ jobs:
           # RECIPES / FORCE / MAX_VERSIONS / PLATFORM are read from the env by
           # `bk factory` itself; the rest is passed explicitly.
           MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
-          export RECIPES FORCE MAX_VERSIONS
+          NO_CLOSURE="${{ github.event.inputs.no_closure }}"
+          export RECIPES FORCE MAX_VERSIONS NO_CLOSURE
           # A glibc-pinned build links the pkgx glibc bottle directly, which bakes
           # an ABSOLUTE PT_INTERP pointing into $PKGX_DIR. Under the default
           # ($HOME/.pkgx) that is the RUNNER's home — a path no consumer has, so
