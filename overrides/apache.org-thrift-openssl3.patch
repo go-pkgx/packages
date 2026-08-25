@@ -1,0 +1,12 @@
+diff --git a/projects/apache.org/thrift/package.yml b/projects/apache.org/thrift/package.yml
+--- a/projects/apache.org/thrift/package.yml
++++ b/projects/apache.org/thrift/package.yml
+@@ -6,7 +6,7 @@
+   github: apache/thrift
+ 
+ dependencies:
+-  openssl.org: '1.1'
++  openssl.org: '^3'
+   zlib.net: '*'
+ 
+ build:

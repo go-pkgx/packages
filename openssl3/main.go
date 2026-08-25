@@ -47,9 +47,21 @@ import (
 // depLine matches a dependency line pinning openssl to the 1.1 line, capturing
 // the indentation, the opening quote (if any) and any trailing comment, so the
 // rewrite can put the line back exactly as it was but for the constraint.
-// `^1` is as stale as `^1.1` — both admit only openssl 1.x, and there is no
-// published openssl 1.x — so both are matched.
-var depLine = regexp.MustCompile(`^(\s+openssl\.org:\s*)(['"]?)(\^1(?:\.[^\s'"#]*)?)(['"]?)(\s*(?:#.*)?)$`)
+// Every way of naming the 1.x line is equally stale, and the pantry uses six of
+// them. Measured against the published registry with bottle's own semver
+// (ParseVer(v).Satisfies(c)), rather than assumed:
+//
+//	^1.1 ^1 ^1.1.1 ^1.0.1 ^1.1.1k   caret, the common forms
+//	1.1  1                          BARE — a bare version is a range too
+//	~1   ~1.1                        tilde
+//
+// all admit only openssl 1.x, and no openssl 1.x is published. So the operator
+// is optional and may be `^` or `~`.
+//
+// `>=1.1` is NOT in that set and must not be matched: it is unbounded above, so
+// openssl 3.x satisfies it and the recipe already resolves. The same check said
+// so, which is why it is excluded by the anchor rather than by hope.
+var depLine = regexp.MustCompile(`^(\s+openssl\.org:\s*)(['"]?)([\^~]?1(?:\.[^\s'"#]*)?)(['"]?)(\s*(?:#.*)?)$`)
 
 // want is what the constraint becomes: the major line our registry carries.
 const want = "^3"

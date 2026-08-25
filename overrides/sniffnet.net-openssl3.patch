@@ -1,0 +1,12 @@
+diff --git a/projects/sniffnet.net/package.yml b/projects/sniffnet.net/package.yml
+--- a/projects/sniffnet.net/package.yml
++++ b/projects/sniffnet.net/package.yml
+@@ -9,7 +9,7 @@
+   github: GyulyVGC/sniffnet
+ 
+ dependencies:
+-  openssl.org: 1
++  openssl.org: ^3
+   tcpdump.org: 1
+   linux:
+     alsa-project.org/alsa-lib: 1
