@@ -285,7 +285,7 @@ func TestGhcrToken(t *testing.T) {
 	if tok, err := c.ghcrToken("foo"); err != nil || tok != "" {
 		t.Fatalf("401: tok=%q err=%v, want empty,nil", tok, err)
 	}
-	if !strings.Contains(notes.String(), "not publicly pullable") {
+	if !strings.Contains(notes.String(), "is PRIVATE") {
 		t.Errorf("the 401 state is not named: %q", notes.String())
 	}
 	// Other non-2xx -> error.

@@ -314,15 +314,20 @@ func (c *client) ghcrToken(name string) (string, error) {
 		return "", nil
 	}
 	// 401 is a THIRD state, and lumping it in with the crawl's real errors cost
-	// twenty minutes to tell apart: the package repository EXISTS but refuses an
-	// anonymous pull. Either it was never made public, or a publish created the
-	// repository and pushed nothing into it. Both are invisible to every
-	// consumer — `pkgm install` sees exactly what this crawl sees — so it yields
-	// no rows like any unpublished candidate, but it says which state it is
-	// instead of printing an authentication error that reads like a network
-	// fault.
+	// twenty minutes to tell apart: the package repository EXISTS and refuses an
+	// anonymous pull. It is a VISIBILITY setting, not a broken publish — read
+	// with a token carrying read:packages, the two that answer 401 here hold 22
+	// and 2 version tags, and the factory logs `✅ MIRRORED` for them. They are
+	// simply private, alone among 1579.
+	//
+	// The distinction matters because it decides who fixes it: nothing in the
+	// factory can, and no rebuild will. Someone flips the package to public.
+	//
+	// It still yields no rows, because a package ghcr will not serve
+	// anonymously is invisible to every consumer — `pkgm install` sees exactly
+	// what this crawl sees.
 	if code == http.StatusUnauthorized {
-		fmt.Fprintf(c.stderr, "catalog: %s exists but is not publicly pullable (401) — never made public, or an empty repository left by a failed publish\n", name)
+		fmt.Fprintf(c.stderr, "catalog: %s is PRIVATE (401 anonymously) — it has content, it is just not public; flip its visibility, no rebuild will help\n", name)
 		return "", nil
 	}
 	if code < 200 || code >= 300 {
