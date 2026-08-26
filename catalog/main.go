@@ -278,6 +278,7 @@ func (c *client) packageRows(name string) []row {
 		fmt.Fprintf(c.stderr, "catalog: skip %s tags: %v\n", name, err)
 		return nil
 	}
+	tags = c.withTagsTheListingMissed(name, bearer, tags)
 	var rows []row
 	for _, tag := range tags {
 		plats, err := c.platforms(name, tag, bearer)
@@ -476,4 +477,83 @@ func envOr(getenv func(string) string, key, def string) string {
 		return v
 	}
 	return def
+}
+
+// upstreamVersionsURL is where the pkgx dist advertises a project's versions
+// for one platform. It is a plain newline-separated list.
+var upstreamVersionsURL = func(project, osn, arch string) string {
+	return "https://dist.pkgx.dev/" + project + "/" + osn + "/" + arch + "/versions.txt"
+}
+
+// probePlatforms are the platform slugs whose upstream listings are consulted
+// when checking what the tag listing left out. One per OS is enough: a version
+// missing from the listing is missing for every platform of that version.
+var probePlatforms = [][2]string{{"linux", "x86-64"}, {"darwin", "aarch64"}}
+
+// withTagsTheListingMissed adds back the versions ghcr's tag listing does not
+// mention but which are nevertheless there.
+//
+// The listing is not a reliable enumeration. Measured 2026-08-26:
+// mesonbuild.com's /tags/list returned 40 tags with a maximum of 1.11.2, while
+// 1.12.0 — mirrored an hour earlier — answered its manifest with all four
+// platforms. The factory knew: `⏭ SKIP mesonbuild.com 1.12.0 — already
+// published`. Only this crawl did not, and everything downstream believed it:
+// 78 darwin recipes counted as blocked on a project that was published.
+//
+// It was recorded once before, for gnu.org/nettle, as "ghcr tags/list lies —
+// ask the manifest, not the listing". This is that, made systematic.
+//
+// The candidates come from the upstream dist's own version lists: a version we
+// hold that upstream never had cannot be recovered this way, but that is not a
+// shape this factory produces — everything here is built or mirrored from a
+// recipe upstream also publishes.
+func (c *client) withTagsTheListingMissed(name, bearer string, tags []string) []string {
+	have := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		have[t] = true
+	}
+	var extra []string
+	for _, pl := range probePlatforms {
+		for _, v := range c.upstreamVersions(name, pl[0], pl[1]) {
+			if have[v] || !semverTag(v) {
+				continue
+			}
+			have[v] = true // ask once, whichever platform named it
+			if plats, err := c.platforms(name, v, bearer); err == nil && len(plats) > 0 {
+				extra = append(extra, v)
+			}
+		}
+	}
+	if len(extra) > 0 {
+		sort.Strings(extra)
+		fmt.Fprintf(c.stderr, "catalog: %s: the tag listing omitted %d published version(s): %s\n",
+			name, len(extra), strings.Join(extra, " "))
+	}
+	return append(tags, extra...)
+}
+
+// upstreamVersions reads one platform's version list from the upstream dist,
+// returning nothing at all rather than an error: this is a cross-check, and a
+// dist that will not answer must not fail the crawl.
+func (c *client) upstreamVersions(project, osn, arch string) []string {
+	resp, code, err := c.rawGet(upstreamVersionsURL(project, osn, arch), "", "")
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	if code != http.StatusOK {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil
+	}
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, l := range strings.Split(string(b), "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, l)
+		}
+	}
+	return out
 }
