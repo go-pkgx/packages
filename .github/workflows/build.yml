@@ -54,6 +54,11 @@ jobs:
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
     steps:
+      # GitHub's images carry jq; our Incus runner image does not, and the
+      # matrix generator is written in it. One apt line beats rewriting the
+      # generator in shell.
+      - name: jq
+        run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
       - uses: actions/checkout@v4
       - id: gen
         run: |
