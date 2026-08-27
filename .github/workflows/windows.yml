@@ -22,10 +22,21 @@ env:
 
 jobs:
   setup:
+    # Stays on GitHub's runners: this is a MANY-job matrix, and the pool's VM has
+    # 20 GB of disk with ~4 GB free. setup-go alone unpacks ~600 MB into each
+    # ephemeral container, and a nine-job fan-out filled it — every job but one
+    # died with ENOSPC. The pool hosts this repo's heavy, few-job work
+    # (build.yml, index-audit.yml); give the VM a bigger disk and these can
+    # follow.
     runs-on: ubuntu-latest
     outputs:
       chunks: ${{ steps.gen.outputs.chunks }}
     steps:
+      # The Incus runner image is a plain Debian cloud image: no jq, no git, no
+      # go. setup-go brings its own, checkout falls back to the API tarball, and
+      # jq is one apt line. A no-op wherever it is already there.
+      - name: jq
+        run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
       - uses: actions/checkout@v4
       - id: gen
         run: |
@@ -36,6 +47,12 @@ jobs:
 
   build:
     needs: setup
+    # Stays on GitHub's runners: this is a MANY-job matrix, and the pool's VM has
+    # 20 GB of disk with ~4 GB free. setup-go alone unpacks ~600 MB into each
+    # ephemeral container, and a nine-job fan-out filled it — every job but one
+    # died with ENOSPC. The pool hosts this repo's heavy, few-job work
+    # (build.yml, index-audit.yml); give the VM a bigger disk and these can
+    # follow.
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -43,6 +60,11 @@ jobs:
       matrix:
         chunk: ${{ fromJson(needs.setup.outputs.chunks) }}
     steps:
+      # The Incus runner image is a plain Debian cloud image: no jq, no git, no
+      # go. setup-go brings its own, checkout falls back to the API tarball, and
+      # jq is one apt line. A no-op wherever it is already there.
+      - name: jq
+        run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version: stable }

@@ -20,6 +20,10 @@ permissions:
 
 jobs:
   scratch:
+    # STAYS on GitHub's runners, alone among this repo's linux jobs: it needs a
+    # docker daemon, and the Incus runner image carries neither docker nor
+    # podman. Nesting one inside an Incus system container is possible and is
+    # not worth it for a coverage probe.
     # ubuntu-latest is linux/x86-64 with docker preinstalled → build+run the
     # amd64 scratch images natively (no qemu). Bottles are pulled anonymously
     # from the public ghcr.io/go-pkgx/packages registry by pkgm, in-image.
