@@ -23,7 +23,11 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # Our own GARM/Incus pool: 32 cores, ephemeral container per job, tagged
+    # [self-hosted, incus, amd64]. Linux work runs here rather than on GitHub's
+    # minutes. If the pool is down, jobs queue — swap this line back to
+    # `ubuntu-latest` to get moving again.
+    runs-on: [self-hosted, incus, amd64]
     steps:
       - name: Fetch the llvm-mingw toolchain (== pantry's llvm.org/mingw-w64)
         run: |
