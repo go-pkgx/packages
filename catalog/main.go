@@ -496,6 +496,15 @@ func semverTag(t string) bool {
 	if t == "" || strings.HasPrefix(t, "sha256-") {
 		return false
 	}
+	// `<ver>--<os>-<arch>` names one platform's manifest, not a version.
+	// go-pkgx/bottle#37 started writing those so a version's index could be
+	// COMPOSED from uncontended tags instead of merged into blind — and the
+	// first thing it did here was make llvm.org's newest "version"
+	// 19.1.0--darwin-aarch64. Every count this tool feeds would have inflated
+	// by roughly the number of platforms.
+	if strings.Contains(t, "--") {
+		return false
+	}
 	s := strings.TrimPrefix(t, "v")
 	return s != "" && s[0] >= '0' && s[0] <= '9'
 }
