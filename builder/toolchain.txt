@@ -34,3 +34,12 @@ gnu.org/help2man            # generates a man page from --help; gnu.org/libidn2
 freedesktop.org/pkg-config  # configure scripts probe deps through it
 
 curl.se                     # recipes that fetch in their own script (ca-certs)
+
+gnu.org/gcc/libstdcxx       # clang itself is a C++ program, and the llvm.org
+                            # bottle we install is MIRRORED — linked against the
+                            # libstdc++ of whatever distro built it. In a tree
+                            # that has no distro, clang does not start:
+                            #   clang: error while loading shared libraries:
+                            #     libstdc++.so.6: cannot open shared object file
+                            # Measured by staging this list into an Incus
+                            # container and running clang in it (2026-08-27).
