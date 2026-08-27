@@ -22,6 +22,10 @@ on:
         description: "build ONLY the projects named in recipes, not their dependency closure. For a REPAIR run: the dependencies are already published, and walking to them costs a version resolution each and can drag a toolchain in behind them."
         required: false
         default: ""
+      runner:
+        description: "where to run: blank = GitHub-hosted (both linux arches); `incus` = our own GARM/Incus pool (self-hosted, amd64 only, no GitHub Actions minutes)."
+        required: false
+        default: ""
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — republished signed + attested (used for the glibc sweep)."
         required: false
@@ -43,22 +47,31 @@ jobs:
   # arches × every chunk, so the whole pantry is built best-effort in parallel.
   # A manual `recipes` input bypasses chunking (one job per arch with just those).
   setup:
-    runs-on: ubuntu-latest
+    # The matrix generator has to run somewhere too: when GitHub's pool is the
+    # thing that is unavailable, pinning this to ubuntu-latest queues the whole
+    # workflow before it has decided anything.
+    runs-on: ${{ github.event.inputs.runner == 'incus' && fromJSON('["self-hosted","incus","amd64"]') || 'ubuntu-latest' }}
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
       - id: gen
         run: |
-          if [ -n "${{ github.event.inputs.recipes }}" ]; then
-            m='{"include":[{"runner":"ubuntu-latest","platform":"linux/x86-64","slug":"linux-x86-64","chunk":"manual"},{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","chunk":"manual"}]}'
+          # Our own pool is amd64 only, and needs no `container:` — the Incus
+          # container IS the controlled Debian environment (bookworm, glibc
+          # 2.36, which is the floor this workflow's comment always meant;
+          # debian:stable-slim has since moved to trixie).
+          if [ "${{ github.event.inputs.runner }}" = incus ]; then
+            m='{"include":[{"runner":["self-hosted","incus","amd64"],"platform":"linux/x86-64","slug":"linux-x86-64","chunk":"manual","container":""}]}'
+          elif [ -n "${{ github.event.inputs.recipes }}" ]; then
+            m='{"include":[{"runner":"ubuntu-latest","platform":"linux/x86-64","slug":"linux-x86-64","chunk":"manual","container":"debian:stable-slim"},{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","chunk":"manual","container":"debian:stable-slim"}]}'
           else
             total=$(grep -vcE '^[[:space:]]*(#|$)' recipes.txt)
             n=$(( (total + CHUNK - 1) / CHUNK ))
             m=$(jq -cn --argjson n "$n" '{include: [range(0;$n) as $c
               | ({runner:"ubuntu-latest",platform:"linux/x86-64",slug:"linux-x86-64"},
                  {runner:"ubuntu-24.04-arm",platform:"linux/aarch64",slug:"linux-aarch64"})
-              + {chunk:($c|tostring)}]}')
+              + {chunk:($c|tostring), container:"debian:stable-slim"}]}')
           fi
           echo "matrix=$m" >> "$GITHUB_OUTPUT"
           echo "$m" | jq '.include | length | "\(.) build jobs"'
@@ -70,19 +83,23 @@ jobs:
       fail-fast: false
       max-parallel: 20
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
-    # Phase A isolation: build inside a pinned, controlled debian base (bookworm,
-    # glibc 2.36) instead of the drifting runner host — reproducible, no host-tool
-    # leakage, and a known glibc floor.
-    container:
-      image: debian:stable-slim
+    # Phase A isolation: build inside a pinned, controlled debian base instead of
+    # the drifting runner host — reproducible, no host-tool leakage, and a known
+    # glibc floor. On our own Incus pool the container is EMPTY, because the
+    # Incus container is already that environment and nesting one inside it would
+    # need a docker daemon the runner image does not carry.
+    container: ${{ matrix.container }}
     steps:
       - name: base tools
         run: |
-          apt-get update -qq
-          apt-get install -y --no-install-recommends \
+          # In a container the job is root; on the self-hosted runner it is
+          # `runner`, which is in the sudo group. Same step, either way.
+          SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+          $SUDO apt-get update -qq
+          $SUDO apt-get install -y --no-install-recommends \
             ca-certificates curl git xz-utils build-essential gettext jq python3
           # some recipes' configure looks for `python`
-          command -v python >/dev/null || ln -sf "$(command -v python3)" /usr/local/bin/python
+          command -v python >/dev/null || $SUDO ln -sf "$(command -v python3)" /usr/local/bin/python
 
       - uses: actions/checkout@v4
 
