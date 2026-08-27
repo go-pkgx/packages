@@ -1,14 +1,23 @@
 name: fromscratch
-# Continuous PROOF + COVERAGE that published ghcr bottles run in a genuine
-# `docker FROM scratch` image — only pkgx bottles, no debian, no system libc.
+# Continuous PROOF + COVERAGE that published ghcr bottles run FROM SCRATCH —
+# only pkgx bottles, no debian, no system libc.
 #
 # For each witness tool, `pkgm image` emits a `FROM scratch` Containerfile whose
 # `RUN` step uses pkgm ITSELF, inside the image, to install the tool's whole
-# runtime closure over HTTPS and wire the pkgx loader. So the from-scratch
-# install (and this proof) run in the container, exactly like an end user's
-# `pkgm install` — no host-side rootfs staging, no bespoke builder. A closure
-# not yet fully published makes the `docker build` fail → reported as a coverage
-# gap (SKIP); a tool that builds but whose smoke run fails FAILS the job.
+# runtime closure over HTTPS and wire the pkgx loader. This job executes exactly
+# that, in an EMPTY chroot rather than a docker image: the ENV and argv are read
+# out of the Containerfile pkgm emits, so the two cannot drift, and no container
+# engine is involved.
+#
+# A closure not yet fully published makes the install fail → reported as a
+# coverage gap (SKIP); a tool that installs but whose smoke run fails FAILS the
+# job.
+#
+# Why not docker: this runs on our own Incus pool, whose runner image carries
+# neither docker nor podman. A chroot needs neither, and proves the same thing
+# more directly — there is no image layer machinery between the bottles and the
+# assertion. Measured 2026-08-27: lz4 installs itself from ghcr into an empty
+# directory and prints its version, inside an Incus container.
 on:
   workflow_dispatch:
   # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
@@ -20,14 +29,10 @@ permissions:
 
 jobs:
   scratch:
-    # STAYS on GitHub's runners, alone among this repo's linux jobs: it needs a
-    # docker daemon, and the Incus runner image carries neither docker nor
-    # podman. Nesting one inside an Incus system container is possible and is
-    # not worth it for a coverage probe.
-    # ubuntu-latest is linux/x86-64 with docker preinstalled → build+run the
-    # amd64 scratch images natively (no qemu). Bottles are pulled anonymously
-    # from the public ghcr.io/go-pkgx/packages registry by pkgm, in-image.
-    runs-on: ubuntu-latest
+    # Our own GARM/Incus pool: linux/x86-64, so the amd64 closures install and
+    # run natively (no qemu). Bottles are pulled anonymously from the public
+    # ghcr.io/go-pkgx/packages registry by pkgm, from inside the chroot.
+    runs-on: [self-hosted, incus, amd64]
     steps:
       - uses: actions/setup-go@v5
         with: { go-version: stable }
@@ -65,35 +70,64 @@ jobs:
             "curl.se --version"
             "git-scm.org --version"
           )
-          work="$(mktemp -d)"; cp "$PKGM" "$work/pkgm"
+          command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
+          work="$(mktemp -d)"
           PASS=""; SKIP=""; FAIL=""
+          # scratch <root> <argv...> — run argv in an empty root with the ENV the
+          # Containerfile declares. --mount --pid --fork is the isolation a
+          # container runtime would give; the network namespace is deliberately
+          # shared, because the whole point is that pkgm fetches over HTTPS.
+          scratch() {
+            local root="$1"; shift
+            sudo env -i "${SCRATCH_ENV[@]}" \
+              unshare --mount --pid --fork /usr/sbin/chroot "$root" "$@"
+          }
           for entry in "${TOOLS[@]}"; do
             # shellcheck disable=SC2086  # deliberate word-split: proj + smoke args
             set -- $entry
             proj="$1"; shift; smoke=("$@")
             tag="scratch-$(printf '%s' "$proj" | tr '/.' '--')"
             echo "::group::$proj"
-            # Vendor-neutral OCI Containerfile (podman/buildah pick it up by
-            # name; docker builds it with -f).
-            pkgm image -overlay "$OVERLAY" "$proj" > "$work/Containerfile"
-            # A failed build == the closure is not fully published for amd64 yet
-            # (a coverage gap, not a regression). Guarded so `bash -e` never aborts
-            # the panel mid-loop — every witness is exercised.
-            if ! docker build --platform linux/amd64 -f "$work/Containerfile" -t "$tag" "$work"; then
-              echo "SKIP $proj (closure not fully published for amd64)"; SKIP="$SKIP $proj"
+            # The Containerfile is still the source of truth for HOW a
+            # from-scratch install is done — its ENV and its RUN argv are read
+            # back below, so this job cannot drift from what `pkgm image`
+            # promises an end user.
+            cf="$work/Containerfile"
+            pkgm image -overlay "$OVERLAY" "$proj" > "$cf"
+            mapfile -t SCRATCH_ENV < <(sed -n 's/^ENV //p' "$cf")
+            mapfile -t INSTALL_ARGV < <(sed -n 's/^RUN //p' "$cf" | jq -r ".[]")
+            mapfile -t RUN_ARGV < <(sed -n 's/^ENTRYPOINT //p' "$cf" | jq -r ".[]")
+            if [ "${#INSTALL_ARGV[@]}" -eq 0 ] || [ "${#RUN_ARGV[@]}" -eq 0 ]; then
+              echo "FAILED $proj (pkgm image emitted no RUN/ENTRYPOINT)"; FAIL="$FAIL $proj"
               echo "::endgroup::"; continue
             fi
-            if docker run --rm --platform linux/amd64 "$tag" "${smoke[@]}"; then
+            # An EMPTY root: /pkgm, a place for temp files, and the resolver
+            # configuration a container runtime injects too. Nothing else — no
+            # libc, no /usr, no distro.
+            root="$work/$tag"; rm -rf "$root"
+            mkdir -p "$root/root" "$root/etc" "$root/tmp"; chmod 1777 "$root/tmp"
+            cp /etc/resolv.conf "$root/etc/resolv.conf"
+            cp "$PKGM" "$root/pkgm"; chmod 755 "$root/pkgm"
+            # A failed install == the closure is not fully published for amd64 yet
+            # (a coverage gap, not a regression). Guarded so `bash -e` never aborts
+            # the panel mid-loop — every witness is exercised.
+            if ! scratch "$root" "${INSTALL_ARGV[@]}"; then
+              echo "SKIP $proj (closure not fully published for amd64)"; SKIP="$SKIP $proj"
+              sudo rm -rf "$root"; echo "::endgroup::"; continue
+            fi
+            if scratch "$root" "${RUN_ARGV[@]}" "${smoke[@]}"; then
               echo "PASS $proj"; PASS="$PASS $proj"
             else
-              echo "FAILED $proj (built but smoke run broke)"; FAIL="$FAIL $proj"
+              echo "FAILED $proj (installed but smoke run broke)"; FAIL="$FAIL $proj"
             fi
+            # 63 MB per witness on a VM with a few GB free: reclaim as we go.
+            sudo rm -rf "$root"
             echo "::endgroup::"
           done
           echo "================ FROM-scratch coverage ================"
           echo "PASS (run from scratch):$PASS"
           echo "SKIP (closure gap):$SKIP"
-          echo "FAIL (built but broken):$FAIL"
+          echo "FAIL (installed but broken):$FAIL"
           echo "======================================================="
           # Only a built-but-broken tool fails the job; coverage gaps do not.
           [ -z "$FAIL" ] || { echo "::error::from-scratch regressions:$FAIL"; exit 1; }
