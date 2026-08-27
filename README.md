@@ -71,8 +71,13 @@ at once: four publishers doing a read-modify-write on one mutable index tag is w
 silently lost `cmake.org 4.4.2 linux/amd64`.
 
 Measured over 39 such waves on 2026-08-25: **4–8 minutes each**, against 45 minutes
-to 4 hours for a batch of builds — and the blocked-dependency count fell from 1130
-to 125 on linux/x86-64, and from 2265 to 312 on darwin/aarch64.
+to 4 hours for a batch of builds.
+
+The blocked-dependency count now stands at **88 on linux/x86-64, 97 on
+linux/aarch64, 112 on darwin/aarch64, 122 on darwin/x86-64** (2026-08-27). No
+before-figure is quoted, and the ones that were here are gone: they came from a
+crawl that read only the first page of ghcr's tag listing and so missed a third
+of the registry. The ratio was not measurable; only these absolutes are.
 
 ## Build isolation
 
@@ -109,16 +114,16 @@ signed registry by default.
 
 ## Consuming
 
-Packages are OCI artifacts, so any OCI client can pull them. On 2026-08-25:
+Packages are OCI artifacts, so any OCI client can pull them. On 2026-08-27:
 
     $ SUMMARY=1 go run ./catalog
-    1577 projects, 27278 platform builds
-      linux/aarch64      9235
-      linux/x86-64       7957
-      darwin/x86-64      4934
-      darwin/aarch64     4601
-      windows/x86-64     551
-    recipes.txt: 1576 of 1900 published, 324 remaining
+    1579 projects, 41236 platform builds
+      linux/aarch64      14883
+      linux/x86-64       12966
+      darwin/x86-64      6657
+      darwin/aarch64     6176
+      windows/x86-64     554
+    recipes.txt: 1578 of 1900 published, 322 remaining
 
 That is a moving target, and the command above is the point: it enumerates ghcr
 anonymously, so re-run it rather than trusting the paste.
