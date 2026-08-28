@@ -113,12 +113,22 @@ jobs:
               echo "FAILED $proj (pkgm image emitted no RUN/ENTRYPOINT)"; FAIL="$FAIL $proj"
               echo "::endgroup::"; continue
             fi
-            # An EMPTY root: /pkgm, a place for temp files, and the resolver
-            # configuration a container runtime injects too. Nothing else — no
-            # libc, no /usr, no distro.
+            # An EMPTY root: /pkgm, a place for temp files, the resolver
+            # configuration a container runtime injects too, and the handful of
+            # device nodes every runtime creates in a `FROM scratch` container.
+            # Nothing else — no libc, no /usr, no distro.
+            #
+            # /dev is not a concession: without it `git` dies with "could not
+            # open '/dev/null' for reading and writing", which says nothing about
+            # its closure and everything about the root being less than what
+            # docker would have handed it.
             root="$work/$tag"; rm -rf "$root"
-            mkdir -p "$root/root" "$root/etc" "$root/tmp"; chmod 1777 "$root/tmp"
+            mkdir -p "$root/root" "$root/etc" "$root/tmp" "$root/dev"; chmod 1777 "$root/tmp"
             cp /etc/resolv.conf "$root/etc/resolv.conf"
+            for d in null:1:3 zero:1:5 full:1:7 random:1:8 urandom:1:9 tty:5:0; do
+              n=${d%%:*}; rest=${d#*:}
+              sudo mknod -m 666 "$root/dev/$n" c "${rest%%:*}" "${rest#*:}"
+            done
             cp "$PKGM" "$root/pkgm"; chmod 755 "$root/pkgm"
             # A failed install == the closure is not fully published for amd64 yet
             # (a coverage gap, not a regression). Guarded so `bash -e` never aborts
