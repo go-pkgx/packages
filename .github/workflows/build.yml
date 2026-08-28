@@ -26,6 +26,10 @@ on:
         description: "where to run: blank = our GARM/Incus pool for BOTH arches (no GitHub minutes; aarch64 is emulated); `github` = both arches on GitHub's runners."
         required: false
         default: ""
+      arch:
+        description: "restrict the matrix to one arch: blank = both, `x86-64`, `aarch64`. A manual dispatch forces a rebuild, so healing one arch's gaps without this reruns the other arch for nothing."
+        required: false
+        default: ""
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — republished signed + attested (used for the glibc sweep)."
         required: false
@@ -79,15 +83,20 @@ jobs:
           GHARM='{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","container":"debian:stable-slim"}'
           X64=$SELF; ARM=$SELFARM
           if [ "${{ github.event.inputs.runner }}" = github ]; then X64=$GH64; ARM=$GHARM; fi
+          # `arch` drops one half of the pair. jq gets it as a string and
+          # filters on the slug, so an unknown value yields an empty matrix
+          # rather than silently building everything.
+          ONLY="${{ github.event.inputs.arch }}"
           if [ -n "${{ github.event.inputs.recipes }}" ]; then
-            m=$(jq -cn --argjson a "$X64" --argjson b "$ARM" \
-              '{include: [($a, $b) + {chunk:"manual"}]}')
+            m=$(jq -cn --argjson a "$X64" --argjson b "$ARM" --arg only "$ONLY" \
+              '{include: [($a, $b) + {chunk:"manual"} | select($only == "" or (.slug | endswith($only)))]}')
           else
             total=$(grep -vcE '^[[:space:]]*(#|$)' recipes.txt)
             n=$(( (total + CHUNK - 1) / CHUNK ))
-            m=$(jq -cn --argjson n "$n" --argjson a "$X64" --argjson b "$ARM" \
-              '{include: [range(0;$n) as $c | ($a, $b) + {chunk:($c|tostring)}]}')
+            m=$(jq -cn --argjson n "$n" --argjson a "$X64" --argjson b "$ARM" --arg only "$ONLY" \
+              '{include: [range(0;$n) as $c | ($a, $b) + {chunk:($c|tostring)} | select($only == "" or (.slug | endswith($only)))]}')
           fi
+          [ "$(echo "$m" | jq '.include | length')" -gt 0 ] || { echo "arch=$ONLY matched no platform (expected blank, x86-64 or aarch64)" >&2; exit 1; }
           echo "matrix=$m" >> "$GITHUB_OUTPUT"
           echo "$m" | jq '.include | length | "\(.) build jobs"'
 
