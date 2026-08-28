@@ -32,7 +32,11 @@ on:
       versions:
         description: "pkgx constraint; a BARE version is a RANGE, use '=1.2.3' for exactly one"
         required: false
-        default: ""
+        default: "=1.10.0"
+      force:
+        description: "rebuild even when the bottle is already published (blank = skip). The point of this job is to COMPILE, and a skipped build proves nothing."
+        required: false
+        default: "1"
       arch:
         description: "`x86-64` (default) or `aarch64`"
         required: false
@@ -104,22 +108,33 @@ jobs:
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
           RECIPES: ${{ github.event.inputs.recipes || 'lz4.org' }}
-          VERSIONS: ${{ github.event.inputs.versions }}
+          VERSIONS: ${{ github.event.inputs.versions || '=1.10.0' }}
+          # Without this the first green run reported "0 built, 15 skipped —
+          # already published": the whole chain ran and compiled nothing.
+          FORCE: ${{ github.event.inputs.force || '1' }}
         run: |
           root="$RUNNER_TEMP/rootfs"
           mkdir -p "$root/pantry" "$root/overrides" "$root/dist" "$root/dev" "$root/tmp" "$root/etc"
           chmod 1777 "$root/tmp"
           cp /etc/resolv.conf "$root/etc/resolv.conf"
 
+          # --versions is a flag, not an env var bk reads: build it here and
+          # pass it through as trailing positional arguments.
+          # An `if`, not `[ … ] &&`: the runner wraps this in `bash -e {0}`, so a
+          # false test as a bare statement aborts the whole step.
+          extra=()
+          if [ -n "$VERSIONS" ]; then extra+=(--versions "$VERSIONS"); fi
+
           SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
           # --preserve-env, never a command line: the token and the signing key
           # must not become argv anybody can read out of /proc.
-          $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,VERSIONS,PLATFORM \
+          $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,PLATFORM \
             unshare --mount --pid --fork /bin/sh -c '
               set -e
-              # No shift: it renumbers the rest, and $3 then reads empty —
-              # `mount: …/overrides: special device  does not exist`.
-              r="$1"; pantry="$2"; overrides="$3"
+              # Read all three BEFORE shifting — shifting first renumbers the
+              # rest and $3 then reads empty ("special device  does not exist").
+              # `shift 3` afterwards leaves bk's own extra arguments in "$@".
+              r="$1"; pantry="$2"; overrides="$3"; shift 3
               # Device nodes: mknod needs CAP_MKNOD, which an unprivileged Incus
               # container does not have. A bind needs nothing and disappears
               # with the namespace.
@@ -136,8 +151,8 @@ jobs:
                      --overrides /overrides \
                      --libc pkgx \
                      --to oci://ghcr.io/go-pkgx/packages \
-                     --bottles /dist
-            ' sh "$root" "$PWD/pantry" "$PWD/overrides"
+                     --bottles /dist "$@"
+            ' sh "$root" "$PWD/pantry" "$PWD/overrides" "${extra[@]}"
 
       - name: upload dist tree
         if: always()
