@@ -89,10 +89,23 @@ jobs:
           # Containerfile declares. --mount --pid --fork is the isolation a
           # container runtime would give; the network namespace is deliberately
           # shared, because the whole point is that pkgm fetches over HTTPS.
+          #
+          # /dev is bind-mounted, not mknod'd: the Incus container is
+          # unprivileged, so even root has no CAP_MKNOD and mknod answers
+          # "Operation not permitted". A bind needs no capability, and the
+          # nodes vanish with the mount namespace. Inside `env -i` there is no
+          # PATH, so mount and chroot are named absolutely.
           scratch() {
             local root="$1"; shift
             sudo env -i "${SCRATCH_ENV[@]}" \
-              unshare --mount --pid --fork /usr/sbin/chroot "$root" "$@"
+              unshare --mount --pid --fork /bin/sh -c '
+                r="$1"; shift
+                for d in null zero full random urandom tty; do
+                  [ -e "$r/dev/$d" ] || : > "$r/dev/$d"
+                  /usr/bin/mount --bind "/dev/$d" "$r/dev/$d" || exit 1
+                done
+                exec /usr/sbin/chroot "$r" "$@"
+              ' sh "$root" "$@"
           }
           for entry in "${TOOLS[@]}"; do
             # shellcheck disable=SC2086  # deliberate word-split: proj + smoke args
@@ -125,10 +138,6 @@ jobs:
             root="$work/$tag"; rm -rf "$root"
             mkdir -p "$root/root" "$root/etc" "$root/tmp" "$root/dev"; chmod 1777 "$root/tmp"
             cp /etc/resolv.conf "$root/etc/resolv.conf"
-            for d in null:1:3 zero:1:5 full:1:7 random:1:8 urandom:1:9 tty:5:0; do
-              n=${d%%:*}; rest=${d#*:}
-              sudo mknod -m 666 "$root/dev/$n" c "${rest%%:*}" "${rest#*:}"
-            done
             cp "$PKGM" "$root/pkgm"; chmod 755 "$root/pkgm"
             # A failed install == the closure is not fully published for amd64 yet
             # (a coverage gap, not a regression). Guarded so `bash -e` never aborts
