@@ -8,7 +8,7 @@
 
 llvm.org                    # clang, lld, compiler-rt — the compiler itself
 gnu.org/glibc               # libc, crt objects and the dynamic loader
-kernel.org/linux-headers@^7.1
+kernel.org/linux-headers@~7.1
                             # glibc's own headers include <linux/limits.h>, and
                             # a scratch image has no /usr/include to fall back on.
                             #
@@ -19,8 +19,12 @@ kernel.org/linux-headers@^7.1
                             # and no mirror can fix it: dist.pkgx.dev stops at
                             # 7.1.12 for x86-64 while carrying 7.2.1 and 7.2.2
                             # for aarch64 (checked in versions.txt, 2026-08-28).
-                            # ^7.1 is the newest range both arches can actually
-                            # be given, and keeps them on the SAME headers.
+                            # ~7.1 (major.minor, so 7.1.x only), NOT ^7.1:
+                            # caret allows minor bumps, so ^7.1 is satisfied
+                            # by 7.2.1 and pins nothing at all here.
+                            # This is the newest range both arches can
+                            # actually be given, and holds them on the SAME
+                            # headers.
                             # Lift it once we build 7.2.x for x86-64 ourselves.
 gnu.org/binutils            # ar/ranlib: the llvm bottle ships llvm-ar, not `ar`
 
