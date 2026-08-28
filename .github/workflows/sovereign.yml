@@ -113,6 +113,7 @@ jobs:
           # already published": the whole chain ran and compiled nothing.
           FORCE: ${{ github.event.inputs.force || '1' }}
         run: |
+          set -x
           root="$RUNNER_TEMP/rootfs"
           mkdir -p "$root/pantry" "$root/overrides" "$root/dist" "$root/dev" "$root/tmp" "$root/etc"
           chmod 1777 "$root/tmp"
@@ -130,7 +131,8 @@ jobs:
           # must not become argv anybody can read out of /proc.
           $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,PLATFORM \
             unshare --mount --pid --fork /bin/sh -c '
-              set -e
+              set -ex
+              echo "argv: $#: $*"
               # Read all three BEFORE shifting — shifting first renumbers the
               # rest and $3 then reads empty ("special device  does not exist").
               # `shift 3` afterwards leaves bk's own extra arguments in "$@".
