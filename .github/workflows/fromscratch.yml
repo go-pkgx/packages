@@ -34,6 +34,18 @@ jobs:
     # ghcr.io/go-pkgx/packages registry by pkgm, from inside the chroot.
     runs-on: [self-hosted, incus, amd64]
     steps:
+      # The pool's runner image is a plain debian cloud image: no git, and
+      # `GOPROXY=direct` shells out to it ("unable to resolve git version:
+      # exec: git: executable file not found"). jq and the chroot's unshare
+      # come from the base system; git does not.
+      - name: base tools
+        run: |
+          SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+          command -v git >/dev/null && command -v jq >/dev/null || {
+            $SUDO apt-get update -qq
+            $SUDO apt-get install -y --no-install-recommends git jq ca-certificates
+          }
+
       - uses: actions/setup-go@v5
         with: { go-version: stable }
 
@@ -77,10 +89,23 @@ jobs:
           # Containerfile declares. --mount --pid --fork is the isolation a
           # container runtime would give; the network namespace is deliberately
           # shared, because the whole point is that pkgm fetches over HTTPS.
+          #
+          # /dev is bind-mounted, not mknod'd: the Incus container is
+          # unprivileged, so even root has no CAP_MKNOD and mknod answers
+          # "Operation not permitted". A bind needs no capability, and the
+          # nodes vanish with the mount namespace. Inside `env -i` there is no
+          # PATH, so mount and chroot are named absolutely.
           scratch() {
             local root="$1"; shift
             sudo env -i "${SCRATCH_ENV[@]}" \
-              unshare --mount --pid --fork /usr/sbin/chroot "$root" "$@"
+              unshare --mount --pid --fork /bin/sh -c '
+                r="$1"; shift
+                for d in null zero full random urandom tty; do
+                  [ -e "$r/dev/$d" ] || : > "$r/dev/$d"
+                  /usr/bin/mount --bind "/dev/$d" "$r/dev/$d" || exit 1
+                done
+                exec /usr/sbin/chroot "$r" "$@"
+              ' sh "$root" "$@"
           }
           for entry in "${TOOLS[@]}"; do
             # shellcheck disable=SC2086  # deliberate word-split: proj + smoke args
@@ -101,11 +126,17 @@ jobs:
               echo "FAILED $proj (pkgm image emitted no RUN/ENTRYPOINT)"; FAIL="$FAIL $proj"
               echo "::endgroup::"; continue
             fi
-            # An EMPTY root: /pkgm, a place for temp files, and the resolver
-            # configuration a container runtime injects too. Nothing else — no
-            # libc, no /usr, no distro.
+            # An EMPTY root: /pkgm, a place for temp files, the resolver
+            # configuration a container runtime injects too, and the handful of
+            # device nodes every runtime creates in a `FROM scratch` container.
+            # Nothing else — no libc, no /usr, no distro.
+            #
+            # /dev is not a concession: without it `git` dies with "could not
+            # open '/dev/null' for reading and writing", which says nothing about
+            # its closure and everything about the root being less than what
+            # docker would have handed it.
             root="$work/$tag"; rm -rf "$root"
-            mkdir -p "$root/root" "$root/etc" "$root/tmp"; chmod 1777 "$root/tmp"
+            mkdir -p "$root/root" "$root/etc" "$root/tmp" "$root/dev"; chmod 1777 "$root/tmp"
             cp /etc/resolv.conf "$root/etc/resolv.conf"
             cp "$PKGM" "$root/pkgm"; chmod 755 "$root/pkgm"
             # A failed install == the closure is not fully published for amd64 yet
