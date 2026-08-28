@@ -1,0 +1,139 @@
+name: sovereign build
+
+# Proof that a recipe can be compiled with NO distribution involved: the rootfs
+# `bk builder` stages from builder/toolchain.txt, entered with chroot, bk run
+# through pkgx exactly as builder/Containerfile's ENTRYPOINT does.
+#
+# Why this exists: with the ordinary path, what can be built is decided by the
+# runner's distribution. Measured, twice, on our own pool:
+#
+#   * on debian 12 every compile died at `env: … version GLIBC_2.38 not found`,
+#     because bk installs a MIRRORED coreutils linked against a newer glibc;
+#   * on debian 13 the first recipe through, jonas.github.io/tig, failed on a
+#     C23 diagnostic from the runner's GCC — not from the llvm.org bottle we
+#     ship and intend to compile with.
+#
+# Both are the same defect wearing different clothes. go-pkgx owns its build and
+# run environment and manages its own libc versions; this is what that looks
+# like as a job.
+
+on:
+  workflow_dispatch:
+    inputs:
+      recipes:
+        description: "space-separated projects to build inside the sovereign rootfs"
+        required: false
+        default: "lz4.org"
+      versions:
+        description: "pkgx constraint; a BARE version is a RANGE, use '=1.2.3' for exactly one"
+        required: false
+        default: ""
+      arch:
+        description: "`x86-64` (default) or `aarch64`"
+        required: false
+        default: "x86-64"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  sovereign:
+    runs-on: ${{ github.event.inputs.arch == 'aarch64' && fromJSON('["self-hosted","incus","arm64"]') || fromJSON('["self-hosted","incus","amd64"]') }}
+    timeout-minutes: 330
+    env:
+      PLATFORM: linux/${{ github.event.inputs.arch || 'x86-64' }}
+    steps:
+      # The host's only jobs are: run three static Go binaries, and hold a mount
+      # namespace. Nothing it links against reaches the build.
+      - name: host tools
+        run: |
+          SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+          command -v git >/dev/null || { $SUDO apt-get update -qq; $SUDO apt-get install -y --no-install-recommends git ca-certificates; }
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+
+      - name: build bk, pkgx and pkgm (static)
+        run: |
+          for m in bk/cmd/bk pkgx pkgm; do
+            CGO_ENABLED=0 GOPROXY=direct go install "github.com/go-pkgx/$m@main"
+          done
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: clone pantry
+        run: git clone --depth 1 https://github.com/pkgxdev/pantry
+
+      # A directory, not an image: builder/README.md's primitive. --container
+      # writes /etc/ld.so.conf listing every staged library directory, without
+      # which /bin/sh inside the tree cannot find libc.
+      - name: stage the sovereign rootfs
+        env:
+          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+        run: |
+          bk builder \
+            --out "$RUNNER_TEMP/rootfs" \
+            --platform "$PLATFORM" \
+            --toolchain builder/toolchain.txt \
+            --bk "$(command -v bk)" \
+            --pkgx "$(command -v pkgx)" \
+            --container
+          du -sh "$RUNNER_TEMP/rootfs"
+
+      - name: what the rootfs is made of
+        run: |
+          root="$RUNNER_TEMP/rootfs"
+          echo "top level:"; ls "$root"
+          # The claim to check is a negative one: no distribution in there.
+          for d in usr/lib/x86_64-linux-gnu lib/x86_64-linux-gnu lib/aarch64-linux-gnu etc/debian_version etc/os-release; do
+            [ -e "$root/$d" ] && echo "  UNEXPECTED: $d" || true
+          done
+          echo "glibc staged:"; find "$root/pkgx/gnu.org/glibc" -maxdepth 1 -mindepth 1 2>/dev/null | head -3
+
+      - name: build + publish inside the rootfs
+        env:
+          OCI_USERNAME: ${{ github.actor }}
+          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+          RECIPES: ${{ github.event.inputs.recipes }}
+          VERSIONS: ${{ github.event.inputs.versions }}
+        run: |
+          root="$RUNNER_TEMP/rootfs"
+          mkdir -p "$root/pantry" "$root/overrides" "$root/dist" "$root/dev" "$root/tmp" "$root/etc"
+          chmod 1777 "$root/tmp"
+          cp /etc/resolv.conf "$root/etc/resolv.conf"
+
+          SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+          # --preserve-env, never a command line: the token and the signing key
+          # must not become argv anybody can read out of /proc.
+          $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,VERSIONS,PLATFORM \
+            unshare --mount --pid --fork /bin/sh -c '
+              set -e
+              r="$1"; shift
+              # Device nodes: mknod needs CAP_MKNOD, which an unprivileged Incus
+              # container does not have. A bind needs nothing and disappears
+              # with the namespace.
+              for d in null zero full random urandom tty; do
+                [ -e "$r/dev/$d" ] || : > "$r/dev/$d"
+                /usr/bin/mount --bind "/dev/$d" "$r/dev/$d"
+              done
+              /usr/bin/mount --bind "$2" "$r/pantry"
+              /usr/bin/mount --bind "$3" "$r/overrides"
+              exec /usr/sbin/chroot "$r" /usr/local/bin/pkgx \
+                +gnu.org/glibc +gnu.org/coreutils +gnu.org/make +llvm.org \
+                -- /usr/local/bin/bk factory \
+                     --pantry /pantry \
+                     --overrides /overrides \
+                     --libc pkgx \
+                     --to oci://ghcr.io/go-pkgx/packages \
+                     --bottles /dist
+            ' sh "$root" "$PWD/pantry" "$PWD/overrides"
+
+      - name: upload dist tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovereign-dist-${{ github.event.inputs.arch || 'x86-64' }}
+          path: ${{ runner.temp }}/rootfs/dist
+          if-no-files-found: warn
