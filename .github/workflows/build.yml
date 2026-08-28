@@ -30,6 +30,10 @@ on:
         description: "restrict the matrix to one arch: blank = both, `x86-64`, `aarch64`. A manual dispatch forces a rebuild, so healing one arch's gaps without this reruns the other arch for nothing."
         required: false
         default: ""
+      sovereign:
+        description: "build inside the FROM-scratch rootfs `bk builder` stages, so neither the host's libc nor its compiler takes part (blank = the runner's distribution, which is what decides today). Not compatible with mirror_from, which compiles nothing."
+        required: false
+        default: ""
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — republished signed + attested (used for the glibc sweep)."
         required: false
@@ -159,6 +163,25 @@ jobs:
       - name: clone pantry
         run: git clone --depth 1 https://github.com/pkgxdev/pantry
 
+      # The sovereign path: a rootfs assembled from OUR bottles, entered with
+      # chroot. The host then contributes three static Go binaries and a mount
+      # namespace, and nothing it links against reaches the build. See
+      # builder/README.md, and .github/workflows/sovereign.yml for the job that
+      # proves one recipe end to end.
+      - name: stage the sovereign rootfs
+        if: github.event.inputs.sovereign != ''
+        env:
+          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+        run: |
+          CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/pkgm@main
+          bk builder \
+            --out "$RUNNER_TEMP/rootfs" \
+            --platform "${{ matrix.platform }}" \
+            --toolchain builder/toolchain.txt \
+            --bk "$(command -v bk)" \
+            --pkgx "$(command -v pkgx)" \
+            --container
+
       - name: build + publish this chunk
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -178,6 +201,7 @@ jobs:
           # where every other correction WAS applied.
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
           VERSIONS: ${{ github.event.inputs.versions }}
+          SOVEREIGN: ${{ github.event.inputs.sovereign }}
         run: |
           FORCE=""
           if [ "${{ matrix.chunk }}" = "manual" ]; then
@@ -204,14 +228,29 @@ jobs:
           # (an `if`, not `[ … ] &&`: the runner wraps this in `bash -e {0}`, so a
           # false test as a bare statement would abort the whole step)
           if [ -n "$GLIBC" ]; then export PKGX_DIR=/pkgx; fi
-          bk factory \
-            --pantry pantry \
-            --overrides overrides \
-            --to oci://ghcr.io/go-pkgx/packages \
-            --bottles dist \
-            ${GLIBC:+--glibc "$GLIBC"} \
-            ${VERSIONS:+--versions "$VERSIONS"} \
-            ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"}
+          if [ -n "$SOVEREIGN" ]; then
+            # One shared script, not a copy: every line of it is there because
+            # its absence was measured, and two divergent copies of that is how
+            # one of them silently stops being sovereign.
+            # A chunk is best-effort by design, so it must NOT fail on "0 built".
+            export PKGX_DIR=/pkgx HOME=/root
+            export PKGX_DIST=oci://ghcr.io/go-pkgx/packages
+            export SOVEREIGN_REQUIRE_BUILD=0
+            builder/sovereign-build.sh \
+              "$RUNNER_TEMP/rootfs" "$PWD/pantry" "$PWD/overrides" \
+              ${GLIBC:+--glibc "$GLIBC"} \
+              ${VERSIONS:+--versions "$VERSIONS"}
+            cp -r "$RUNNER_TEMP/rootfs/dist" dist 2>/dev/null || true
+          else
+            bk factory \
+              --pantry pantry \
+              --overrides overrides \
+              --to oci://ghcr.io/go-pkgx/packages \
+              --bottles dist \
+              ${GLIBC:+--glibc "$GLIBC"} \
+              ${VERSIONS:+--versions "$VERSIONS"} \
+              ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"}
+          fi
 
       # The pkgx dist tree `bk factory --bottles dist` writes — unioned into
       # the GitHub Pages mirror by pages.yml. Named per arch+chunk so pages.yml
