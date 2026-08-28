@@ -135,7 +135,11 @@ jobs:
               echo "argv: $#: $*"
               # Read all three BEFORE shifting — shifting first renumbers the
               # rest and $3 then reads empty ("special device  does not exist").
-              # `shift 3` afterwards leaves bk's own extra arguments in "$@".
+              # `shift 3` afterwards leaves the extra bk arguments in "$@".
+              # NO APOSTROPHE anywhere below: this whole script is one
+              # single-quoted argument, and one apostrophe closes it — the
+              # symptom was `argv: 4: extra arguments in .`, the tail of a
+              # comment arriving as positional parameters.
               r="$1"; pantry="$2"; overrides="$3"; shift 3
               # Device nodes: mknod needs CAP_MKNOD, which an unprivileged Incus
               # container does not have. A bind needs nothing and disappears
