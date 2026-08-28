@@ -18,11 +18,6 @@ name: sovereign build
 # like as a job.
 
 on:
-  # While the workflow is not yet on the default branch, a push is the only way
-  # to run it at all — workflow_dispatch cannot reach a file that main has never
-  # seen. Removed once this lands.
-  push:
-    branches: [sovereign-build]
   workflow_dispatch:
     inputs:
       recipes:
@@ -140,8 +135,9 @@ jobs:
           # must not become argv anybody can read out of /proc.
           $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_PANTRY_OVERLAY \
             unshare --mount --pid --fork /bin/sh -c '
+              # set -x stays: this step once exited 1 without printing a
+              # single line, and only the trace found the reason.
               set -ex
-              echo "argv: $#: $*"
               # Read all three BEFORE shifting — shifting first renumbers the
               # rest and $3 then reads empty ("special device  does not exist").
               # `shift 3` afterwards leaves the extra bk arguments in "$@".
