@@ -23,7 +23,7 @@ on:
         required: false
         default: ""
       runner:
-        description: "where to run: blank = our GARM/Incus pool for x86-64 (no GitHub minutes) with aarch64 on GitHub; `github` = both arches on GitHub's runners."
+        description: "where to run: blank = our GARM/Incus pool for BOTH arches (no GitHub minutes; aarch64 is emulated); `github` = both arches on GitHub's runners."
         required: false
         default: ""
       mirror_from:
@@ -62,22 +62,30 @@ jobs:
       - uses: actions/checkout@v4
       - id: gen
         run: |
-          # Our own pool carries x86-64 and needs no `container:` — the Incus
-          # container IS the controlled Debian environment (bookworm, glibc
-          # 2.36, which is the floor this workflow's comment always meant;
-          # debian:stable-slim has since moved to trixie). It is amd64 only, so
-          # aarch64 stays on GitHub, in the container, as before.
+          # Our own pool needs no `container:` — the Incus container IS the
+          # controlled Debian environment (bookworm, glibc 2.36, which is the
+          # floor this workflow's comment always meant; debian:stable-slim has
+          # since moved to trixie).
+          #
+          # The host is amd64, so its aarch64 pool runs an aarch64 rootfs under
+          # qemu-user (binfmt_misc, flag C so setuid still works). Measured
+          # against the native pool: a short gcc run costs ~37x, a long-running
+          # binary ~3x — the gap is qemu's per-process start-up, which configure
+          # scripts pay thousands of times. Pass `runner: github` for the arm
+          # runners GitHub bills for when a recipe is too slow to emulate.
           SELF='{"runner":["self-hosted","incus","amd64"],"platform":"linux/x86-64","slug":"linux-x86-64","container":""}'
+          SELFARM='{"runner":["self-hosted","incus","arm64"],"platform":"linux/aarch64","slug":"linux-aarch64","container":""}'
           GH64='{"runner":"ubuntu-latest","platform":"linux/x86-64","slug":"linux-x86-64","container":"debian:stable-slim"}'
           GHARM='{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","container":"debian:stable-slim"}'
-          X64=$SELF; [ "${{ github.event.inputs.runner }}" = github ] && X64=$GH64
+          X64=$SELF; ARM=$SELFARM
+          if [ "${{ github.event.inputs.runner }}" = github ]; then X64=$GH64; ARM=$GHARM; fi
           if [ -n "${{ github.event.inputs.recipes }}" ]; then
-            m=$(jq -cn --argjson a "$X64" --argjson b "$GHARM" \
+            m=$(jq -cn --argjson a "$X64" --argjson b "$ARM" \
               '{include: [($a, $b) + {chunk:"manual"}]}')
           else
             total=$(grep -vcE '^[[:space:]]*(#|$)' recipes.txt)
             n=$(( (total + CHUNK - 1) / CHUNK ))
-            m=$(jq -cn --argjson n "$n" --argjson a "$X64" --argjson b "$GHARM" \
+            m=$(jq -cn --argjson n "$n" --argjson a "$X64" --argjson b "$ARM" \
               '{include: [range(0;$n) as $c | ($a, $b) + {chunk:($c|tostring)}]}')
           fi
           echo "matrix=$m" >> "$GITHUB_OUTPUT"
