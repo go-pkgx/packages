@@ -94,14 +94,16 @@ jobs:
           for d in usr/lib/x86_64-linux-gnu lib/x86_64-linux-gnu lib/aarch64-linux-gnu etc/debian_version etc/os-release; do
             [ -e "$root/$d" ] && echo "  UNEXPECTED: $d" || true
           done
-          echo "glibc staged:"; find "$root/pkgx/gnu.org/glibc" -maxdepth 1 -mindepth 1 2>/dev/null | head -3
+          echo "the loader the tree will actually use:"
+          ls -l "$root/lib64" "$root/lib" 2>/dev/null | grep -i "ld-linux" || true
+          echo "glibc staged:"; find "$root" -maxdepth 5 -type d -name "glibc*" 2>/dev/null | head -3
 
       - name: build + publish inside the rootfs
         env:
           OCI_USERNAME: ${{ github.actor }}
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
-          RECIPES: ${{ github.event.inputs.recipes }}
+          RECIPES: ${{ github.event.inputs.recipes || 'lz4.org' }}
           VERSIONS: ${{ github.event.inputs.versions }}
         run: |
           root="$RUNNER_TEMP/rootfs"
@@ -115,7 +117,9 @@ jobs:
           $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,VERSIONS,PLATFORM \
             unshare --mount --pid --fork /bin/sh -c '
               set -e
-              r="$1"; shift
+              # No shift: it renumbers the rest, and $3 then reads empty —
+              # `mount: …/overrides: special device  does not exist`.
+              r="$1"; pantry="$2"; overrides="$3"
               # Device nodes: mknod needs CAP_MKNOD, which an unprivileged Incus
               # container does not have. A bind needs nothing and disappears
               # with the namespace.
@@ -123,8 +127,8 @@ jobs:
                 [ -e "$r/dev/$d" ] || : > "$r/dev/$d"
                 /usr/bin/mount --bind "/dev/$d" "$r/dev/$d"
               done
-              /usr/bin/mount --bind "$2" "$r/pantry"
-              /usr/bin/mount --bind "$3" "$r/overrides"
+              /usr/bin/mount --bind "$pantry" "$r/pantry"
+              /usr/bin/mount --bind "$overrides" "$r/overrides"
               exec /usr/sbin/chroot "$r" /usr/local/bin/pkgx \
                 +gnu.org/glibc +gnu.org/coreutils +gnu.org/make +llvm.org \
                 -- /usr/local/bin/bk factory \
