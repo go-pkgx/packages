@@ -1,0 +1,193 @@
+name: sovereign build
+
+# Proof that a recipe can be compiled with NO distribution involved: the rootfs
+# `bk builder` stages from builder/toolchain.txt, entered with chroot, bk run
+# through pkgx exactly as builder/Containerfile's ENTRYPOINT does.
+#
+# Why this exists: with the ordinary path, what can be built is decided by the
+# runner's distribution. Measured, twice, on our own pool:
+#
+#   * on debian 12 every compile died at `env: … version GLIBC_2.38 not found`,
+#     because bk installs a MIRRORED coreutils linked against a newer glibc;
+#   * on debian 13 the first recipe through, jonas.github.io/tig, failed on a
+#     C23 diagnostic from the runner's GCC — not from the llvm.org bottle we
+#     ship and intend to compile with.
+#
+# Both are the same defect wearing different clothes. go-pkgx owns its build and
+# run environment and manages its own libc versions; this is what that looks
+# like as a job.
+
+on:
+  workflow_dispatch:
+    inputs:
+      recipes:
+        description: "space-separated projects to build inside the sovereign rootfs"
+        required: false
+        default: "lz4.org"
+      versions:
+        description: "pkgx constraint; a BARE version is a RANGE, use '=1.2.3' for exactly one"
+        required: false
+        default: "=1.10.0"
+      force:
+        description: "rebuild even when the bottle is already published (blank = skip). The point of this job is to COMPILE, and a skipped build proves nothing."
+        required: false
+        default: "1"
+      arch:
+        description: "`x86-64` (default) or `aarch64`"
+        required: false
+        default: "x86-64"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  sovereign:
+    runs-on: ${{ github.event.inputs.arch == 'aarch64' && fromJSON('["self-hosted","incus","arm64"]') || fromJSON('["self-hosted","incus","amd64"]') }}
+    timeout-minutes: 330
+    env:
+      PLATFORM: linux/${{ github.event.inputs.arch || 'x86-64' }}
+    steps:
+      # The host's only jobs are: run three static Go binaries, and hold a mount
+      # namespace. Nothing it links against reaches the build.
+      - name: host tools
+        run: |
+          SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+          command -v git >/dev/null || { $SUDO apt-get update -qq; $SUDO apt-get install -y --no-install-recommends git ca-certificates; }
+
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: stable }
+
+      - name: build bk, pkgx and pkgm (static)
+        run: |
+          for m in bk/cmd/bk pkgx pkgm; do
+            CGO_ENABLED=0 GOPROXY=direct go install "github.com/go-pkgx/$m@main"
+          done
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: clone pantry
+        run: git clone --depth 1 https://github.com/pkgxdev/pantry
+
+      # A directory, not an image: builder/README.md's primitive. --container
+      # writes /etc/ld.so.conf listing every staged library directory, without
+      # which /bin/sh inside the tree cannot find libc.
+      - name: stage the sovereign rootfs
+        env:
+          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+        run: |
+          bk builder \
+            --out "$RUNNER_TEMP/rootfs" \
+            --platform "$PLATFORM" \
+            --toolchain builder/toolchain.txt \
+            --bk "$(command -v bk)" \
+            --pkgx "$(command -v pkgx)" \
+            --container
+          du -sh "$RUNNER_TEMP/rootfs"
+
+      - name: what the rootfs is made of
+        run: |
+          root="$RUNNER_TEMP/rootfs"
+          echo "top level:"; ls "$root"
+          # The claim to check is a negative one: no distribution in there.
+          for d in usr/lib/x86_64-linux-gnu lib/x86_64-linux-gnu lib/aarch64-linux-gnu etc/debian_version etc/os-release; do
+            [ -e "$root/$d" ] && echo "  UNEXPECTED: $d" || true
+          done
+          echo "the loader the tree will actually use:"
+          ls -l "$root/lib64" "$root/lib" 2>/dev/null | grep -i "ld-linux" || true
+          echo "glibc staged:"; find "$root" -maxdepth 5 -type d -name "glibc*" 2>/dev/null | head -3
+
+      - name: build + publish inside the rootfs
+        env:
+          OCI_USERNAME: ${{ github.actor }}
+          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+          # builder/Containerfile's ENV lines, not just its ENTRYPOINT. Without
+          # PKGX_DIR the chroot inherits pkgx's $HOME/.pkgx default, which
+          # (a) re-downloads the toolchain the staged tree already holds and
+          # (b) bakes PT_INTERP=/root/.pkgx/... into the bottle — an absolute
+          # path no consumer has. Measured on the first bottle this job built.
+          PKGX_DIR: /pkgx
+          HOME: /root
+          PKGX_DIST: oci://ghcr.io/go-pkgx/packages
+          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+          RECIPES: ${{ github.event.inputs.recipes || 'lz4.org' }}
+          VERSIONS: ${{ github.event.inputs.versions || '=1.10.0' }}
+          # Without this the first green run reported "0 built, 15 skipped —
+          # already published": the whole chain ran and compiled nothing.
+          FORCE: ${{ github.event.inputs.force || '1' }}
+        run: |
+          set -x -o pipefail
+          root="$RUNNER_TEMP/rootfs"
+          mkdir -p "$root/pantry" "$root/overrides" "$root/dist" "$root/dev" "$root/proc" "$root/tmp" "$root/etc"
+          chmod 1777 "$root/tmp"
+          cp /etc/resolv.conf "$root/etc/resolv.conf"
+
+          # --versions is a flag, not an env var bk reads: build it here and
+          # pass it through as trailing positional arguments.
+          # An `if`, not `[ … ] &&`: the runner wraps this in `bash -e {0}`, so a
+          # false test as a bare statement aborts the whole step.
+          extra=()
+          if [ -n "$VERSIONS" ]; then extra+=(--versions "$VERSIONS"); fi
+
+          SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+          # --preserve-env, never a command line: the token and the signing key
+          # must not become argv anybody can read out of /proc.
+          $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_PANTRY_OVERLAY \
+            unshare --mount --pid --fork /bin/sh -c '
+              # set -x stays: this step once exited 1 without printing a
+              # single line, and only the trace found the reason.
+              set -ex
+              # Read all three BEFORE shifting — shifting first renumbers the
+              # rest and $3 then reads empty ("special device  does not exist").
+              # `shift 3` afterwards leaves the extra bk arguments in "$@".
+              # NO APOSTROPHE anywhere below: this whole script is one
+              # single-quoted argument, and one apostrophe closes it — the
+              # symptom was `argv: 4: extra arguments in .`, the tail of a
+              # comment arriving as positional parameters.
+              r="$1"; pantry="$2"; overrides="$3"; shift 3
+              # Device nodes: mknod needs CAP_MKNOD, which an unprivileged Incus
+              # container does not have. A bind needs nothing and disappears
+              # with the namespace.
+              for d in null zero full random urandom tty; do
+                [ -e "$r/dev/$d" ] || : > "$r/dev/$d"
+                /usr/bin/mount --bind "/dev/$d" "$r/dev/$d"
+              done
+              # A container runtime always mounts /proc. Without it bk dies at
+              # `write libexec: readlink /proc/self/exe: no such file or
+              # directory` — a failure that says nothing about the recipe. The
+              # namespace is --pid --fork, so this procfs shows that namespace.
+              /usr/bin/mount -t proc proc "$r/proc"
+              /usr/bin/mount --bind "$pantry" "$r/pantry"
+              /usr/bin/mount --bind "$overrides" "$r/overrides"
+              exec /usr/sbin/chroot "$r" /usr/local/bin/pkgx \
+                +gnu.org/glibc +gnu.org/coreutils +gnu.org/make +llvm.org \
+                -- /usr/local/bin/bk factory \
+                     --pantry /pantry \
+                     --overrides /overrides \
+                     --libc pkgx \
+                     --to oci://ghcr.io/go-pkgx/packages \
+                     --bottles /dist "$@"
+            ' sh "$root" "$PWD/pantry" "$PWD/overrides" "${extra[@]}" 2>&1 | tee "$RUNNER_TEMP/bk.log"
+
+          # bk factory is best-effort and exits 0 with a per-recipe tally, which
+          # is right for a 50-project chunk and wrong here: this job exists to
+          # prove ONE build. Read the tally.
+          #
+          # Both directions matter. The first green run of this workflow said
+          # "0 built, 15 skipped — already published": every step passed and
+          # nothing was compiled.
+          if grep -qE "=== summary .*: [0-9]+ built, [0-9]+ skipped, [1-9][0-9]* failed ===" "$RUNNER_TEMP/bk.log"; then
+            echo "::error::a build failed inside the sovereign rootfs"; exit 1
+          fi
+          if ! grep -qE "=== summary .*: [1-9][0-9]* built," "$RUNNER_TEMP/bk.log"; then
+            echo "::error::nothing was built — a run that compiles nothing proves nothing"; exit 1
+          fi
+
+      - name: upload dist tree
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovereign-dist-${{ github.event.inputs.arch || 'x86-64' }}
+          path: ${{ runner.temp }}/rootfs/dist
+          if-no-files-found: warn
