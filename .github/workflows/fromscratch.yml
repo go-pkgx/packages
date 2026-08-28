@@ -34,6 +34,18 @@ jobs:
     # ghcr.io/go-pkgx/packages registry by pkgm, from inside the chroot.
     runs-on: [self-hosted, incus, amd64]
     steps:
+      # The pool's runner image is a plain debian cloud image: no git, and
+      # `GOPROXY=direct` shells out to it ("unable to resolve git version:
+      # exec: git: executable file not found"). jq and the chroot's unshare
+      # come from the base system; git does not.
+      - name: base tools
+        run: |
+          SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+          command -v git >/dev/null && command -v jq >/dev/null || {
+            $SUDO apt-get update -qq
+            $SUDO apt-get install -y --no-install-recommends git jq ca-certificates
+          }
+
       - uses: actions/setup-go@v5
         with: { go-version: stable }
 
