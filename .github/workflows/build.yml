@@ -67,9 +67,16 @@ jobs:
       - id: gen
         run: |
           # Our own pool needs no `container:` — the Incus container IS the
-          # controlled Debian environment (bookworm, glibc 2.36, which is the
-          # floor this workflow's comment always meant; debian:stable-slim has
-          # since moved to trixie).
+          # controlled environment. It is debian TRIXIE (glibc 2.41), not
+          # bookworm: the bottles bk installs to build with are MIRRORED from
+          # upstream and linked against whatever distro built them, and our own
+          # gnu.org/coreutils 9.11 needs GLIBC_2.38. On bookworm (2.36) every
+          # build died at
+          #     env: /lib/*/libc.so.6: version `GLIBC_2.38' not found
+          # — measured by running that exact binary in both distributions. The
+          # 2.36 floor this comment used to claim was never real for a pool
+          # build; only the mirror path, which compiles nothing, ever worked
+          # here. A floor lower than the container's is what `--glibc` is for.
           #
           # The host is amd64, so its aarch64 pool runs an aarch64 rootfs under
           # qemu-user (binfmt_misc, flag C so setuid still works). Measured
