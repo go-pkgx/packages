@@ -18,6 +18,11 @@ name: sovereign build
 # like as a job.
 
 on:
+  # While the workflow is not yet on the default branch, a push is the only way
+  # to run it at all — workflow_dispatch cannot reach a file that main has never
+  # seen. Removed once this lands.
+  push:
+    branches: [sovereign-build]
   workflow_dispatch:
     inputs:
       recipes:
