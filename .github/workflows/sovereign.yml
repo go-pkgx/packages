@@ -107,6 +107,15 @@ jobs:
           OCI_USERNAME: ${{ github.actor }}
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+          # builder/Containerfile's ENV lines, not just its ENTRYPOINT. Without
+          # PKGX_DIR the chroot inherits pkgx's $HOME/.pkgx default, which
+          # (a) re-downloads the toolchain the staged tree already holds and
+          # (b) bakes PT_INTERP=/root/.pkgx/... into the bottle — an absolute
+          # path no consumer has. Measured on the first bottle this job built.
+          PKGX_DIR: /pkgx
+          HOME: /root
+          PKGX_DIST: oci://ghcr.io/go-pkgx/packages
+          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
           RECIPES: ${{ github.event.inputs.recipes || 'lz4.org' }}
           VERSIONS: ${{ github.event.inputs.versions || '=1.10.0' }}
           # Without this the first green run reported "0 built, 15 skipped —
@@ -129,7 +138,7 @@ jobs:
           SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
           # --preserve-env, never a command line: the token and the signing key
           # must not become argv anybody can read out of /proc.
-          $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,PLATFORM \
+          $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_PANTRY_OVERLAY \
             unshare --mount --pid --fork /bin/sh -c '
               set -ex
               echo "argv: $#: $*"
