@@ -113,9 +113,9 @@ jobs:
           # already published": the whole chain ran and compiled nothing.
           FORCE: ${{ github.event.inputs.force || '1' }}
         run: |
-          set -x
+          set -x -o pipefail
           root="$RUNNER_TEMP/rootfs"
-          mkdir -p "$root/pantry" "$root/overrides" "$root/dist" "$root/dev" "$root/tmp" "$root/etc"
+          mkdir -p "$root/pantry" "$root/overrides" "$root/dist" "$root/dev" "$root/proc" "$root/tmp" "$root/etc"
           chmod 1777 "$root/tmp"
           cp /etc/resolv.conf "$root/etc/resolv.conf"
 
@@ -148,6 +148,11 @@ jobs:
                 [ -e "$r/dev/$d" ] || : > "$r/dev/$d"
                 /usr/bin/mount --bind "/dev/$d" "$r/dev/$d"
               done
+              # A container runtime always mounts /proc. Without it bk dies at
+              # `write libexec: readlink /proc/self/exe: no such file or
+              # directory` — a failure that says nothing about the recipe. The
+              # namespace is --pid --fork, so this procfs shows that namespace.
+              /usr/bin/mount -t proc proc "$r/proc"
               /usr/bin/mount --bind "$pantry" "$r/pantry"
               /usr/bin/mount --bind "$overrides" "$r/overrides"
               exec /usr/sbin/chroot "$r" /usr/local/bin/pkgx \
@@ -158,7 +163,21 @@ jobs:
                      --libc pkgx \
                      --to oci://ghcr.io/go-pkgx/packages \
                      --bottles /dist "$@"
-            ' sh "$root" "$PWD/pantry" "$PWD/overrides" "${extra[@]}"
+            ' sh "$root" "$PWD/pantry" "$PWD/overrides" "${extra[@]}" 2>&1 | tee "$RUNNER_TEMP/bk.log"
+
+          # bk factory is best-effort and exits 0 with a per-recipe tally, which
+          # is right for a 50-project chunk and wrong here: this job exists to
+          # prove ONE build. Read the tally.
+          #
+          # Both directions matter. The first green run of this workflow said
+          # "0 built, 15 skipped — already published": every step passed and
+          # nothing was compiled.
+          if grep -qE "=== summary .*: [0-9]+ built, [0-9]+ skipped, [1-9][0-9]* failed ===" "$RUNNER_TEMP/bk.log"; then
+            echo "::error::a build failed inside the sovereign rootfs"; exit 1
+          fi
+          if ! grep -qE "=== summary .*: [1-9][0-9]* built," "$RUNNER_TEMP/bk.log"; then
+            echo "::error::nothing was built — a run that compiles nothing proves nothing"; exit 1
+          fi
 
       - name: upload dist tree
         if: always()
