@@ -72,6 +72,23 @@ jobs:
       # A directory, not an image: builder/README.md's primitive. --container
       # writes /etc/ld.so.conf listing every staged library directory, without
       # which /bin/sh inside the tree cannot find libc.
+      # A zot pull-through cache runs on the pool host, bound to the Incus
+      # bridge. Staging the toolchain pulls ~2 GiB (llvm.org alone is ~1.7), and
+      # every job on this machine would otherwise pull it from ghcr again.
+      # Detected rather than configured: a GitHub-hosted runner cannot reach
+      # 10.46.81.1 and simply keeps ghcr. Signature verification is unaffected —
+      # zot proxies the cosign referrer along with the bottle.
+      - name: point at the pull-through cache if it answers
+        run: |
+          DIST=oci://ghcr.io/go-pkgx/packages
+          if curl -fsS -m 3 http://10.46.81.1:5111/v2/ >/dev/null 2>&1; then
+            DIST=oci://http://10.46.81.1:5111/go-pkgx/packages
+            echo "pull-through cache answers — installing through it"
+          else
+            echo "no cache on this runner — installing from ghcr"
+          fi
+          echo "PKGX_DIST=$DIST" >> "$GITHUB_ENV"
+
       - name: stage the sovereign rootfs
         env:
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
@@ -109,7 +126,6 @@ jobs:
           # path no consumer has. Measured on the first bottle this job built.
           PKGX_DIR: /pkgx
           HOME: /root
-          PKGX_DIST: oci://ghcr.io/go-pkgx/packages
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
           RECIPES: ${{ github.event.inputs.recipes || 'lz4.org' }}
           VERSIONS: ${{ github.event.inputs.versions || '=1.10.0' }}
