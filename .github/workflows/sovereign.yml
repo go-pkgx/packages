@@ -80,14 +80,20 @@ jobs:
       # zot proxies the cosign referrer along with the bottle.
       - name: point at the pull-through cache if it answers
         run: |
-          DIST=oci://ghcr.io/go-pkgx/packages
+          # The cache accelerates BLOB pulls only. It must not become PKGX_DIST:
+          # zot cannot serve the tag listing of a repository it has not synced
+          # yet, so resolution falls back to the upstream dist, takes a version
+          # string from there, and asks the cache for a tag our registry does not
+          # use — `gnu.org/bash` is published as `5.3`, not `5.3.0`:
+          #   install gnu.org/bash 5.3.0: …/gnu.org/bash:5.3.0: not found
+          # Listing stays on ghcr; PKGX_CACHE is consulted for the bottle itself.
+          echo "PKGX_DIST=oci://ghcr.io/go-pkgx/packages" >> "$GITHUB_ENV"
           if curl -fsS -m 3 http://10.46.81.1:5111/v2/ >/dev/null 2>&1; then
-            DIST=oci://http://10.46.81.1:5111/go-pkgx/packages
-            echo "pull-through cache answers — installing through it"
+            echo "pull-through cache answers — bottles will be pulled through it"
+            echo "PKGX_CACHE=oci://http://10.46.81.1:5111/go-pkgx/packages" >> "$GITHUB_ENV"
           else
-            echo "no cache on this runner — installing from ghcr"
+            echo "no cache on this runner — bottles come straight from ghcr"
           fi
-          echo "PKGX_DIST=$DIST" >> "$GITHUB_ENV"
 
       - name: stage the sovereign rootfs
         env:
