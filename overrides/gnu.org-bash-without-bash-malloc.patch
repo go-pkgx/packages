@@ -1,0 +1,26 @@
+diff --git a/projects/gnu.org/bash/package.yml b/projects/gnu.org/bash/package.yml
+index da16fcb..8251327 100644
+--- a/projects/gnu.org/bash/package.yml
++++ b/projects/gnu.org/bash/package.yml
+@@ -32,6 +32,21 @@ build:
+     - run: ARGS="$ARGS $LEGACY_ARGS"
+       if: <5
+ 
++    # bash ships its own sbrk-based malloc and builds with it by DEFAULT. Every
++    # distribution turns it off (debian, ubuntu, fedora, arch all configure
++    # --without-bash-malloc) because it is slower, older, and interacts badly
++    # with anything that constrains the data segment.
++    #
++    # It also makes the resulting bash unusable under qemu-user: with qemu's
++    # default reserved address space it cannot allocate at ALL, dying on the
++    # first command it runs —
++    #   bash: xmalloc: setlinebuf.c:51: cannot allocate 2016 bytes (0 bytes allocated)
++    # while the same bash built --without-bash-malloc, and the distributions'
++    # own, run fine. That is what a cross-arch build under emulation hits, and
++    # the wreckage downstream (a make target failing, an `ln` linking a file to
++    # itself out of a variable no shell could set) looks like a broken recipe.
++    - run: ARGS="$ARGS --without-bash-malloc"
++
+     - ./configure --prefix={{ prefix }} $ARGS
+     - make --jobs {{ hw.concurrency }} install
+   env:
