@@ -38,7 +38,7 @@ if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 # become argv anybody can read out of /proc.
 # shellcheck disable=SC2016  # the inner script is deliberately literal: it runs
 # in the new namespace, where these variables are the ones that matter.
-$SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_PANTRY_OVERLAY \
+$SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,JOBS,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_PANTRY_OVERLAY \
   unshare --mount --pid --fork "$(command -v bash)" -euxc '
     r="$1"; pantry="$2"; overrides="$3"; shift 3
     for d in null zero full random urandom tty; do

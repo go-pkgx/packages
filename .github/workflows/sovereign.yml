@@ -127,6 +127,12 @@ jobs:
           PKGX_DIR: /pkgx
           HOME: /root
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+          # Our aarch64 pool is emulated by construction — the host is amd64 —
+          # and qemu-user fakes uname and /proc/cpuinfo, so nothing inside the
+          # container can tell. The workflow knows, so it says.
+          # With one make job per CPU (32) bash stops being able to allocate:
+          #   /bin/sh: xmalloc: hashlib.c:72: cannot allocate 8192 bytes
+          JOBS: ${{ github.event.inputs.arch == 'aarch64' && '4' || '' }}
           RECIPES: ${{ github.event.inputs.recipes || 'lz4.org' }}
           VERSIONS: ${{ github.event.inputs.versions || '=1.10.0' }}
           # Without this the first green run reported "0 built, 15 skipped —
