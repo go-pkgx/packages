@@ -89,10 +89,14 @@ jobs:
           # scripts pay thousands of times. Pass `runner: github` for the arm
           # runners GitHub bills for when a recipe is too slow to emulate.
           SELF='{"runner":["self-hosted","incus","amd64"],"platform":"linux/x86-64","slug":"linux-x86-64","container":""}'
-          # jobs: our aarch64 pool is EMULATED (the host is amd64), and one make
-          # job per CPU makes bash fail to allocate under qemu-user. Native
-          # runners keep the default.
-          SELFARM='{"runner":["self-hosted","incus","arm64"],"platform":"linux/aarch64","slug":"linux-aarch64","container":"","jobs":"4"}'
+          # Our aarch64 pool is EMULATED (the host is amd64). qemu_va is what
+          # makes a build possible there at all: our gnu.org/bash carries bash's
+          # own sbrk-based malloc and cannot allocate under qemu's default
+          # reserved address space. jobs is a separate, milder judgement — 32
+          # concurrent qemu processes on a shared pool is a poor trade — and NOT
+          # the fix for the allocation failure; lowering it alone changed
+          # nothing. Native runners keep both defaults.
+          SELFARM='{"runner":["self-hosted","incus","arm64"],"platform":"linux/aarch64","slug":"linux-aarch64","container":"","jobs":"4","qemu_va":"0x100000000"}'
           GH64='{"runner":"ubuntu-latest","platform":"linux/x86-64","slug":"linux-x86-64","container":"debian:stable-slim"}'
           GHARM='{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","container":"debian:stable-slim"}'
           X64=$SELF; ARM=$SELFARM
@@ -230,6 +234,7 @@ jobs:
           VERSIONS: ${{ github.event.inputs.versions }}
           SOVEREIGN: ${{ github.event.inputs.sovereign }}
           JOBS: ${{ matrix.jobs }}
+          QEMU_RESERVED_VA: ${{ matrix.qemu_va }}
         run: |
           FORCE=""
           if [ "${{ matrix.chunk }}" = "manual" ]; then
