@@ -79,7 +79,7 @@ jobs:
           # locate the mingw runtime DLLs to colocate for self-containment
           mgw=$(dirname "$(x86_64-w64-mingw32-gcc -print-libgcc-file-name)")
           echo "MGW_LIB=$mgw" >> "$GITHUB_ENV"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
