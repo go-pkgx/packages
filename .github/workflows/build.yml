@@ -31,7 +31,7 @@ on:
         required: false
         default: ""
       sovereign:
-        description: "build inside the FROM-scratch rootfs `bk builder` stages, so neither the host's libc nor its compiler takes part (blank = the runner's distribution, which is what decides today). Not compatible with mirror_from, which compiles nothing."
+        description: "blank = build inside the FROM-scratch rootfs `bk builder` stages, so neither the host's libc nor its compiler takes part. `0` falls back to the runner's distribution. Ignored when mirror_from is set, which compiles nothing and would stage a toolchain for no reason."
         required: false
         default: ""
       mirror_from:
@@ -181,8 +181,10 @@ jobs:
       # Detected rather than configured: a GitHub-hosted runner cannot reach
       # 10.46.81.1 and simply keeps ghcr. Signature verification is unaffected —
       # zot proxies the cosign referrer along with the bottle.
+      # Unconditional: it only sets environment. A build that is NOT sovereign
+      # still pulls its dependency bottles from our registry, and gating this on
+      # the sovereign path would quietly take the cache away from it.
       - name: point at the pull-through cache if it answers
-        if: github.event.inputs.sovereign != ''
         run: |
           # The cache accelerates BLOB pulls only. It must not become PKGX_DIST:
           # zot cannot serve the tag listing of a repository it has not synced
@@ -200,7 +202,7 @@ jobs:
           fi
 
       - name: stage the sovereign rootfs
-        if: github.event.inputs.sovereign != ''
+        if: github.event.inputs.sovereign != '0' && github.event.inputs.mirror_from == ''
         env:
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
         run: |
@@ -261,7 +263,14 @@ jobs:
           # (an `if`, not `[ … ] &&`: the runner wraps this in `bash -e {0}`, so a
           # false test as a bare statement would abort the whole step)
           if [ -n "$GLIBC" ]; then export PKGX_DIR=/pkgx; fi
-          if [ -n "$SOVEREIGN" ]; then
+          # Sovereign by default. The two arches are proven — lz4.org built in
+          # the staged rootfs on x86-64 and on the EMULATED aarch64 pool, the
+          # bottles carrying PT_INTERP into /pkgx and no distribution strings at
+          # all — and the pull-through cache makes staging affordable. `0` is the
+          # way back to the runner's distribution.
+          #
+          # Mirroring compiles nothing, so it never wants a toolchain staged.
+          if [ "$SOVEREIGN" != 0 ] && [ -z "$MIRROR_FROM" ]; then
             # One shared script, not a copy: every line of it is there because
             # its absence was measured, and two divergent copies of that is how
             # one of them silently stops being sovereign.
