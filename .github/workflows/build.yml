@@ -184,6 +184,27 @@ jobs:
       # Unconditional: it only sets environment. A build that is NOT sovereign
       # still pulls its dependency bottles from our registry, and gating this on
       # the sovereign path would quietly take the cache away from it.
+      # Decide ONCE whether this job is sovereign, in shell, and hand the answer
+      # to every later step. Expressing one decision as two conditions is how
+      # they drift: the step-level `if` and the shell branch disagreed, staging
+      # was skipped while the build still chrooted, and the job died with
+      #   chroot: failed to run command '/usr/local/bin/pkgx': No such file
+      # (GitHub compares operands of different types as NUMBERS, so an omitted
+      # input — null — equals the string '0'. The default case was the broken
+      # one.) Shell has no such rule.
+      - name: decide the build path
+        env:
+          SOVEREIGN: ${{ github.event.inputs.sovereign }}
+          MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
+        run: |
+          if [ "$SOVEREIGN" = 0 ] || [ -n "$MIRROR_FROM" ]; then
+            echo "building with the runner's distribution"
+            echo "SOVEREIGN_ON=0" >> "$GITHUB_ENV"
+          else
+            echo "building inside the sovereign rootfs"
+            echo "SOVEREIGN_ON=1" >> "$GITHUB_ENV"
+          fi
+
       - name: point at the pull-through cache if it answers
         run: |
           # The cache accelerates BLOB pulls only. It must not become PKGX_DIST:
@@ -202,7 +223,7 @@ jobs:
           fi
 
       - name: stage the sovereign rootfs
-        if: github.event.inputs.sovereign != '0' && github.event.inputs.mirror_from == ''
+        if: env.SOVEREIGN_ON == '1'
         env:
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
         run: |
@@ -234,7 +255,6 @@ jobs:
           # where every other correction WAS applied.
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
           VERSIONS: ${{ github.event.inputs.versions }}
-          SOVEREIGN: ${{ github.event.inputs.sovereign }}
           JOBS: ${{ matrix.jobs }}
           QEMU_RESERVED_VA: ${{ matrix.qemu_va }}
         run: |
@@ -270,7 +290,7 @@ jobs:
           # way back to the runner's distribution.
           #
           # Mirroring compiles nothing, so it never wants a toolchain staged.
-          if [ "$SOVEREIGN" != 0 ] && [ -z "$MIRROR_FROM" ]; then
+          if [ "$SOVEREIGN_ON" = 1 ]; then
             # One shared script, not a copy: every line of it is there because
             # its absence was measured, and two divergent copies of that is how
             # one of them silently stops being sovereign.
