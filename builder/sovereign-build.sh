@@ -59,12 +59,20 @@ $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,JOBS,QE
 # for a 50-project chunk and useless as a signal on its own, so read the tally.
 # Both directions matter — the first green run of this path reported
 # "0 built, 15 skipped, 0 failed": every step passed and nothing was compiled.
+# SOVEREIGN_STRICT=1 (the default) is the PROOF posture: one named recipe, and
+# the job means nothing unless it compiled and nothing failed.
+#
+# A chunk is the opposite and must set 0. Fifty projects always contain some
+# that genuinely do not build — the tally and the failure artifacts ARE the
+# result — and failing the job on that buries what did build under a red mark.
+if [ "${SOVEREIGN_STRICT:-1}" != 1 ]; then
+  exit 0
+fi
 if grep -qE '=== summary .*: [0-9]+ built, [0-9]+ skipped, [1-9][0-9]* failed ===' "$log"; then
   echo "::error::a build failed inside the sovereign rootfs"
   exit 1
 fi
-if [ "${SOVEREIGN_REQUIRE_BUILD:-1}" = 1 ] &&
-   ! grep -qE '=== summary .*: [1-9][0-9]* built,' "$log"; then
+if ! grep -qE '=== summary .*: [1-9][0-9]* built,' "$log"; then
   echo "::error::nothing was built — a run that compiles nothing proves nothing"
   exit 1
 fi

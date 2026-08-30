@@ -302,7 +302,10 @@ jobs:
             # one of them silently stops being sovereign.
             # A chunk is best-effort by design, so it must NOT fail on "0 built".
             export PKGX_DIR=/pkgx HOME=/root
-            export SOVEREIGN_REQUIRE_BUILD=0
+            # A chunk is best-effort: the tally and the failure artifacts are
+            # the result, and a recipe that genuinely does not build must not
+            # paint the whole lot red. The proof job keeps the strict posture.
+            export SOVEREIGN_STRICT=0
             builder/sovereign-build.sh \
               "$RUNNER_TEMP/rootfs" "$PWD/pantry" "$PWD/overrides" \
               ${GLIBC:+--glibc "$GLIBC"} \
