@@ -55,7 +55,7 @@ jobs:
           SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
           command -v git >/dev/null || { $SUDO apt-get update -qq; $SUDO apt-get install -y --no-install-recommends git ca-certificates; }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with: { go-version: stable }
 

@@ -36,7 +36,7 @@ jobs:
       # jq is one apt line. A no-op wherever it is already there.
       - name: jq
         run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
-      - uses: actions/checkout@v4 # provides the catalog tool + go.mod for `go run ./catalog`
+      - uses: actions/checkout@v7 # provides the catalog tool + go.mod for `go run ./catalog`
 
       - uses: actions/setup-go@v5
         with: { go-version: stable }

@@ -36,7 +36,7 @@ jobs:
       # jq is one apt line. A no-op wherever it is already there.
       - name: jq
         run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: gen
         run: |
           total=$(grep -c . windows/go-projects.txt)
@@ -63,7 +63,7 @@ jobs:
       # jq is one apt line. A no-op wherever it is already there.
       - name: jq
         run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
         with: { go-version: stable }
       - name: install pkgx + bk (for signed OCI publish)

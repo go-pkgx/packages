@@ -67,7 +67,7 @@ jobs:
     env:
       GOWORK: "off"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { repository: go-pkgx/pkgx, path: pkgx }
       - uses: actions/setup-go@v5
         with: { go-version: stable }
