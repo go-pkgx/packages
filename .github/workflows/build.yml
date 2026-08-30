@@ -157,14 +157,20 @@ jobs:
       # registry, and is the runtime we actually ship.
       - name: install pkgx (bk sources its toolchain via `pkgx +deps`)
         run: |
-          GOPROXY=direct go install github.com/go-pkgx/pkgx@main
+          # CGO_ENABLED=0: this same binary is copied INTO the sovereign rootfs,
+          # which has no system libc. Built against the runner's glibc it cannot
+          # start there at all —
+          #   /usr/local/bin/pkgx: error while loading shared libraries:
+          #     libc.so.6: cannot open shared object file
+          CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/pkgx@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: install bk
         # GOPROXY=direct: pull the current main straight from GitHub, else the
         # module proxy serves a stale cached @main and CI runs an old bk.
         run: |
-          GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
+          # Static for the same reason as pkgx: bk is installed into the rootfs.
+          CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: clone pantry
