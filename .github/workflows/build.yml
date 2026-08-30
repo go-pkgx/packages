@@ -310,7 +310,16 @@ jobs:
               "$RUNNER_TEMP/rootfs" "$PWD/pantry" "$PWD/overrides" \
               ${GLIBC:+--glibc "$GLIBC"} \
               ${VERSIONS:+--versions "$VERSIONS"}
+            # bk runs with the chroot's root as its CWD, so everything it
+            # writes lands in the rootfs and not in the workspace the upload
+            # steps read. Without this the failure lists are LOST: a lot that
+            # fails a dozen recipes uploads no artifacts at all, and the only
+            # remaining trace is the job log — which is exactly the evidence a
+            # campaign needs to tell a broken recipe from a broken factory.
             cp -r "$RUNNER_TEMP/rootfs/dist" dist 2>/dev/null || true
+            for f in failures.txt failures-detail.txt; do
+              cp "$RUNNER_TEMP/rootfs/$f" "$f" 2>/dev/null || true
+            done
           else
             bk factory \
               --pantry pantry \
