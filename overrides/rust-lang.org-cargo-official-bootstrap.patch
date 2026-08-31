@@ -1,8 +1,8 @@
 diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
-index 70bfeab..d8cdf39 100644
+index 70bfeab..18a8965 100644
 --- a/projects/rust-lang.org/cargo/package.yml
 +++ b/projects/rust-lang.org/cargo/package.yml
-@@ -32,7 +32,66 @@ build:
+@@ -32,7 +32,85 @@ build:
      gnu.org/tar: "*"
      tukaani.org/xz: "*"
      rust-lang.org/cargo: "*"
@@ -11,6 +11,11 @@ index 70bfeab..d8cdf39 100644
 +    # nothing else supplies it:
 +    #   ld.lld: error: unable to find library -lgcc
 +    gnu.org/gcc: "*"
++    # openssl-sys compiles against a real OpenSSL and will not guess where it is.
++    # Declaring it here is what makes the cargo we build link OUR OpenSSL 3 —
++    # upstream's bottle links 1.1, which is the whole reason this recipe could
++    # not bootstrap in the first place.
++    openssl.org: ^3
    script:
 +    # BOOTSTRAP: cargo is built by cargo, and the published bottle of it is
 +    # linked against OpenSSL 1.1 — checked on the artifacts themselves, ours AND
@@ -47,6 +52,20 @@ index 70bfeab..d8cdf39 100644
 +        fi
 +        export RUSTFLAGS="${RUSTFLAGS:-} -L$L"
 +        echo "libgcc: $L"
++
++        # openssl-sys refuses to guess: "Could not find directory of OpenSSL
++        # installation, and this `-sys` crate cannot proceed without this
++        # knowledge." Point it at the bottle, same globbing rule as libgcc.
++        O=""
++        for c in "${PKGX_DIR:-$HOME/.pkgx}"/openssl.org/v3*/include/openssl/ssl.h; do
++          if [ -e "$c" ]; then O="$(dirname "$(dirname "$(dirname "$c")")")"; fi
++        done
++        if [ -z "$O" ]; then
++          echo "no openssl 3 under ${PKGX_DIR:-$HOME/.pkgx}/openssl.org" >&2
++          exit 1
++        fi
++        export OPENSSL_DIR="$O"
++        echo "openssl: $O"
 +      if: linux
 +
 +    - run: |
