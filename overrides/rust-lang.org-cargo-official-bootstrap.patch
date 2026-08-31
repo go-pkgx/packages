@@ -1,0 +1,90 @@
+diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
+index 70bfeab..18a8965 100644
+--- a/projects/rust-lang.org/cargo/package.yml
++++ b/projects/rust-lang.org/cargo/package.yml
+@@ -32,7 +32,85 @@ build:
+     gnu.org/tar: "*"
+     tukaani.org/xz: "*"
+     rust-lang.org/cargo: "*"
++    # rustc's x86_64-unknown-linux-gnu target links -lgcc, which is GCC's
++    # runtime and not something clang/lld carry. In a tree with no distribution
++    # nothing else supplies it:
++    #   ld.lld: error: unable to find library -lgcc
++    gnu.org/gcc: "*"
++    # openssl-sys compiles against a real OpenSSL and will not guess where it is.
++    # Declaring it here is what makes the cargo we build link OUR OpenSSL 3 —
++    # upstream's bottle links 1.1, which is the whole reason this recipe could
++    # not bootstrap in the first place.
++    openssl.org: ^3
+   script:
++    # BOOTSTRAP: cargo is built by cargo, and the published bottle of it is
++    # linked against OpenSSL 1.1 — checked on the artifacts themselves, ours AND
++    # upstream's carry libssl.so.1.1 — so it cannot start here at all:
++    #   cargo: error while loading shared libraries: libssl.so.1.1
++    # We have no linux 1.1 bottle, and signing an EOL crypto library to bootstrap
++    # ONE package is a poor trade. Rust's own cargo has no dynamic OpenSSL
++    # dependency (checked the same way), so bootstrap on that: a build-time
++    # binary, never published, exactly like the source tarball beside it. Pinned
++    # and checksummed — an unverified binary in a build is worse than the problem
++    # it solves.
++    #
++    # .tar.xz, not .tar.gz: GNU tar shells out to an external `gzip`, which a
++    # tree with no distribution in it does not have —
++    #   tar (child): gzip: Cannot exec: No such file or directory
++    # xz is already a build dependency of this recipe, so -J resolves.
++    # -lgcc lives under lib/gcc/<triple>/<version>/, which lld does not search.
++    #
++    # The prefix is globbed under PKGX_DIR, NOT derived from `command -v gcc`:
++    # bk puts a shim for every tool in build.libexec, so `command -v gcc` returns
++    #   .../v0.99.0/build.libexec/gcc
++    # and walking up from there lands in the build directory, where there is no
++    # libgcc at all. The triple and version are globbed because both move, and a
++    # wrong -L only surfaces as a link error two hundred crates later.
++    - run: |
++        set -eu
++        L=""
++        for c in "${PKGX_DIR:-$HOME/.pkgx}"/gnu.org/gcc/*/lib/gcc/*/*/libgcc.a; do
++          if [ -e "$c" ]; then L="$(dirname "$c")"; fi
++        done
++        if [ -z "$L" ]; then
++          echo "no libgcc.a under ${PKGX_DIR:-$HOME/.pkgx}/gnu.org/gcc — is gnu.org/gcc a build dep?" >&2
++          exit 1
++        fi
++        export RUSTFLAGS="${RUSTFLAGS:-} -L$L"
++        echo "libgcc: $L"
++
++        # openssl-sys refuses to guess: "Could not find directory of OpenSSL
++        # installation, and this `-sys` crate cannot proceed without this
++        # knowledge." Point it at the bottle, same globbing rule as libgcc.
++        O=""
++        for c in "${PKGX_DIR:-$HOME/.pkgx}"/openssl.org/v3*/include/openssl/ssl.h; do
++          if [ -e "$c" ]; then O="$(dirname "$(dirname "$(dirname "$c")")")"; fi
++        done
++        if [ -z "$O" ]; then
++          echo "no openssl 3 under ${PKGX_DIR:-$HOME/.pkgx}/openssl.org" >&2
++          exit 1
++        fi
++        export OPENSSL_DIR="$O"
++        echo "openssl: $O"
++      if: linux
++
++    - run: |
++        set -eu
++        case "$(uname -m)" in
++          x86_64)  BT=x86_64-unknown-linux-gnu;  SUM=9853db03d68578a30972e2755c89c66aec035fec641cf8f3a7117c81eec2578d ;;
++          aarch64) BT=aarch64-unknown-linux-gnu; SUM=bd8d1da6fe88ea7e29338f24277c22156267447adbfc47d690467ad32d02c2a7 ;;
++          *) echo "no pinned bootstrap cargo for $(uname -m)" >&2; exit 1 ;;
++        esac
++        T="cargo-1.90.0-$BT.tar.xz"
++        curl -fsSLo "$T" "https://static.rust-lang.org/dist/$T"
++        echo "$SUM  $T" | sha256sum -c -
++        tar xJf "$T"
++        mkdir -p "$PWD/.bootstrap"
++        mv "cargo-1.90.0-$BT/cargo/bin/cargo" "$PWD/.bootstrap/cargo"
++        export PATH="$PWD/.bootstrap:$PATH"
++        cargo --version
++      if: linux
++
+     # otherwise we are not ABI compatible and new macOS versions may break
+     # this happened with Sonoma
+     # this instead seems to break cargo on sonoma
