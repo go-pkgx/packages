@@ -1,8 +1,8 @@
 diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
-index 70bfeab..e6f7587 100644
+index 70bfeab..d8cdf39 100644
 --- a/projects/rust-lang.org/cargo/package.yml
 +++ b/projects/rust-lang.org/cargo/package.yml
-@@ -32,7 +32,57 @@ build:
+@@ -32,7 +32,66 @@ build:
      gnu.org/tar: "*"
      tukaani.org/xz: "*"
      rust-lang.org/cargo: "*"
@@ -28,14 +28,23 @@ index 70bfeab..e6f7587 100644
 +    #   tar (child): gzip: Cannot exec: No such file or directory
 +    # xz is already a build dependency of this recipe, so -J resolves.
 +    # -lgcc lives under lib/gcc/<triple>/<version>/, which lld does not search.
-+    # The path is FOUND rather than spelled out: the triple and the version both
-+    # move, and a wrong -L is a link error two hundred crates later.
++    #
++    # The prefix is globbed under PKGX_DIR, NOT derived from `command -v gcc`:
++    # bk puts a shim for every tool in build.libexec, so `command -v gcc` returns
++    #   .../v0.99.0/build.libexec/gcc
++    # and walking up from there lands in the build directory, where there is no
++    # libgcc at all. The triple and version are globbed because both move, and a
++    # wrong -L only surfaces as a link error two hundred crates later.
 +    - run: |
 +        set -eu
-+        GCCBIN="$(command -v gcc || true)"
-+        [ -n "$GCCBIN" ] || { echo "gnu.org/gcc is a build dep but gcc is not on PATH" >&2; exit 1; }
-+        L="$(ls -d "$(dirname "$GCCBIN")"/../lib/gcc/*/*/ 2>/dev/null | head -1)"
-+        [ -n "$L" ] && [ -e "$L/libgcc.a" ] || { echo "no libgcc under $(dirname "$GCCBIN")/../lib/gcc" >&2; exit 1; }
++        L=""
++        for c in "${PKGX_DIR:-$HOME/.pkgx}"/gnu.org/gcc/*/lib/gcc/*/*/libgcc.a; do
++          if [ -e "$c" ]; then L="$(dirname "$c")"; fi
++        done
++        if [ -z "$L" ]; then
++          echo "no libgcc.a under ${PKGX_DIR:-$HOME/.pkgx}/gnu.org/gcc — is gnu.org/gcc a build dep?" >&2
++          exit 1
++        fi
 +        export RUSTFLAGS="${RUSTFLAGS:-} -L$L"
 +        echo "libgcc: $L"
 +      if: linux
