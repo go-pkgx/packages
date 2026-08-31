@@ -1,10 +1,16 @@
 diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
-index 70bfeab..753b6e9 100644
+index 70bfeab..e6f7587 100644
 --- a/projects/rust-lang.org/cargo/package.yml
 +++ b/projects/rust-lang.org/cargo/package.yml
-@@ -33,6 +33,38 @@ build:
+@@ -32,7 +32,57 @@ build:
+     gnu.org/tar: "*"
      tukaani.org/xz: "*"
      rust-lang.org/cargo: "*"
++    # rustc's x86_64-unknown-linux-gnu target links -lgcc, which is GCC's
++    # runtime and not something clang/lld carry. In a tree with no distribution
++    # nothing else supplies it:
++    #   ld.lld: error: unable to find library -lgcc
++    gnu.org/gcc: "*"
    script:
 +    # BOOTSTRAP: cargo is built by cargo, and the published bottle of it is
 +    # linked against OpenSSL 1.1 — checked on the artifacts themselves, ours AND
@@ -21,6 +27,19 @@ index 70bfeab..753b6e9 100644
 +    # tree with no distribution in it does not have —
 +    #   tar (child): gzip: Cannot exec: No such file or directory
 +    # xz is already a build dependency of this recipe, so -J resolves.
++    # -lgcc lives under lib/gcc/<triple>/<version>/, which lld does not search.
++    # The path is FOUND rather than spelled out: the triple and the version both
++    # move, and a wrong -L is a link error two hundred crates later.
++    - run: |
++        set -eu
++        GCCBIN="$(command -v gcc || true)"
++        [ -n "$GCCBIN" ] || { echo "gnu.org/gcc is a build dep but gcc is not on PATH" >&2; exit 1; }
++        L="$(ls -d "$(dirname "$GCCBIN")"/../lib/gcc/*/*/ 2>/dev/null | head -1)"
++        [ -n "$L" ] && [ -e "$L/libgcc.a" ] || { echo "no libgcc under $(dirname "$GCCBIN")/../lib/gcc" >&2; exit 1; }
++        export RUSTFLAGS="${RUSTFLAGS:-} -L$L"
++        echo "libgcc: $L"
++      if: linux
++
 +    - run: |
 +        set -eu
 +        case "$(uname -m)" in
