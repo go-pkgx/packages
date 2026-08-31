@@ -96,7 +96,7 @@ jobs:
           # concurrent qemu processes on a shared pool is a poor trade — and NOT
           # the fix for the allocation failure; lowering it alone changed
           # nothing. Native runners keep both defaults.
-          SELFARM='{"runner":["self-hosted","incus","arm64"],"platform":"linux/aarch64","slug":"linux-aarch64","container":"","jobs":"4","qemu_va":"0x100000000"}'
+          SELFARM='{"runner":["self-hosted","incus","arm64"],"platform":"linux/aarch64","slug":"linux-aarch64","container":"","jobs":"4","qemu_va":"0x400000000"}'
           GH64='{"runner":"ubuntu-latest","platform":"linux/x86-64","slug":"linux-x86-64","container":"debian:stable-slim"}'
           GHARM='{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","container":"debian:stable-slim"}'
           X64=$SELF; ARM=$SELFARM

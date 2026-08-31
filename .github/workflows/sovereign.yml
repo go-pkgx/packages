@@ -137,6 +137,13 @@ jobs:
           # and qemu-user fakes uname AND /proc/cpuinfo, so nothing inside the
           # container can tell. The workflow knows, so it says.
           #
+          # 16 GiB of reserved VA, not 4: rustc/LLVM exhausted 4 GiB compiling
+          # the cargo crate itself —
+          #   rustc-LLVM ERROR: out of memory
+          #   qemu: uncaught target signal 6 (Aborted) - core dumped
+          # after two and a half hours. This is ADDRESS SPACE, not resident
+          # memory, so it costs nothing on a 64-bit host with 56 GiB free.
+          #
           # QEMU_RESERVED_VA is what makes a build possible at all there: our
           # gnu.org/bash carries bash's own sbrk-based malloc, and under qemu's
           # default reserved address space it cannot allocate on the FIRST
@@ -149,7 +156,7 @@ jobs:
           # what showed the allocation failure was never memory pressure. It
           # stays because 32 concurrent qemu processes on a shared pool is
           # simply a poor trade.
-          QEMU_RESERVED_VA: ${{ github.event.inputs.arch == 'aarch64' && '0x100000000' || '' }}
+          QEMU_RESERVED_VA: ${{ github.event.inputs.arch == 'aarch64' && '0x400000000' || '' }}
           JOBS: ${{ github.event.inputs.arch == 'aarch64' && '4' || '' }}
           RECIPES: ${{ github.event.inputs.recipes || 'lz4.org' }}
           VERSIONS: ${{ github.event.inputs.versions || '=1.10.0' }}
