@@ -1,35 +1,41 @@
 diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
-index 70bfeab..7e5f567 100644
+index 70bfeab..753b6e9 100644
 --- a/projects/rust-lang.org/cargo/package.yml
 +++ b/projects/rust-lang.org/cargo/package.yml
-@@ -33,6 +33,32 @@ build:
+@@ -33,6 +33,38 @@ build:
      tukaani.org/xz: "*"
      rust-lang.org/cargo: "*"
    script:
 +    # BOOTSTRAP: cargo is built by cargo, and the published bottle of it is
-+    # linked against OpenSSL 1.1 — checked on the artifact itself, both ours and
++    # linked against OpenSSL 1.1 — checked on the artifacts themselves, ours AND
 +    # upstream's carry libssl.so.1.1 — so it cannot start here at all:
 +    #   cargo: error while loading shared libraries: libssl.so.1.1
-+    # We have no linux 1.1 bottle, and publishing an EOL crypto library under our
-+    # own signature to bootstrap ONE package is a poor trade. Rust's own cargo
-+    # has no dynamic OpenSSL dependency (checked the same way), so bootstrap on
-+    # that instead: it is a build-time binary, never published, exactly like the
-+    # source tarball beside it. Pinned and checksummed, because an unverified
-+    # binary in a build is a worse problem than the one it solves.
++    # We have no linux 1.1 bottle, and signing an EOL crypto library to bootstrap
++    # ONE package is a poor trade. Rust's own cargo has no dynamic OpenSSL
++    # dependency (checked the same way), so bootstrap on that: a build-time
++    # binary, never published, exactly like the source tarball beside it. Pinned
++    # and checksummed — an unverified binary in a build is worse than the problem
++    # it solves.
++    #
++    # .tar.xz, not .tar.gz: GNU tar shells out to an external `gzip`, which a
++    # tree with no distribution in it does not have —
++    #   tar (child): gzip: Cannot exec: No such file or directory
++    # xz is already a build dependency of this recipe, so -J resolves.
 +    - run: |
 +        set -eu
 +        case "$(uname -m)" in
-+          x86_64)  BT=x86_64-unknown-linux-gnu;  SUM=dc0f70c6e681776d0c5e01953b50488e8b2f972eed5aece6d094e497ea480ab0 ;;
-+          aarch64) BT=aarch64-unknown-linux-gnu; SUM=33527828bc38026702d85996a28c08a894d5376a5756dd9085247d36aa208405 ;;
++          x86_64)  BT=x86_64-unknown-linux-gnu;  SUM=9853db03d68578a30972e2755c89c66aec035fec641cf8f3a7117c81eec2578d ;;
++          aarch64) BT=aarch64-unknown-linux-gnu; SUM=bd8d1da6fe88ea7e29338f24277c22156267447adbfc47d690467ad32d02c2a7 ;;
 +          *) echo "no pinned bootstrap cargo for $(uname -m)" >&2; exit 1 ;;
 +        esac
-+        T="cargo-1.90.0-$BT.tar.gz"
++        T="cargo-1.90.0-$BT.tar.xz"
 +        curl -fsSLo "$T" "https://static.rust-lang.org/dist/$T"
 +        echo "$SUM  $T" | sha256sum -c -
-+        tar xzf "$T"
++        tar xJf "$T"
 +        mkdir -p "$PWD/.bootstrap"
 +        mv "cargo-1.90.0-$BT/cargo/bin/cargo" "$PWD/.bootstrap/cargo"
 +        export PATH="$PWD/.bootstrap:$PATH"
++        cargo --version
 +      if: linux
 +
      # otherwise we are not ABI compatible and new macOS versions may break
