@@ -1,0 +1,20 @@
+diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
+index 70bfeab..788446b 100644
+--- a/projects/rust-lang.org/cargo/package.yml
++++ b/projects/rust-lang.org/cargo/package.yml
+@@ -32,6 +32,15 @@ build:
+     gnu.org/tar: "*"
+     tukaani.org/xz: "*"
+     rust-lang.org/cargo: "*"
++    # The BOOTSTRAP cargo above is a published bottle, and the published one is
++    # linked against OpenSSL 1.1 — it cannot start without it:
++    #   cargo: error while loading shared libraries: libssl.so.1.1:
++    #     cannot open shared object file: No such file or directory
++    # Nothing in this recipe asks for openssl, so 1.1 never enters the build
++    # environment and the build dies before compiling a line. This entry is for
++    # the bootstrap binary to RUN, not for what it produces; the cargo it builds
++    # links whatever openssl the recipe's own dependency chain provides.
++    openssl.org: ^1.1
+   script:
+     # otherwise we are not ABI compatible and new macOS versions may break
+     # this happened with Sonoma
