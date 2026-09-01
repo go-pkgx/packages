@@ -1,0 +1,17 @@
+diff --git a/projects/rust-lang.org/rustup/package.yml b/projects/rust-lang.org/rustup/package.yml
+--- a/projects/rust-lang.org/rustup/package.yml
++++ b/projects/rust-lang.org/rustup/package.yml
+@@ -24,6 +24,13 @@
+     - run: ln -s rustup-init rustup
+       working-directory: ${{prefix}}/bin
+   env:
++    # openssl-sys cannot find our openssl on its own and stops the build:
++    #   Could not find directory of OpenSSL installation, and this `-sys` crate
++    #   cannot proceed without this knowledge.
++    # Naming it is what 25 other recipes in this pantry already do. The path is
++    # taken from the resolved dependency rather than spelled out, so it follows
++    # the bottle.
++    OPENSSL_DIR: "{{deps.openssl.org.prefix}}"
+     RUSTUP_INIT_SKIP_PATH_CHECK: yes
+ 
+ provides:

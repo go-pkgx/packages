@@ -1,0 +1,20 @@
+diff --git a/projects/crates.io/spider_cli/package.yml b/projects/crates.io/spider_cli/package.yml
+--- a/projects/crates.io/spider_cli/package.yml
++++ b/projects/crates.io/spider_cli/package.yml
+@@ -13,7 +13,16 @@
+     rust-lang.org: ">=1.56"
+     rust-lang.org/cargo: "*"
+     github.com/mikefarah/yq: ">=4" # safe-edit toml deps/features
++    openssl.org: ^3 # openssl-sys links it; undeclared, its prefix cannot be named
+   env:
++    # openssl-sys cannot find our openssl on its own:
++    #   Could not find directory of OpenSSL installation, and this `-sys` crate
++    #   cannot proceed without this knowledge.
++    # The script above asks openssl-sys to VENDOR its own copy instead; that did
++    # not take, and vendoring is the wrong answer for this factory anyway — the
++    # point is to link the openssl we build, sign and can patch, not a copy
++    # frozen inside one binary. So name ours, as 25 other recipes here do.
++    OPENSSL_DIR: "{{deps.openssl.org.prefix}}"
+     linux/x86-64:
+       # -pie: ubuntu requires PIE (passes on debian without it, SIGILL on ubuntu)
+       # target-cpu: prevent AVX etc. that CI runners may not support
