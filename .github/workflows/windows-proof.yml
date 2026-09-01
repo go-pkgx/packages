@@ -69,7 +69,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with: { repository: go-pkgx/pkgx, path: pkgx }
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: stable }
       - name: Build pkgx.exe
         working-directory: pkgx

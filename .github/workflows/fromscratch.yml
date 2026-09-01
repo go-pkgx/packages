@@ -46,7 +46,7 @@ jobs:
             $SUDO apt-get install -y --no-install-recommends git jq ca-certificates
           }
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: stable }
 
       # ONE static (CGO_ENABLED=0) pkgm binary serves both roles: the host
