@@ -147,7 +147,7 @@ func TestDryRunWritesNothing(t *testing.T) {
 	p := t.TempDir()
 	writeRecipe(t, p, "crates.io/x", "build:\n  script: cargo install --path .\n")
 	out := t.TempDir()
-	if rc := run([]string{"-pantry", p, "-overrides", out, "-n"}, os.Stdout, os.Stderr); rc != 0 {
+	if rc := run([]string{"-pantry", p, "-overrides", out, "-n"}, devnull(t), devnull(t)); rc != 0 {
 		t.Fatalf("rc = %d", rc)
 	}
 	ents, err := os.ReadDir(out)
@@ -157,7 +157,7 @@ func TestDryRunWritesNothing(t *testing.T) {
 	if len(ents) != 0 {
 		t.Errorf("-n wrote %d file(s)", len(ents))
 	}
-	if rc := run([]string{"-pantry", p, "-overrides", out}, os.Stdout, os.Stderr); rc != 0 {
+	if rc := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); rc != 0 {
 		t.Fatalf("rc = %d", rc)
 	}
 	if _, err := os.Stat(filepath.Join(out, "crates.io-x-cargo-locked.patch")); err != nil {
@@ -180,7 +180,7 @@ func TestOneFailureDoesNotStopTheRun(t *testing.T) {
 		}
 		return orig(pantry, proj)
 	}
-	if rc := run([]string{"-pantry", p, "-overrides", out}, os.Stdout, os.Stderr); rc != 0 {
+	if rc := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); rc != 0 {
 		t.Fatalf("rc = %d", rc)
 	}
 	if _, err := os.Stat(filepath.Join(out, "crates.io-b-cargo-locked.patch")); err != nil {
@@ -220,5 +220,113 @@ func TestACommentIsNotACommand(t *testing.T) {
 	}
 	if !strings.Contains(patch, "+  script: cargo install --locked --path .") {
 		t.Errorf("did not rewrite the command:\n%s", patch)
+	}
+}
+
+// devnull is where the tests send output they do not assert on: a generator
+// that prints twenty file names is unreadable test noise.
+func devnull(t *testing.T) *os.File {
+	t.Helper()
+	f, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { f.Close() })
+	return f
+}
+
+// The three ways a run can fail, each with its own exit code, because a
+// generator that answers 0 to a mistyped flag writes nothing and says so in a
+// way no script can see.
+func TestRunReportsItsFailures(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/a", "build:\n  script: cargo install --path .\n")
+	null := devnull(t)
+	if code := run([]string{"-nope"}, null, null); code != 2 {
+		t.Errorf("bad flag code = %d, want 2", code)
+	}
+	if code := run([]string{"-pantry", filepath.Join(p, "absent")}, null, null); code != 1 {
+		t.Errorf("missing pantry code = %d, want 1", code)
+	}
+	if code := run([]string{"-pantry", p, "-overrides", filepath.Join(p, "absent")}, null, null); code != 1 {
+		t.Errorf("unwritable overrides code = %d, want 1", code)
+	}
+}
+
+// A deferred project is named on the run's stderr, not just returned: it is the
+// only trace a person gets that two recipes were left alone on purpose.
+func TestRunNamesTheDeferred(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/qsv", "build:\n  script: cargo install $CARGO_ARGS\n")
+	out := t.TempDir()
+	errf, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer errf.Close()
+	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), errf); code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	b, err := os.ReadFile(errf.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(b), "crates.io/qsv installs with arguments from a variable") {
+		t.Errorf("stderr does not name the deferred project:\n%s", b)
+	}
+	if ents, _ := os.ReadDir(out); len(ents) != 0 {
+		t.Errorf("wrote %d patch(es) for a project it deferred", len(ents))
+	}
+}
+
+// A recipe the walk cannot read is an error, not a silent omission: a straggler
+// we never saw is a build that stays unreproducible.
+func TestUnlockedReportsWhatItCannotRead(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/a", "build:\n  script: cargo install --path .\n")
+	file := filepath.Join(p, "projects", "crates.io", "a", "package.yml")
+	if err := os.Chmod(file, 0o000); err != nil {
+		t.Skip("cannot drop read permission here")
+	}
+	defer os.Chmod(file, 0o644)
+	if _, _, err := unlocked(filepath.Join(p, "projects"), "crates.io/"); err == nil {
+		t.Error("an unreadable recipe must be reported")
+	}
+}
+
+// patchFor is also reached for a project that is gone (the pantry moved between
+// the walk and the write); it must say so rather than emit an empty patch.
+func TestPatchForAbsentRecipe(t *testing.T) {
+	if _, err := patchFor(t.TempDir(), "crates.io/ghost"); err == nil {
+		t.Error("want an error for a recipe that is not there")
+	}
+}
+
+// Two installs three lines apart share their context. They must come out as ONE
+// hunk: a patch that lists the same context line twice is rejected by git.
+func TestAdjacentInstallsMergeIntoOneHunk(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/near", "build:\n  script:\n    - cargo install --path cli --root {{prefix}}\n    - echo between\n    - cargo install --path tui --root {{prefix}}\n")
+	patch, err := patchFor(p, "crates.io/near")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(patch, "@@ -"); n != 1 {
+		t.Errorf("want 1 merged hunk, got %d:\n%s", n, patch)
+	}
+	if n := strings.Count(patch, "    - echo between"); n != 1 {
+		t.Errorf("context line repeated %d times:\n%s", n, patch)
+	}
+}
+
+func TestMain_(t *testing.T) {
+	oldExit, oldArgs := osExit, os.Args
+	code := -1
+	osExit = func(c int) { code = c }
+	os.Args = []string{"cargolocked", "-pantry", filepath.Join(t.TempDir(), "absent")}
+	defer func() { osExit, os.Args = oldExit, oldArgs }()
+	main()
+	if code != 1 {
+		t.Errorf("main() exit = %d, want 1", code)
 	}
 }
