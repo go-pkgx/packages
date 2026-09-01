@@ -49,6 +49,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -90,6 +91,77 @@ func rewritable(line string) bool {
 	return !strings.Contains(m[2], "$")
 }
 
+// excluded lists the projects where `--locked` is the WRONG answer, each with
+// the measurement that says so. `--locked` is not free: it trades "a dependency
+// drifted forward and broke" for "the lock is older than the toolchain and no
+// longer compiles". Which one bites cannot be known from the recipe — only a
+// build tells them apart — so this list grows by measurement, never by caution.
+var excluded = map[string]string{
+	// pueue's lock pins time 0.3.31, which does not compile with a modern rustc:
+	//   error[E0282]: type annotations needed for `Box<_>`
+	//     time-0.3.31/src/format_description/parse/mod.rs:83
+	// Unlocked, cargo picks a time that builds. Every published pueue (3.2.0
+	// through 3.4.0) failed the same way in the control run of 2026-09-01.
+	"crates.io/pueue": "its lock pins time 0.3.31, which no longer compiles (E0282)",
+}
+
+// hunkRangesByFile reads every OTHER override patch and returns, per pantry
+// file, the line spans they touch.
+//
+// Two patches on one file are fine; two patches whose HUNKS OVERLAP are not.
+// Each is computed against the pristine recipe, so the first to apply changes a
+// line the second carries as CONTEXT, and the second is then skipped — silently
+// as far as the build is concerned, which reads the un-patched value and fails
+// somewhere else entirely.
+//
+// crates.io/zellij is the case that showed it: the openssl3 patch carries
+// `script: cargo install --path .` as context and this tool rewrote that line,
+// so the openssl3 patch stopped applying and the build died on
+//
+//	resolve deps: no version of openssl.org satisfies "^1.1"
+//
+// which names openssl and has nothing to do with openssl. Of the six projects
+// carrying both patches, exactly two overlap — so the test is the SPAN, not the
+// file: excluding by file would drop four that are fine.
+func hunkRangesByFile(overridesDir string) (map[string][]hunkRange, error) {
+	paths, err := filepath.Glob(filepath.Join(overridesDir, "*.patch"))
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]hunkRange{}
+	for _, p := range paths {
+		if strings.HasSuffix(p, suffix) {
+			continue // our own output: it is what we are about to rewrite
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil, err
+		}
+		var file string
+		for _, line := range strings.Split(string(b), "\n") {
+			if rest, ok := strings.CutPrefix(line, "--- a/"); ok {
+				file = strings.TrimSpace(rest)
+				continue
+			}
+			if m := hunkHeader.FindStringSubmatch(line); m != nil && file != "" {
+				start, _ := strconv.Atoi(m[1])
+				n, _ := strconv.Atoi(m[2])
+				out[file] = append(out[file], hunkRange{start: start, end: start + n})
+			}
+		}
+	}
+	return out, nil
+}
+
+// hunkHeader captures the old-side start line and length of a unified hunk.
+var hunkHeader = regexp.MustCompile(`^@@ -(\d+),(\d+) `)
+
+// overlaps reports whether two half-open line spans intersect.
+func overlaps(a, b hunkRange) bool { return a.start < b.end && b.start < a.end }
+
+// suffix names this tool's output.
+const suffix = "-cargo-locked.patch"
+
 // osExit and patchOne are seams: the first lets a test drive main() without
 // killing the test binary, the second lets it drive the "this project could
 // not be patched" path, which must NOT abort the whole run.
@@ -115,18 +187,32 @@ func run(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintln(stderr, "cargolocked:", err)
 		return 1
 	}
+	others, err := hunkRangesByFile(*out)
+	if err != nil {
+		fmt.Fprintln(stderr, "cargolocked:", err)
+		return 1
+	}
 	sort.Strings(projects)
 	sort.Strings(deferred)
+	written := 0
 	for _, proj := range deferred {
 		fmt.Fprintf(stderr, "cargolocked: %s installs with arguments from a variable — read it by hand\n", proj)
 	}
 	for _, proj := range projects {
+		if why, ok := excluded[proj]; ok {
+			fmt.Fprintf(stderr, "cargolocked: %s excluded — %s\n", proj, why)
+			continue
+		}
 		patch, err := patchOne(*pantry, proj)
 		if err != nil {
 			fmt.Fprintf(stderr, "cargolocked: skip %s: %v\n", proj, err)
 			continue
 		}
-		name := filepath.Join(*out, strings.ReplaceAll(proj, "/", "-")+"-cargo-locked.patch")
+		if r, ok := collides(patch, others); ok {
+			fmt.Fprintf(stderr, "cargolocked: %s excluded — its hunk [%d,%d) overlaps another override patch on the same file, which would then stop applying\n", proj, r.start, r.end)
+			continue
+		}
+		name := filepath.Join(*out, strings.ReplaceAll(proj, "/", "-")+suffix)
 		if *dry {
 			fmt.Fprintln(stdout, name)
 			continue
@@ -136,8 +222,9 @@ func run(args []string, stdout, stderr *os.File) int {
 			return 1
 		}
 		fmt.Fprintln(stdout, name)
+		written++
 	}
-	fmt.Fprintf(stdout, "%d project(s) install a crate without its lock\n", len(projects))
+	fmt.Fprintf(stdout, "%d of %d project(s) patched; %d left alone\n", written, len(projects), len(projects)-written)
 	return 0
 }
 
@@ -233,4 +320,29 @@ func ranges(hit []int, n int) []hunkRange {
 		out = append(out, r)
 	}
 	return out
+}
+
+// collides reports whether a freshly rendered patch has a hunk overlapping one
+// another override patch already claims on the same file, and which hunk it is.
+func collides(patch string, others map[string][]hunkRange) (hunkRange, bool) {
+	var file string
+	for _, line := range strings.Split(patch, "\n") {
+		if rest, ok := strings.CutPrefix(line, "--- a/"); ok {
+			file = strings.TrimSpace(rest)
+			continue
+		}
+		m := hunkHeader.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		start, _ := strconv.Atoi(m[1])
+		n, _ := strconv.Atoi(m[2])
+		mine := hunkRange{start: start, end: start + n}
+		for _, r := range others[file] {
+			if overlaps(mine, r) {
+				return mine, true
+			}
+		}
+	}
+	return hunkRange{}, false
 }

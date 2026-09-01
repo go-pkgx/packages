@@ -330,3 +330,127 @@ func TestMain_(t *testing.T) {
 		t.Errorf("main() exit = %d, want 1", code)
 	}
 }
+
+// A project on the exclusion list is named on stderr and gets no patch: the
+// list exists because `--locked` was MEASURED to be wrong there, and a silent
+// skip would leave nobody able to tell that from a bug in the sweep.
+func TestExcludedProjectIsNamedAndNotPatched(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/pueue", "build:\n  script: cargo install --path pueue --root {{prefix}}\n")
+	out := t.TempDir()
+	errf, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer errf.Close()
+	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), errf); code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	b, _ := os.ReadFile(errf.Name())
+	if !strings.Contains(string(b), "crates.io/pueue excluded — its lock pins time 0.3.31") {
+		t.Errorf("stderr does not explain the exclusion:\n%s", b)
+	}
+	if ents, _ := os.ReadDir(out); len(ents) != 0 {
+		t.Errorf("wrote a patch for an excluded project")
+	}
+}
+
+// Two patches on one file are fine; two whose HUNKS overlap are not — the first
+// to apply changes a line the second carries as context, and the second is then
+// skipped, so the build reads the un-patched value and fails somewhere else.
+func TestOverlappingHunkIsRefused(t *testing.T) {
+	p := t.TempDir()
+	// `openssl.org` sits three lines above the install line, so a 3-line context
+	// window puts them in one span — zellij's exact shape.
+	writeRecipe(t, p, "crates.io/zellij", "build:\n  dependencies:\n    rust-lang.org: '*'\n    openssl.org: ^1.1\n    perl.org: ^5\n  script: cargo install --path . --root {{prefix}}\n")
+	out := t.TempDir()
+	other := "diff --git a/projects/crates.io/zellij/package.yml b/projects/crates.io/zellij/package.yml\n" +
+		"--- a/projects/crates.io/zellij/package.yml\n+++ b/projects/crates.io/zellij/package.yml\n" +
+		"@@ -1,6 @@\n"
+	if err := os.WriteFile(filepath.Join(out, "crates.io-zellij-openssl3.patch"), []byte(other), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	errf, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer errf.Close()
+	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), errf); code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	b, _ := os.ReadFile(errf.Name())
+	if !strings.Contains(string(b), "overlaps another override patch") {
+		t.Errorf("stderr does not report the overlap:\n%s", b)
+	}
+	if _, err := os.Stat(filepath.Join(out, "crates.io-zellij"+suffix)); err == nil {
+		t.Error("wrote a patch that would silence the other one")
+	}
+	// A patch far from ours is NOT a collision: excluding by FILE would drop
+	// four projects that are fine today.
+	far := strings.Replace(other, "@@ -1,6 @@", "@@ -1,2 @@\n", 1)
+	if err := os.WriteFile(filepath.Join(out, "crates.io-zellij-openssl3.patch"), []byte(far), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); code != 0 {
+		t.Fatalf("code = %d", code)
+	}
+	if _, err := os.Stat(filepath.Join(out, "crates.io-zellij"+suffix)); err != nil {
+		t.Errorf("a non-overlapping patch must not block ours: %v", err)
+	}
+}
+
+// An unreadable overrides directory is an error, not an empty set of spans:
+// treating it as empty would emit exactly the patches this check exists to stop.
+func TestUnreadableOverridesDirIsAnError(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/a", "build:\n  script: cargo install --path .\n")
+	out := t.TempDir()
+	bad := filepath.Join(out, "x.patch")
+	if err := os.WriteFile(bad, []byte("--- a/f\n"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(bad, 0o644)
+	if _, err := hunkRangesByFile(out); err == nil {
+		t.Skip("cannot drop read permission here")
+	}
+	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); code != 1 {
+		t.Errorf("code = %d, want 1", code)
+	}
+}
+
+// Re-running must not read this tool's OWN previous output as a rival patch:
+// every project would then look like it collides with itself and the sweep
+// would empty the directory it just filled.
+func TestOurOwnPatchesAreNotRivals(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/a", "build:\n  script: cargo install --path . --root {{prefix}}\n")
+	out := t.TempDir()
+	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); code != 0 {
+		t.Fatalf("first run code = %d", code)
+	}
+	want := filepath.Join(out, "crates.io-a"+suffix)
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("first run wrote nothing: %v", err)
+	}
+	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); code != 0 {
+		t.Fatalf("second run code = %d", code)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Errorf("the second run dropped its own patch: %v", err)
+	}
+}
+
+// An overrides path the glob cannot parse is an error, not an empty span set —
+// same reason as the unreadable directory: an empty set emits exactly the
+// patches the check exists to stop.
+func TestUnglobbableOverridesDir(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/a", "build:\n  script: cargo install --path .\n")
+	bad := filepath.Join(t.TempDir(), "a[b")
+	if err := os.MkdirAll(bad, 0o755); err != nil {
+		t.Skip("cannot create that directory name here")
+	}
+	if code := run([]string{"-pantry", p, "-overrides", bad}, devnull(t), devnull(t)); code != 1 {
+		t.Errorf("code = %d, want 1", code)
+	}
+}
