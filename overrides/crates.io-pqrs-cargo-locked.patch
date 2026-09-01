@@ -1,0 +1,27 @@
+diff --git a/projects/crates.io/pqrs/package.yml b/projects/crates.io/pqrs/package.yml
+--- a/projects/crates.io/pqrs/package.yml
++++ b/projects/crates.io/pqrs/package.yml
+@@ -13,7 +13,22 @@
+   dependencies:
+     rust-lang.org: ">=1.65"
+     rust-lang.org/cargo: "*"
+-  script: cargo install --path . --root {{prefix}}
++  # cargo install without --locked IGNORES the Cargo.lock the release ships,
++  # and re-resolves every dependency to the newest semver-compatible version.
++  # A build that worked on the day of the release then rots on its own, with
++  # no change to the recipe and none to the source.
++  #
++  # pqrs 0.3.2 locks chrono 0.4.38. Unlocked, cargo picks 0.4.45, whose
++  # Datelike gained a `quarter` method that collides with the one arrow-arith
++  # 51 defines in its own ChronoDateExt trait:
++  #
++  #   error[E0034]: multiple applicable items in scope
++  #    90 |  DatePart::Quarter => |d| d.quarter() as i32,
++  #       |                              ^^^^^^^ multiple `quarter` found
++  #
++  # 129 of the 149 crates.io recipes in this pantry already pass --locked.
++  # This is one of the twenty that do not.
++  script: cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   script:
