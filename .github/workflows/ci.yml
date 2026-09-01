@@ -23,7 +23,7 @@ jobs:
     # `ubuntu-latest` to get moving again.
     runs-on: [self-hosted, incus, amd64]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with: { go-version: stable }
       - run: go vet ./...
@@ -60,7 +60,7 @@ jobs:
           - { goos: darwin, goarch: arm64 }
           - { goos: windows, goarch: amd64 }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with: { go-version: stable }
       - name: build ${{ matrix.goos }}/${{ matrix.goarch }} (CGO=0)
