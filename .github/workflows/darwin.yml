@@ -91,12 +91,20 @@ jobs:
       - uses: actions/setup-go@v7
         with: { go-version: stable }
 
+      # OUR pkgx, not upstream's — the same choice build.yml makes, and for the
+      # same reason. Upstream resolves from its own bundled pantry and its own
+      # dist, so neither overrides/ nor PKGX_PANTRY_OVERLAY reaches it: bk asks
+      # for `+perl.org~5.42` (the pin texinfo's XS modules need), upstream
+      # intersects it with ITS idea of openssl's `perl.org: 5`, and answers
+      #   Error: "no intersection possible for perl.org"
+      # with no way to correct the recipe it was reading. That is not one
+      # recipe: the toolchain is common to all of them, so on 2026-09-01 it
+      # failed EVERY project in the batch, on both arches, in a run GitHub
+      # reported as successful.
       - name: install pkgx (bk sources its toolchain via `pkgx +deps`)
         run: |
-          curl -fsS https://pkgx.sh | sh
-          for d in "$HOME/.local/bin" /usr/local/bin /opt/homebrew/bin; do
-            [ -x "$d/pkgx" ] && { echo "$d" >> "$GITHUB_PATH"; break; }
-          done
+          GOPROXY=direct go install github.com/go-pkgx/pkgx@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: install bk
         run: |
@@ -115,6 +123,13 @@ jobs:
           VERSIONS: ${{ github.event.inputs.versions }}
           MAX_VERSIONS: ${{ github.event.inputs.max_versions }}
           MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
+          # Resolve from OUR signed registry and OUR overlay, exactly as the
+          # linux lane does. Without these two the darwin bottles were resolved
+          # against upstream's dist and upstream's recipes — a different closure
+          # from the one we publish, and the reason a recipe corrected in the
+          # overlay (openssl ^1.1 → ^3) still failed here.
+          PKGX_DIST: oci://ghcr.io/go-pkgx/packages
+          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
         run: |
           if [ "${{ matrix.chunk }}" = "manual" ]; then
             RECIPES="${{ github.event.inputs.recipes }}"
@@ -150,4 +165,15 @@ jobs:
         with:
           name: failures-${{ matrix.slug }}-${{ matrix.chunk }}
           path: failures.txt
+          if-no-files-found: ignore
+
+      # The linux lane uploads this and the darwin one did not, so reading WHY a
+      # darwin recipe failed meant fetching the job log — the one API endpoint
+      # that goes to zero first under a shared quota.
+      - name: upload failure detail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failures-detail-${{ matrix.slug }}-${{ matrix.chunk }}
+          path: failures-detail.txt
           if-no-files-found: ignore
