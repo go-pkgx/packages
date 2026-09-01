@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/pueue/package.yml b/projects/crates.io/pueue/package.yml
+--- a/projects/crates.io/pueue/package.yml
++++ b/projects/crates.io/pueue/package.yml
+@@ -10,7 +10,7 @@
+   dependencies:
+     rust-lang.org: ^1.65
+     rust-lang.org/cargo: '*'
+-  script: cargo install --path pueue --root {{prefix}}
++  script: cargo install --locked --path pueue --root {{prefix}}
+ 
+ provides:
+   - bin/pueue

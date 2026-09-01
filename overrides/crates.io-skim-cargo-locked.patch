@@ -1,0 +1,15 @@
+diff --git a/projects/crates.io/skim/package.yml b/projects/crates.io/skim/package.yml
+--- a/projects/crates.io/skim/package.yml
++++ b/projects/crates.io/skim/package.yml
+@@ -26,9 +26,9 @@
+ 
+     - run: cargo install --path . --root {{prefix}} --locked
+       if: <0.11.10 || >=1<1.3 || >=3.4
+-    - run: cargo install --path skim --root {{prefix}}
++    - run: cargo install --locked --path skim --root {{prefix}}
+       if: ">=0.11.10<1"
+-    - run: cargo install --path . --root {{prefix}} --features nightly-frizbee
++    - run: cargo install --locked --path . --root {{prefix}} --features nightly-frizbee
+       if: ">=1.3<3.4"
+     - cp bin/sk-tmux {{prefix}}/bin
+     - mkdir -p {{prefix}}/share

@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/csview/package.yml b/projects/crates.io/csview/package.yml
+--- a/projects/crates.io/csview/package.yml
++++ b/projects/crates.io/csview/package.yml
+@@ -15,7 +15,7 @@
+     rust-lang.org/cargo: '*'
+   script:
+     # Building with the --locked flag was complaining about proc-macro2 (proc_macro_span_shrink)
+-    - cargo install --path . --root {{prefix}}
++    - cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   script:
