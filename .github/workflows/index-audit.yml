@@ -39,7 +39,7 @@ jobs:
     runs-on: [self-hosted, incus, amd64]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: stable }
 
       # No token: the catalog tool probes ghcr anonymously (public packages), and

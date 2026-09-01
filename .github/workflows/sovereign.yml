@@ -56,7 +56,7 @@ jobs:
           command -v git >/dev/null || { $SUDO apt-get update -qq; $SUDO apt-get install -y --no-install-recommends git ca-certificates; }
 
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with: { go-version: stable }
 
       - name: build bk, pkgx and pkgm (static)
