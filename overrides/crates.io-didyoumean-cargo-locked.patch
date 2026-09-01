@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/didyoumean/package.yml b/projects/crates.io/didyoumean/package.yml
+--- a/projects/crates.io/didyoumean/package.yml
++++ b/projects/crates.io/didyoumean/package.yml
+@@ -19,7 +19,7 @@
+     rust-lang.org: ">=1.56"
+     rust-lang.org/cargo: "*"
+   script:
+-    - cargo install --path . --root {{prefix}}
++    - cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   script:

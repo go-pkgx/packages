@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/jwt-cli/package.yml b/projects/crates.io/jwt-cli/package.yml
+--- a/projects/crates.io/jwt-cli/package.yml
++++ b/projects/crates.io/jwt-cli/package.yml
+@@ -16,7 +16,7 @@
+     cmake.org: ^3
+   script:
+     # Avoiding --locked flag to avoid proc-macro2 errors
+-    - cargo install --path . --root {{prefix}}
++    - cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   script:

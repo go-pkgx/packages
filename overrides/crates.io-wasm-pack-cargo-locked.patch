@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/wasm-pack/package.yml b/projects/crates.io/wasm-pack/package.yml
+--- a/projects/crates.io/wasm-pack/package.yml
++++ b/projects/crates.io/wasm-pack/package.yml
+@@ -21,7 +21,7 @@
+       # Reduce build size by excluding debug symbols.
+       - -C debuginfo=0
+   script: |
+-    cargo install --path . --root {{prefix}}
++    cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   #FIXME Add tests for seeing if it's able to build correctly

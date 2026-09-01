@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/drill/package.yml b/projects/crates.io/drill/package.yml
+--- a/projects/crates.io/drill/package.yml
++++ b/projects/crates.io/drill/package.yml
+@@ -19,7 +19,7 @@
+   script:
+     # missed version bump
+     - yq -i '.package.version = "{{version}}"' Cargo.toml
+-    - cargo install --path . --root {{prefix}}
++    - cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   env:

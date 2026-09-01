@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/jnv/package.yml b/projects/crates.io/jnv/package.yml
+--- a/projects/crates.io/jnv/package.yml
++++ b/projects/crates.io/jnv/package.yml
+@@ -15,7 +15,7 @@
+     gnu.org/autoconf: 2
+     gnu.org/automake: 1
+     gnu.org/libtool: 2
+-  script: cargo install --path . --root {{prefix}}
++  script: cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   - jnv --help

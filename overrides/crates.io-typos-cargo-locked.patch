@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/typos/package.yml b/projects/crates.io/typos/package.yml
+--- a/projects/crates.io/typos/package.yml
++++ b/projects/crates.io/typos/package.yml
+@@ -15,7 +15,7 @@
+     rust-lang.org: '>=1.65'
+     rust-lang.org/cargo: '*'
+   script:
+-    cargo install --path . --root {{prefix}}
++    cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   script:

@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/git-trim/package.yml b/projects/crates.io/git-trim/package.yml
+--- a/projects/crates.io/git-trim/package.yml
++++ b/projects/crates.io/git-trim/package.yml
+@@ -22,7 +22,7 @@
+     rust-lang.org/cargo: '*'
+     freedesktop.org/pkg-config: '*'
+   script:
+-    cargo install --path . --root {{prefix}}
++    cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   script:

@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/spider_cli/package.yml b/projects/crates.io/spider_cli/package.yml
+--- a/projects/crates.io/spider_cli/package.yml
++++ b/projects/crates.io/spider_cli/package.yml
+@@ -28,7 +28,7 @@
+       working-directory: spider
+       if: linux/x86-64
+     # _requires_ spider/serde to build since 2.37.120
+-    - cargo install --path spider_cli --root {{prefix}} --features smart,spider/serde
++    - cargo install --locked --path spider_cli --root {{prefix}} --features smart,spider/serde
+   skip: fix-patchelf # dumps on x86-64
+ 
+ test:

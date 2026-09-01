@@ -1,0 +1,12 @@
+diff --git a/projects/crates.io/zellij/package.yml b/projects/crates.io/zellij/package.yml
+--- a/projects/crates.io/zellij/package.yml
++++ b/projects/crates.io/zellij/package.yml
+@@ -19,7 +19,7 @@
+     rust-lang.org/cargo: '*'
+     openssl.org: ^1.1
+     perl.org: ^5
+-  script: cargo install --path . --root {{prefix}}
++  script: cargo install --locked --path . --root {{prefix}}
+ 
+ test:
+   script: |
