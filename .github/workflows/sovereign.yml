@@ -170,7 +170,7 @@ jobs:
 
       - name: upload dist tree
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sovereign-dist-${{ github.event.inputs.arch || 'x86-64' }}
           path: ${{ runner.temp }}/rootfs/dist

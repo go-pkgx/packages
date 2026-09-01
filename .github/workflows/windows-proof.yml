@@ -57,7 +57,7 @@ jobs:
           mkdir -p "${GITHUB_WORKSPACE}/dist/sqlite.org"
           printf 'provides:\n  - bin/sqlite3\n' > "${GITHUB_WORKSPACE}/dist/sqlite.org/package.yml"
           find "${GITHUB_WORKSPACE}/dist" -type f
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with: { name: windows-dist, path: dist }
 
   # THE PROOF: consume the cross-built package on a real Windows runner.
@@ -75,7 +75,7 @@ jobs:
         working-directory: pkgx
         env: { CGO_ENABLED: "0" }
         run: go build -o pkgx.exe .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with: { name: windows-dist, path: dist }
       - name: Serve the dist and run the sqlite3 Windows package
         shell: pwsh

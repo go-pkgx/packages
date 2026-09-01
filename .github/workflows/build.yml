@@ -336,7 +336,7 @@ jobs:
       # discovers every slice (it globs dist-*).
       - name: upload dist tree
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.slug }}-${{ matrix.chunk }}
           path: dist
@@ -344,7 +344,7 @@ jobs:
 
       - name: upload failures list
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: failures-${{ matrix.slug }}-${{ matrix.chunk }}
           path: failures.txt
@@ -354,7 +354,7 @@ jobs:
       # artifact alone (container-job logs are not retrievable via the API).
       - name: upload failure details
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: failures-detail-${{ matrix.slug }}-${{ matrix.chunk }}
           path: failures-detail.txt
