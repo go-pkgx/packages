@@ -1071,6 +1071,7 @@ gnu.org/readline
 gnu.org/sed
 gnu.org/source-highlight
 gnu.org/stow
+gnu.org/gzip
 gnu.org/tar
 gnu.org/texinfo
 gnu.org/units
