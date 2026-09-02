@@ -76,7 +76,7 @@ jobs:
              registry-viewer/dist/index.html site/
           echo "site contents:"; du -sh site; ls -la site
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with: { path: site }
       - id: dep
         uses: actions/deploy-pages@v5
