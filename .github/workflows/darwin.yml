@@ -131,17 +131,29 @@ jobs:
           PKGX_DIST: oci://ghcr.io/go-pkgx/packages
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
         run: |
+          # FORCE on a manual dispatch, exactly as build.yml does. Without it a
+          # dispatch SKIPS the version it was asked for whenever that version is
+          # already published — and then walks BACKWARDS through every older
+          # version instead, which is not what anyone asking for a rebuild means.
+          #
+          # Measured on 2026-09-02: three projects dispatched to relink against
+          # openssl 3 came back "successful" having rebuilt none of them, with a
+          # 130-line failure list of 2014-era cargo releases nobody asked for,
+          # after two hours of runner time. The bottles that had to change kept
+          # their digests, so the recipes they block stayed blocked.
+          FORCE=""
           if [ "${{ matrix.chunk }}" = "manual" ]; then
             RECIPES="${{ github.event.inputs.recipes }}"
+            FORCE=1
           else
             start=$(( ${{ matrix.chunk }} * CHUNK + 1 )); end=$(( start + CHUNK - 1 ))
             RECIPES="$(grep -vE '^[[:space:]]*(#|$)' recipes.txt | sed -n "${start},${end}p" | tr '\n' ' ')"
           fi
           # shellcheck disable=SC2086  # RECIPES is intentionally word-split to count projects
-          echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects"
+          echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects${FORCE:+ (FORCE rebuild)}"
           # RECIPES, NO_CLOSURE and PLATFORM are read from the env by `bk factory` itself.
           NO_CLOSURE="${{ github.event.inputs.no_closure }}"
-          export RECIPES NO_CLOSURE
+          export RECIPES NO_CLOSURE FORCE
           bk factory \
             --pantry pantry \
             --overrides overrides \
