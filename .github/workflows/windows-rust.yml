@@ -147,7 +147,7 @@ jobs:
           done
       # Upload the dist tree for the central pages.yml aggregator to union into
       # the GitHub Pages mirror. Named `dist-*` so pages.yml discovers it.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: hashFiles('out/**') != ''
         with:
           name: dist-windows-rust-${{ matrix.chunk }}
