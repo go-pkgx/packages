@@ -1,0 +1,49 @@
+diff --git a/projects/gnu.org/gzip/package.yml b/projects/gnu.org/gzip/package.yml
+new file mode 100644
+index 0000000..b3fa3ee
+--- /dev/null
++++ b/projects/gnu.org/gzip/package.yml
+@@ -0,0 +1,43 @@
++distributable:
++  url: https://ftp.gnu.org/gnu/gzip/gzip-{{ version }}.tar.xz
++  strip-components: 1
++
++# gzip exists nowhere in the upstream pantry, and its absence is not academic:
++# GNU tar delegates `-z` to an EXTERNAL gzip, so in a FROM-scratch rootfs that
++# carries tar and not gzip, every recipe doing
++#
++#   curl -L … | tar -xz --strip-components=1
++#
++# dies with `"tar": executable file not found in $PATH` or, once tar is there,
++# with tar failing to spawn its decompressor. google.com/gcloud, groonga.org and
++# mesa3d.org all do exactly that.
++#
++# A distribution supplies gzip and nobody notices it is a package. A sovereign
++# builder has only what it names, which is the point — and the reason this has
++# to be named.
++versions:
++  url: https://ftp.gnu.org/gnu/gzip/
++  match: /gzip-(\d+\.\d+(\.\d+)?)\.tar\.xz/
++  strip:
++    - /gzip-/
++    - /\.tar\.xz/
++
++provides:
++  - bin/gzip
++  - bin/gunzip
++  - bin/zcat
++
++build:
++  script:
++    - ./configure --prefix={{ prefix }}
++    - make --jobs {{ hw.concurrency }} install
++
++test:
++  script:
++    # Round-trip through a real file rather than `gzip --version`: what the
++    # toolchain needs is the DECOMPRESSOR tar will exec, not a binary that runs.
++    - echo "the quick brown fox" > t.txt
++    - gzip t.txt
++    - test -f t.txt.gz
++    - gunzip t.txt.gz
++    - test "$(cat t.txt)" = "the quick brown fox"
