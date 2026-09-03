@@ -1,8 +1,8 @@
 diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
-index 70bfeab..65ea96c 100644
+index 70bfeab..7b47374 100644
 --- a/projects/rust-lang.org/cargo/package.yml
 +++ b/projects/rust-lang.org/cargo/package.yml
-@@ -32,7 +32,88 @@ build:
+@@ -32,7 +32,92 @@ build:
      gnu.org/tar: "*"
      tukaani.org/xz: "*"
      rust-lang.org/cargo: "*"
@@ -10,7 +10,8 @@ index 70bfeab..65ea96c 100644
 +    # runtime and not something clang/lld carry. In a tree with no distribution
 +    # nothing else supplies it:
 +    #   ld.lld: error: unable to find library -lgcc
-+    gnu.org/gcc: "*"
++    linux:
++      gnu.org/gcc: "*"
 +    # openssl-sys compiles against a real OpenSSL and will not guess where it is.
 +    # Declaring it here is what makes the cargo we build link OUR OpenSSL 3 —
 +    # upstream's bottle links 1.1, which is the whole reason this recipe could
@@ -52,7 +53,10 @@ index 70bfeab..65ea96c 100644
 +        fi
 +        export RUSTFLAGS="${RUSTFLAGS:-} -L$L"
 +        echo "libgcc: $L"
++      if: linux
 +
++    - run: |
++        set -eu
 +        # openssl-sys refuses to guess: "Could not find directory of OpenSSL
 +        # installation, and this `-sys` crate cannot proceed without this
 +        # knowledge." Point it at the bottle, same globbing rule as libgcc.
