@@ -1,8 +1,8 @@
 diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
-index 70bfeab..18a8965 100644
+index 70bfeab..65ea96c 100644
 --- a/projects/rust-lang.org/cargo/package.yml
 +++ b/projects/rust-lang.org/cargo/package.yml
-@@ -32,7 +32,85 @@ build:
+@@ -32,7 +32,88 @@ build:
      gnu.org/tar: "*"
      tukaani.org/xz: "*"
      rust-lang.org/cargo: "*"
@@ -66,24 +66,27 @@ index 70bfeab..18a8965 100644
 +        fi
 +        export OPENSSL_DIR="$O"
 +        echo "openssl: $O"
-+      if: linux
 +
 +    - run: |
 +        set -eu
-+        case "$(uname -m)" in
-+          x86_64)  BT=x86_64-unknown-linux-gnu;  SUM=9853db03d68578a30972e2755c89c66aec035fec641cf8f3a7117c81eec2578d ;;
-+          aarch64) BT=aarch64-unknown-linux-gnu; SUM=bd8d1da6fe88ea7e29338f24277c22156267447adbfc47d690467ad32d02c2a7 ;;
-+          *) echo "no pinned bootstrap cargo for $(uname -m)" >&2; exit 1 ;;
++        case "$(uname -s)-$(uname -m)" in
++          Linux-x86_64)   BT=x86_64-unknown-linux-gnu;  SUM=9853db03d68578a30972e2755c89c66aec035fec641cf8f3a7117c81eec2578d ;;
++          Linux-aarch64)  BT=aarch64-unknown-linux-gnu; SUM=bd8d1da6fe88ea7e29338f24277c22156267447adbfc47d690467ad32d02c2a7 ;;
++          Darwin-x86_64)  BT=x86_64-apple-darwin;       SUM=b2fa21c8fed854775e379bb4617145abd047d1be729e8383148139ba1d05c88f ;;
++          Darwin-arm64)   BT=aarch64-apple-darwin;      SUM=17a4410a27bf7dad4765f3809265c225f25f8b009da3d4b76cd0927acdae04b5 ;;
++          *) echo "no pinned bootstrap cargo for $(uname -s)-$(uname -m)" >&2; exit 1 ;;
 +        esac
 +        T="cargo-1.90.0-$BT.tar.xz"
 +        curl -fsSLo "$T" "https://static.rust-lang.org/dist/$T"
-+        echo "$SUM  $T" | sha256sum -c -
++        # sha256sum on linux, shasum on macOS: the check is not optional, so the
++        # tool that performs it is chosen rather than assumed.
++        if command -v sha256sum >/dev/null 2>&1; then echo "$SUM  $T" | sha256sum -c -
++        else echo "$SUM  $T" | shasum -a 256 -c -; fi
 +        tar xJf "$T"
 +        mkdir -p "$PWD/.bootstrap"
 +        mv "cargo-1.90.0-$BT/cargo/bin/cargo" "$PWD/.bootstrap/cargo"
 +        export PATH="$PWD/.bootstrap:$PATH"
 +        cargo --version
-+      if: linux
 +
      # otherwise we are not ABI compatible and new macOS versions may break
      # this happened with Sonoma
