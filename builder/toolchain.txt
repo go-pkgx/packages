@@ -59,3 +59,26 @@ gnu.org/gcc/libstdcxx       # clang itself is a C++ program, and the llvm.org
                             #     libstdc++.so.6: cannot open shared object file
                             # Measured by staging this list into an Incus
                             # container and running clang in it (2026-08-27).
+
+gnu.org/tar                 # `tar` and `gzip` are not conveniences here. A
+gnu.org/gzip                # FROM-scratch tree has only what this file names,
+                            # and two INDEPENDENT things need them:
+                            #
+                            # 1. Recipes that fetch in their own script.
+                            #    google.com/gcloud, groonga.org and mesa3d.org
+                            #    all do `curl -L … | tar -xz`, and all three
+                            #    died with
+                            #      "tar": executable file not found in $PATH
+                            #    (2026-09-02, one batch).
+                            #
+                            # 2. automake's own configure probe. libisl's
+                            #    configure stops at
+                            #      checking how to create a ustar tar archive... none
+                            #    and exits 77 — before a compiler runs, on a
+                            #    recipe that fetches nothing itself.
+                            #
+                            # BOTH are needed, and gzip is not optional next to
+                            # tar: GNU tar delegates `-z` to an EXTERNAL gzip,
+                            # so tar alone trades one missing executable for
+                            # another. gnu.org/gzip did not exist in any pantry
+                            # and was written for this (packages#89).
