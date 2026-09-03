@@ -1,8 +1,8 @@
 diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
-index 70bfeab..7b47374 100644
+index 70bfeab..e9834d3 100644
 --- a/projects/rust-lang.org/cargo/package.yml
 +++ b/projects/rust-lang.org/cargo/package.yml
-@@ -32,7 +32,92 @@ build:
+@@ -32,7 +32,97 @@ build:
      gnu.org/tar: "*"
      tukaani.org/xz: "*"
      rust-lang.org/cargo: "*"
@@ -60,12 +60,17 @@ index 70bfeab..7b47374 100644
 +        # openssl-sys refuses to guess: "Could not find directory of OpenSSL
 +        # installation, and this `-sys` crate cannot proceed without this
 +        # knowledge." Point it at the bottle, same globbing rule as libgcc.
-+        O=""
-+        for c in "${PKGX_DIR:-$HOME/.pkgx}"/openssl.org/v3*/include/openssl/ssl.h; do
-+          if [ -e "$c" ]; then O="$(dirname "$(dirname "$(dirname "$c")")")"; fi
-+        done
-+        if [ -z "$O" ]; then
-+          echo "no openssl 3 under ${PKGX_DIR:-$HOME/.pkgx}/openssl.org" >&2
++        # The MAJOR symlink, not the concrete version. pkgx stages v3, v3.6 and
++        # v3.6.4 alike, and a glob of v3* keeps the most specific one — which
++        # openssl-sys then bakes into the binary as
++        #   @rpath/openssl.org/v3.6.4/lib/libssl.3.dylib
++        # while this recipe DECLARES a range (^3). The two disagree the moment a
++        # newer 3.x is published: the closure stages what the range resolves to,
++        # and the binary asks for a directory nobody put there. v3 is the level
++        # pkgx maintains for exactly this.
++        O="${PKGX_DIR:-$HOME/.pkgx}/openssl.org/v3"
++        if [ ! -e "$O/include/openssl/ssl.h" ]; then
++          echo "no openssl 3 at $O — is openssl.org ^3 a build dep?" >&2
 +          exit 1
 +        fi
 +        export OPENSSL_DIR="$O"
