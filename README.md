@@ -22,9 +22,14 @@ an unsigned or badly-signed package is refused rather than installed.
 
 ## How it runs
 
-`.github/workflows/build.yml` runs a `linux/x86-64` + `linux/aarch64` matrix, and
-`.github/workflows/darwin.yml` a `darwin/aarch64` + `darwin/x86-64` matrix on native
-macOS runners — both dispatched on demand (`workflow_dispatch`; the daily crons are
+`.github/workflows/build.yml` runs a `linux/x86-64` + `linux/aarch64` matrix on our
+own GARM/Incus pool (32 cores, an ephemeral container per job, tagged
+`[self-hosted, incus, amd64]`; the `runner: github` dispatch input falls back to
+`ubuntu-latest` when the pool is down, and otherwise jobs simply queue), and
+`.github/workflows/darwin.yml` a `darwin/aarch64` + `darwin/x86-64` matrix on
+GitHub's native macOS runners — `macos-14` for aarch64 and `macos-15-intel` for
+x86-64, `max-parallel: 6` because macOS runner concurrency is scarce, with
+`recipes.txt` chunked 50 projects at a time across both — both dispatched on demand (`workflow_dispatch`; the daily crons are
 commented out since 2026-08-12 to leave the runners free for targeted jobs, and only
 `index-audit.yml` still runs on a schedule) and both publishing signed packages to the same `ghcr.io/go-pkgx/packages` OCI registry via the
 identical, platform-agnostic `bk factory` (which also writes a pkgx dist tree, uploaded
@@ -93,24 +98,47 @@ of the registry. The ratio was not measurable; only these absolutes are.
   registry, nothing else), and `builder/` here is what builds that image. Design note:
   [`bk/docs/from-scratch-toolchain.md`](https://github.com/go-pkgx/bk/blob/main/docs/from-scratch-toolchain.md).
 
+`.github/workflows/sovereign.yml` is that claim as a job: stage the rootfs from
+`builder/toolchain.txt`, enter it with `chroot`, and run `bk` through pkgx exactly
+as `builder/Containerfile`'s `ENTRYPOINT` does — no distribution involved.
+
+It exists because on the ordinary path what can be built is decided by the
+runner's distribution, which was measured twice on our own pool:
+
+- on **debian 12** every compile died at `env: … version GLIBC_2.38 not found`,
+  because bk installs a *mirrored* coreutils linked against a newer glibc than
+  the host's;
+- on **debian 13** the first recipe through, `jonas.github.io/tig`, failed on a
+  C23 diagnostic from the runner's GCC — not from the `llvm.org` bottle we ship
+  and intend to compile with.
+
+Both are the same defect in different clothes. The job's `force` input defaults to
+1 on purpose: the point is to *compile*, and a build skipped because the bottle is
+already published proves nothing.
+
 ## Install pkgm
 
 To install from this registry you need `pkgm` (the pure-Go installer). One line:
 
 ```sh
 # Linux / macOS
-curl -fsSL https://go-pkgx.github.io/install.sh | sh
+curl -fsSL https://go-pkgx.github.io/install.sh | sh -s -- pkgm v0.1.1
 ```
 
 ```powershell
 # Windows (PowerShell)
-irm https://go-pkgx.github.io/install.ps1 | iex
+$env:PKGM_VERSION='v0.1.1'; irm https://go-pkgx.github.io/install.ps1 | iex
 ```
 
 or, for Go users, `go install github.com/go-pkgx/pkgm@latest`. The installer
-grabs the static binary for your os/arch and verifies it against the release
-`SHA256SUMS`; then `pkgm install lz4.org` verifies each bottle against this
-signed registry by default.
+grabs the static binary for your os/arch from that release and verifies it
+against the release `SHA256SUMS`; then `pkgm install lz4.org` verifies each
+bottle against this signed registry by default.
+
+The version is named rather than resolved from `/releases/latest` when the line
+runs: a registry whose install instructions change under the reader is a
+registry whose bug reports cannot be reproduced. `sh -s -- pkgm latest` (or
+`PKGM_VERSION=latest`) asks for the newest.
 
 ## Consuming
 
@@ -137,6 +165,35 @@ Point the go-pkgx tools at the registry and verify against the pinned key:
 or pull a package directly:
 
     docker pull ghcr.io/go-pkgx/packages/lz4.org:1.10.0
+
+## What CI watches between builds
+
+Two workflows exist to catch the failures that do not announce themselves.
+
+**`fromscratch.yml` — continuous proof that a published package runs with no
+system at all.** For each of twelve witness tools (`lz4.org`, `openssl.org`,
+`tukaani.org/xz`, `facebook.com/zstd`, `sqlite.org`, `rsync.samba.org`,
+`perl.org`, `stedolan.github.io/jq`, `gnu.org/wget`, `curl.se`,
+`git-scm.org`, …) `pkgm image` emits a `FROM scratch` Containerfile whose `RUN`
+step uses pkgm *itself*, inside the image, to install the tool's whole runtime
+closure over HTTPS from this registry and wire the pkgx loader. The job then
+executes exactly that — the ENV and argv are read out of the Containerfile pkgm
+emits, so the two cannot drift — in an **empty chroot** rather than a docker
+image, because the Incus runner image carries neither docker nor podman and a
+chroot proves the same thing with no image-layer machinery in between. A closure
+that is not fully published yet makes the install fail and is reported as a
+coverage gap (SKIP); a tool that installs but whose smoke run fails **fails the
+job**.
+
+**`index-audit.yml` — a gate on the one defect that hides.** Publishing a
+version's OCI index is a read-modify-write on one mutable tag, and four
+publishers race on it (two arches × `build.yml`, plus `darwin.yml`). When one
+loses, the bottle is in the registry, valid and signed, and simply absent from
+the index: `pkgx` says "platform not in index" and the package looks published
+when it is not. 137 such entries had accumulated unnoticed, found by tripping
+over one of them in a build. They are at 0, and this is the daily crawl
+(04:00 UTC) that keeps them there. It is also why two dispatches of the same
+publishing workflow must never run at once.
 
 ## Two channels — every platform, both
 
@@ -178,8 +235,9 @@ signed `ghcr.io/go-pkgx/packages` OCI registry and the
   **fetches + runs the package on real Windows** — the guarantee that a cross-built
   Windows package actually runs via pkgx.
 
-Like `build.yml`, every workflow triggers on `workflow_dispatch` + a schedule (no
-`on: push`). The data files live under `windows/` (`go-projects.txt`,
+Like `build.yml`, every one of these triggers on `workflow_dispatch` alone (no
+`on: push`; their crons have been commented out since 2026-08-12, and
+`index-audit.yml` is the only scheduled workflow left). The data files live under `windows/` (`go-projects.txt`,
 `go-projects-all.txt`, `rust-projects.txt`, `rust-projects-all.txt`); add rows to
 scale. Consume the Windows packages from either channel:
 
