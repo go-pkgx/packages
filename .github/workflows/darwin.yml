@@ -119,6 +119,20 @@ jobs:
           PLATFORM: ${{ matrix.platform }}
           OCI_USERNAME: ${{ github.actor }}
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          # bk resolves a project's versions from api.github.com, and sends
+          # `Authorization: Bearer $GITHUB_TOKEN` when it has one. Without it
+          # the calls are ANONYMOUS — 60 requests an hour against a workflow
+          # that resolves one project after another — and the run fails partway
+          # through on something that is not a build problem at all:
+          #
+          #   curl.se 8.20 (darwin/aarch64) — build failed: resolve version:
+          #     releases https://api.github.com/repos/curl/curl/releases: 403
+          #     rate limit exceeded
+          #
+          # Measured 2026-09-04: a six-project repair run lost two of them this
+          # way. The token the job already holds for the registry raises the
+          # ceiling to 5000/hour; it just was never handed to the build.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
           VERSIONS: ${{ github.event.inputs.versions }}
           MAX_VERSIONS: ${{ github.event.inputs.max_versions }}
