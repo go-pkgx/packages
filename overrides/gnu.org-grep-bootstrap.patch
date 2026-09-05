@@ -1,28 +1,26 @@
 diff --git a/projects/gnu.org/grep/package.yml b/projects/gnu.org/grep/package.yml
-index f596893..a05641f 100644
+index f596893..fb2529c 100644
 --- a/projects/gnu.org/grep/package.yml
 +++ b/projects/gnu.org/grep/package.yml
-@@ -15,7 +15,23 @@ dependencies:
+@@ -15,8 +15,20 @@ dependencies:
  build:
    dependencies:
      freedesktop.org/pkg-config: ^0.29
-+    # BOOTSTRAP SCAFFOLDING - remove after one successful darwin rebuild.
-+    # GNU grep's configure refuses every grep but a GNU one, macOS's BSD
-+    # grep included, and bk keeps a package out of its own base toolchain
-+    # (go-pkgx/bk#105) - so grep asks for itself here, deliberately.
++    # BOOTSTRAP SCAFFOLDING - remove once grep builds again.
++    # GNU grep's configure refuses every grep but a GNU one, and bk keeps
++    # a package out of its own base toolchain (go-pkgx/bk#105), so grep
++    # asks for itself here, deliberately.
 +    gnu.org/grep: "*"
    script: |
-+    # TEMPORARY DIAGNOSTIC (go-pkgx/packages#101). The last run showed
-+    # `grep --version` producing NO output and failing, from a grep that
-+    # runs fine off the same registry on a laptop. So print what this
-+    # machine actually has, rather than what I assume it has.
-+    ls -la "$PKGX_DIR/gnu.org/grep/" || true
-+    ls -la "$PKGX_DIR/pcre.org/v2/" || true
-+    G=$(command -v grep); echo "--- grep: $G"
-+    otool -L "$G" || true
-+    otool -l "$G" | grep -A2 LC_RPATH | grep path || true
-+    codesign -v "$G" 2>&1 | head -2 || true
-+    "$G" --version; echo "--- grep exit: $?"
-     ./configure $ARGS
+-    ./configure $ARGS
++    # TEMPORARY DIAGNOSTIC (go-pkgx/packages#101). grep itself is FINE on
++    # this machine - exit 0, valid signature, "uses PCRE2 10.48" - and
++    # configure rejects it anyway. Only config.log knows why.
++    #
++    # No pipes in the probes: the previous diagnostic piped grep into
++    # `head -1`, which under pipefail closed the pipe, gave grep SIGPIPE,
++    # and reported a working tool as broken. The instrument lied.
++    ./configure $ARGS || { echo '=== config.log (tail) ==='; tail -60 config.log; false; }
      make --jobs {{ hw.concurrency }} install
    env:
+     ARGS:
