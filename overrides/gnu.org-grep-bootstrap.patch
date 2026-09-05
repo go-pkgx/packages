@@ -1,0 +1,37 @@
+diff --git a/projects/gnu.org/grep/package.yml b/projects/gnu.org/grep/package.yml
+index f596893..24aaf95 100644
+--- a/projects/gnu.org/grep/package.yml
++++ b/projects/gnu.org/grep/package.yml
+@@ -15,6 +15,32 @@ dependencies:
+ build:
+   dependencies:
+     freedesktop.org/pkg-config: ^0.29
++    # BOOTSTRAP SCAFFOLDING — remove after one successful darwin rebuild.
++    #
++    # Building GNU grep needs a working GNU grep: its own configure refuses
++    # every other one, macOS's BSD grep included.
++    #
++    #   configure: error: no working 'grep' found
++    #     A working 'grep' command is needed to build GNU Grep.
++    #     This 'grep' should support -e and long lines.
++    #
++    # bk keeps a package's own bottle out of the BASE toolchain of its own
++    # build (go-pkgx/bk#105) — it would shadow the thing being built, and a
++    # broken copy would block its own replacement — but a recipe may still ask
++    # for itself deliberately. This does.
++    #
++    # The pin is the other half: the published grep 3.12 records
++    # pcre.org/v2/v10.47/lib/libpcre2-8.0.dylib by ABSOLUTE path while the
++    # runtime dependency below says '*', which resolves to 10.48. So the tool
++    # is on PATH and cannot start, which reads as "no working grep" here and,
++    # in nghttp2, as an error inside an Apple SDK header (autoconf probes
++    # headers WITH grep, then falls back to `#define gid_t int`).
++    #
++    # Neither line is policy. The grep this produces references
++    # @rpath/pcre.org/v2/v10/… — bk major-versions install names since
++    # go-pkgx/bk#104 — so the next rebuild needs neither.
++    gnu.org/grep: '*'
++    pcre.org/v2: =10.47
+   script: |
+     ./configure $ARGS
+     make --jobs {{ hw.concurrency }} install
