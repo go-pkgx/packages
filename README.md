@@ -122,12 +122,12 @@ To install from this registry you need `pkgm` (the pure-Go installer). One line:
 
 ```sh
 # Linux / macOS
-curl -fsSL https://go-pkgx.github.io/install.sh | sh -s -- pkgm v0.1.2
+curl -fsSL https://go-pkgx.github.io/install.sh | sh -s -- pkgm v0.1.3
 ```
 
 ```powershell
 # Windows (PowerShell)
-$env:PKGM_VERSION='v0.1.2'; irm https://go-pkgx.github.io/install.ps1 | iex
+$env:PKGM_VERSION='v0.1.3'; irm https://go-pkgx.github.io/install.ps1 | iex
 ```
 
 or, for Go users, `go install github.com/go-pkgx/pkgm@latest`. The installer
