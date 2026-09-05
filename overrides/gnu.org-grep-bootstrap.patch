@@ -1,26 +1,24 @@
 diff --git a/projects/gnu.org/grep/package.yml b/projects/gnu.org/grep/package.yml
-index f596893..fb2529c 100644
+index f596893..9d61549 100644
 --- a/projects/gnu.org/grep/package.yml
 +++ b/projects/gnu.org/grep/package.yml
-@@ -15,8 +15,20 @@ dependencies:
+@@ -15,6 +15,19 @@ dependencies:
  build:
    dependencies:
      freedesktop.org/pkg-config: ^0.29
-+    # BOOTSTRAP SCAFFOLDING - remove once grep builds again.
-+    # GNU grep's configure refuses every grep but a GNU one, and bk keeps
-+    # a package out of its own base toolchain (go-pkgx/bk#105), so grep
-+    # asks for itself here, deliberately.
++    # GNU grep's configure accepts no grep but a GNU one - macOS's BSD grep
++    # is refused - and bk keeps a package's own bottle out of the BASE
++    # toolchain of its own build (go-pkgx/bk#105), so grep names itself
++    # here, deliberately. A recipe asking for itself is allowed precisely
++    # for cases like this one.
++    #
++    # The risk it carries: if the published grep ever becomes unstartable,
++    # this line hands the build a broken tool and grep can no longer be
++    # rebuilt. That happened - a dependency's minor upgrade moved out from
++    # under an absolute install name - and is what go-pkgx/bk#104 and #107
++    # (major-versioned references) exist to prevent. If it recurs, DELETE
++    # this line: configure will then test the system grep and say so.
 +    gnu.org/grep: "*"
    script: |
--    ./configure $ARGS
-+    # TEMPORARY DIAGNOSTIC (go-pkgx/packages#101). grep itself is FINE on
-+    # this machine - exit 0, valid signature, "uses PCRE2 10.48" - and
-+    # configure rejects it anyway. Only config.log knows why.
-+    #
-+    # No pipes in the probes: the previous diagnostic piped grep into
-+    # `head -1`, which under pipefail closed the pipe, gave grep SIGPIPE,
-+    # and reported a working tool as broken. The instrument lied.
-+    ./configure $ARGS || { echo '=== config.log (tail) ==='; tail -60 config.log; false; }
+     ./configure $ARGS
      make --jobs {{ hw.concurrency }} install
-   env:
-     ARGS:
