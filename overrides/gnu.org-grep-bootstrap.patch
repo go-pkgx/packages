@@ -1,25 +1,28 @@
 diff --git a/projects/gnu.org/grep/package.yml b/projects/gnu.org/grep/package.yml
-index f596893..f1e980b 100644
+index f596893..a05641f 100644
 --- a/projects/gnu.org/grep/package.yml
 +++ b/projects/gnu.org/grep/package.yml
-@@ -15,7 +15,20 @@ dependencies:
+@@ -15,7 +15,23 @@ dependencies:
  build:
    dependencies:
      freedesktop.org/pkg-config: ^0.29
 +    # BOOTSTRAP SCAFFOLDING - remove after one successful darwin rebuild.
-+    # Building GNU grep needs a working GNU grep: its own configure refuses
-+    # every other one, macOS's BSD grep included. bk keeps a package's own
-+    # bottle out of the BASE toolchain of its own build (go-pkgx/bk#105), so
-+    # grep asks for itself here, deliberately.
++    # GNU grep's configure refuses every grep but a GNU one, macOS's BSD
++    # grep included, and bk keeps a package out of its own base toolchain
++    # (go-pkgx/bk#105) - so grep asks for itself here, deliberately.
 +    gnu.org/grep: "*"
    script: |
-+    # TEMPORARY DIAGNOSTIC (go-pkgx/packages#101). configure keeps refusing
-+    # with "no working 'grep' found" on both darwin runners, while the same
-+    # configure succeeds locally with the same published grep on PATH. Every
-+    # hypothesis so far was wrong - a missing major-version symlink, a shim
-+    # shadowing it, the tool being absent - so ask the machine that fails.
-+    echo "--- which grep: $(command -v grep || echo NONE)"
-+    echo "--- grep runs: $(grep --version 2>&1 | head -1 || echo NO)"
++    # TEMPORARY DIAGNOSTIC (go-pkgx/packages#101). The last run showed
++    # `grep --version` producing NO output and failing, from a grep that
++    # runs fine off the same registry on a laptop. So print what this
++    # machine actually has, rather than what I assume it has.
++    ls -la "$PKGX_DIR/gnu.org/grep/" || true
++    ls -la "$PKGX_DIR/pcre.org/v2/" || true
++    G=$(command -v grep); echo "--- grep: $G"
++    otool -L "$G" || true
++    otool -l "$G" | grep -A2 LC_RPATH | grep path || true
++    codesign -v "$G" 2>&1 | head -2 || true
++    "$G" --version; echo "--- grep exit: $?"
      ./configure $ARGS
      make --jobs {{ hw.concurrency }} install
    env:
