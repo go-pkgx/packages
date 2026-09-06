@@ -1,9 +1,9 @@
 diff --git a/projects/openucx.org/package.yml b/projects/openucx.org/package.yml
 new file mode 100644
-index 0000000..e49015f
+index 0000000..a0946f9
 --- /dev/null
 +++ b/projects/openucx.org/package.yml
-@@ -0,0 +1,71 @@
+@@ -0,0 +1,84 @@
 +# UCX — the transport layer an MPI actually runs over on a cluster.
 +#
 +# The pantry carries open-mpi.org, PMIx and hwloc but nothing beneath them, so
@@ -41,6 +41,19 @@ index 0000000..e49015f
 +    gnu.org/m4: '*'
 +    freedesktop.org/pkg-config: ^0.29
 +  script:
++    # UCX hardcodes `BASE_CFLAGS="-g -Wall -Werror"` in configure (config/m4/
++    # compiler.m4:13) and offers no switch to turn it off. Its own sources do
++    # not survive a clang newer than the one it was written against:
++    #
++    #   config/parser.c:648: assigning to 'char *' from 'const char *'
++    #     discards qualifiers [-Werror,-Wincompatible-pointer-types-…]
++    #   ptmalloc286/malloc.c:4000: variable 'nfences' set but not used
++    #     [-Werror,-Wunused-but-set-variable]
++    #
++    # the second in a vendored allocator UCX did not write. Dropping -Werror
++    # keeps every warning visible and stops them being fatal; it does not
++    # silence anything.
++    - sed -i 's/-Wall -Werror/-Wall/' configure
 +    - ./configure $ARGS
 +    - make --jobs {{hw.concurrency}}
 +    - make install
