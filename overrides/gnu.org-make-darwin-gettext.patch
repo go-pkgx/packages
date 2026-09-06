@@ -1,0 +1,26 @@
+diff --git a/projects/gnu.org/make/package.yml b/projects/gnu.org/make/package.yml
+index 8c47498..6e221c6 100644
+--- a/projects/gnu.org/make/package.yml
++++ b/projects/gnu.org/make/package.yml
+@@ -9,6 +9,21 @@ versions:
+     - /make-/
+     - /.tar.gz/
+ 
++# On darwin these binaries link libintl from gnu.org/gettext — `otool -L` shows
++# it — and the closure never said so. gettext is in bk's base toolchain, so it
++# is always present while this is BUILT; only a consumer installing from the
++# registry sees the hole:
++#
++#   $ pkgm install gnu.org/make      # into an empty PKGX_DIR, darwin/aarch64
++#   $ make --version
++#   dyld: Library not loaded: @rpath/gnu.org/gettext/v1.0.0/lib/libintl.8.dylib
++#
++# darwin-only, and upstream is right without it: on a glibc system libintl is
++# inside the libc, so there is genuinely nothing to depend on there.
++dependencies:
++  darwin:
++    gnu.org/gettext: '*'
++
+ provides:
+   - bin/make
+ 

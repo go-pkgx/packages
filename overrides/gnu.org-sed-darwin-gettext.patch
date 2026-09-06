@@ -1,0 +1,26 @@
+diff --git a/projects/gnu.org/sed/package.yml b/projects/gnu.org/sed/package.yml
+index 28a5bf2..a0a0448 100644
+--- a/projects/gnu.org/sed/package.yml
++++ b/projects/gnu.org/sed/package.yml
+@@ -9,6 +9,21 @@ versions:
+     - /sed-/
+     - /.tar.gz/
+ 
++# On darwin these binaries link libintl from gnu.org/gettext — `otool -L` shows
++# it — and the closure never said so. gettext is in bk's base toolchain, so it
++# is always present while this is BUILT; only a consumer installing from the
++# registry sees the hole:
++#
++#   $ pkgm install gnu.org/sed      # into an empty PKGX_DIR, darwin/aarch64
++#   $ sed --version
++#   dyld: Library not loaded: @rpath/gnu.org/gettext/v1.0.0/lib/libintl.8.dylib
++#
++# darwin-only, and upstream is right without it: on a glibc system libintl is
++# inside the libc, so there is genuinely nothing to depend on there.
++dependencies:
++  darwin:
++    gnu.org/gettext: '*'
++
+ build:
+   # self-dep so brewkit installs an older sed; then shadow brewkit's libexec
+   # sed shim with a direct symlink so bare `sed` calls in generated Makefile
