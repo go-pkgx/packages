@@ -1,0 +1,73 @@
+diff --git a/projects/github.com/linux-rdma/rdma-core/package.yml b/projects/github.com/linux-rdma/rdma-core/package.yml
+new file mode 100644
+index 0000000..e6cbbdc
+--- /dev/null
++++ b/projects/github.com/linux-rdma/rdma-core/package.yml
+@@ -0,0 +1,67 @@
++# rdma-core — the userspace half of the kernel's RDMA stack.
++#
++# libibverbs and librdmacm are what a transport library talks to in order to
++# reach InfiniBand or RoCE hardware. Without them UCX compiles its self, tcp and
++# shared-memory transports and nothing else, so an MPI on a cluster fabric runs
++# over TCP: correct, and roughly an order of magnitude off what the hardware can
++# do. This is the piece that makes the rest of the HPC stack worth having.
++#
++# Open source throughout (dual GPL-2.0 / BSD-2-Clause, per LICENSE.md), which is
++# why it is here and CUDA and ROCm are not: those carry vendor terms that decide
++# whether a registry may redistribute them at all, and that is not a build
++# question.
++
++distributable:
++  url: https://github.com/linux-rdma/rdma-core/releases/download/v{{version}}/rdma-core-{{version}}.tar.gz
++  strip-components: 1
++
++versions:
++  github: linux-rdma/rdma-core
++
++# linux only, and not by convention: this is a userspace interface to Linux
++# kernel drivers. There is nothing for it to talk to elsewhere.
++platforms:
++  - linux
++
++dependencies:
++  github.com/thom311/libnl: ^3
++
++build:
++  dependencies:
++    cmake.org: ^3
++    ninja-build.org: ^1
++    freedesktop.org/pkg-config: ^0.29
++    python.org: ^3
++  script:
++    - cmake -G Ninja $ARGS
++    - ninja -C build
++    - ninja -C build install
++  env:
++    ARGS:
++      - -B build
++      - -DCMAKE_BUILD_TYPE=Release
++      - -DCMAKE_INSTALL_PREFIX={{prefix}}
++      - -DCMAKE_INSTALL_LIBDIR=lib
++      # The distro layout puts drivers, udev rules and systemd units in places a
++      # relocatable bottle has no business writing to. IN_PLACE=0 keeps
++      # everything under the prefix.
++      - -DIN_PLACE=0
++      # Man pages need pandoc or rst2man; nothing here reads them, and a missing
++      # converter would fail the build over documentation.
++      - -DNO_MAN_PAGES=1
++      # Static libraries double the bottle for something no consumer asks for.
++      - -DENABLE_STATIC=0
++
++provides:
++  - bin/ibv_devices
++  - bin/ibv_devinfo
++  - bin/rdma
++
++test:
++  # ibv_devices lists the RDMA devices the kernel exposes. A build machine has
++  # none, and that is fine — what matters is that libibverbs loads and answers,
++  # which an empty list proves and a missing library does not.
++  script:
++    - ibv_devices 2>&1 | grep -qE "device|No IB devices found"
++    - test -f {{prefix}}/lib/libibverbs.so
++    - test -f {{prefix}}/lib/librdmacm.so
