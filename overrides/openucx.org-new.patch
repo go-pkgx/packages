@@ -1,0 +1,101 @@
+diff --git a/projects/openucx.org/package.yml b/projects/openucx.org/package.yml
+new file mode 100644
+index 0000000..f30277c
+--- /dev/null
++++ b/projects/openucx.org/package.yml
+@@ -0,0 +1,95 @@
++# UCX — the transport layer an MPI actually runs over on a cluster.
++#
++# The pantry carries open-mpi.org, PMIx and hwloc but nothing beneath them, so
++# an OpenMPI built from it falls back to TCP: correct, and on an InfiniBand or
++# RoCE fabric roughly an order of magnitude off what the hardware can do. UCX is
++# what OpenMPI, MPICH and OpenSHMEM all use to reach shared memory and RDMA.
++#
++# Built here WITHOUT the vendor stacks: rdma-core, CUDA and ROCm are absent from
++# the pantry too, so configure finds self/tcp/sysv/posix/cma and says so. That
++# is already the useful half — intra-node shared memory instead of TCP loopback
++# — and the recipe gains `--with-verbs` the day rdma-core lands, without its
++# consumers changing anything.
++
++distributable:
++  url: https://github.com/openucx/ucx/releases/download/v{{version}}/ucx-{{version}}.tar.gz
++  strip-components: 1
++
++versions:
++  github: openucx/ucx
++
++# linux only, deliberately. UCX compiles on darwin with self/tcp alone, which is
++# what the OS gives you anyway; shipping it there would suggest a capability
++# that is not present.
++platforms:
++  - linux
++
++dependencies:
++  zlib.net: ^1.3
++
++build:
++  dependencies:
++    gnu.org/autoconf: '*'
++    gnu.org/automake: '*'
++    gnu.org/libtool: '*'
++    gnu.org/m4: '*'
++    freedesktop.org/pkg-config: ^0.29
++  script:
++    # UCX hardcodes `BASE_CFLAGS="-g -Wall -Werror"` in configure (config/m4/
++    # compiler.m4:13) and offers no switch to turn it off. Its own sources do
++    # not survive a clang newer than the one it was written against:
++    #
++    #   config/parser.c:648: assigning to 'char *' from 'const char *'
++    #     discards qualifiers [-Werror,-Wincompatible-pointer-types-…]
++    #   ptmalloc286/malloc.c:4000: variable 'nfences' set but not used
++    #     [-Werror,-Wunused-but-set-variable]
++    #
++    # the second in a vendored allocator UCX did not write. Dropping -Werror
++    # keeps every warning visible and stops them being fatal; it does not
++    # silence anything.
++    - sed -i 's/-Wall -Werror/-Wall/' configure
++    # iodemo is a test app, and it is built unconditionally: test/apps/
++    # Makefile.am puts `SUBDIRS += iodemo` ABOVE the `if HAVE_TEST_APPS`
++    # block, so --disable-test-apps (already the default) does not exclude it.
++    # It uses std::random_shuffle, removed in C++17:
++    #
++    #   io_demo.cc:3035: error: no member named 'random_shuffle' in namespace 'std'
++    #
++    # Nothing here ships it — `provides` lists ucx_info, ucx_perftest and
++    # ucx_read_profile — so drop the one subdirectory rather than move the
++    # whole build back to C++14 for a demo.
++    - sed -i 's|^SUBDIRS = profiling iodemo$|SUBDIRS = profiling|' test/apps/Makefile.in
++    - ./configure $ARGS
++    - make --jobs {{hw.concurrency}}
++    - make install
++  env:
++    ARGS:
++      - --prefix={{prefix}}
++      - --libdir={{prefix}}/lib
++      - --disable-dependency-tracking
++      - --disable-silent-rules
++      - --disable-logging
++      - --disable-debug
++      - --disable-assertions
++      - --disable-params-check
++      - --without-java
++      - --without-go
++      # Named rather than left to autodetection: a transport that silently did
++      # not get built is the kind of thing nobody notices until a benchmark is
++      # half as fast as it should be.
++      - --without-cuda
++      - --without-rocm
++
++provides:
++  - bin/ucx_info
++  - bin/ucx_perftest
++  - bin/ucx_read_profile
++
++test:
++  # ucx_info -d lists the transports that were actually compiled in. Asserting
++  # shared memory is the point of the package: if only self and tcp are there,
++  # the bottle is no better than no bottle.
++  script:
++    - ucx_info -v | grep -q "Library version"
++    - ucx_info -d | grep -q "Transport: posix"
++    - ucx_info -d | grep -q "Transport: sysv"
