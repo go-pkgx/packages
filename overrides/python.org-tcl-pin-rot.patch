@@ -1,0 +1,26 @@
+diff --git a/projects/python.org/package.yml b/projects/python.org/package.yml
+index 982717e..6a4445c 100644
+--- a/projects/python.org/package.yml
++++ b/projects/python.org/package.yml
+@@ -45,7 +45,20 @@ dependencies:
+   gnu.org/readline: 8
+   invisible-island.net/ncurses: 6
+   facebook.com/zstd: ">=1.5" # undefined symbol: ZSTD_defaultCLevel
+-  tcl-lang.org: =8.6.16 # 9.0.2 introduced a build issue on darwin
++  # ^8.6, not =8.6.16. The exact pin was right when it was written — tcl
++  # 9.0.2 broke the darwin build — but it outlived its subject: upstream's
++  # download page no longer lists tcl8.6.16-src.tar.gz, so the recipe's
++  # own `versions:` scrape yields 9.0.4, 8.6.18, 8.5.19, 8.4.20 and
++  # nothing can satisfy =8.6.16 any more:
++  #
++  #   tcl-lang.org latest — versions failed: no version matches "=8.6.16"
++  #
++  # Consumers then failed a step further out, naming tcl rather than the
++  # pin: freedesktop.org/p11-kit and gnome.org/libxml2 both died with
++  # "no version of tcl-lang.org satisfies =8.6.16 AND is published for
++  # darwin/aarch64". ^8.6 keeps the intent — stay off tcl 9 — and lets
++  # the 8.6 line move as upstream retires tarballs.
++  tcl-lang.org: ^8.6
+   # linux:
+   #   oracle.com/berkeley-db: 18
+ 
