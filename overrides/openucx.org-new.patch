@@ -1,0 +1,77 @@
+diff --git a/projects/openucx.org/package.yml b/projects/openucx.org/package.yml
+new file mode 100644
+index 0000000..e49015f
+--- /dev/null
++++ b/projects/openucx.org/package.yml
+@@ -0,0 +1,71 @@
++# UCX — the transport layer an MPI actually runs over on a cluster.
++#
++# The pantry carries open-mpi.org, PMIx and hwloc but nothing beneath them, so
++# an OpenMPI built from it falls back to TCP: correct, and on an InfiniBand or
++# RoCE fabric roughly an order of magnitude off what the hardware can do. UCX is
++# what OpenMPI, MPICH and OpenSHMEM all use to reach shared memory and RDMA.
++#
++# Built here WITHOUT the vendor stacks: rdma-core, CUDA and ROCm are absent from
++# the pantry too, so configure finds self/tcp/sysv/posix/cma and says so. That
++# is already the useful half — intra-node shared memory instead of TCP loopback
++# — and the recipe gains `--with-verbs` the day rdma-core lands, without its
++# consumers changing anything.
++
++distributable:
++  url: https://github.com/openucx/ucx/releases/download/v{{version}}/ucx-{{version}}.tar.gz
++  strip-components: 1
++
++versions:
++  github: openucx/ucx
++
++# linux only, deliberately. UCX compiles on darwin with self/tcp alone, which is
++# what the OS gives you anyway; shipping it there would suggest a capability
++# that is not present.
++platforms:
++  - linux
++
++dependencies:
++  zlib.net: ^1.3
++
++build:
++  dependencies:
++    gnu.org/autoconf: '*'
++    gnu.org/automake: '*'
++    gnu.org/libtool: '*'
++    gnu.org/m4: '*'
++    freedesktop.org/pkg-config: ^0.29
++  script:
++    - ./configure $ARGS
++    - make --jobs {{hw.concurrency}}
++    - make install
++  env:
++    ARGS:
++      - --prefix={{prefix}}
++      - --libdir={{prefix}}/lib
++      - --disable-dependency-tracking
++      - --disable-silent-rules
++      - --disable-logging
++      - --disable-debug
++      - --disable-assertions
++      - --disable-params-check
++      - --without-java
++      - --without-go
++      # Named rather than left to autodetection: a transport that silently did
++      # not get built is the kind of thing nobody notices until a benchmark is
++      # half as fast as it should be.
++      - --without-cuda
++      - --without-rocm
++
++provides:
++  - bin/ucx_info
++  - bin/ucx_perftest
++  - bin/ucx_read_profile
++
++test:
++  # ucx_info -d lists the transports that were actually compiled in. Asserting
++  # shared memory is the point of the package: if only self and tcp are there,
++  # the bottle is no better than no bottle.
++  script:
++    - ucx_info -v | grep -q "Library version"
++    - ucx_info -d | grep -q "Transport: posix"
++    - ucx_info -d | grep -q "Transport: sysv"
