@@ -1,9 +1,9 @@
 diff --git a/projects/openucx.org/package.yml b/projects/openucx.org/package.yml
 new file mode 100644
-index 0000000..a0946f9
+index 0000000..f30277c
 --- /dev/null
 +++ b/projects/openucx.org/package.yml
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,95 @@
 +# UCX — the transport layer an MPI actually runs over on a cluster.
 +#
 +# The pantry carries open-mpi.org, PMIx and hwloc but nothing beneath them, so
@@ -54,6 +54,17 @@ index 0000000..a0946f9
 +    # keeps every warning visible and stops them being fatal; it does not
 +    # silence anything.
 +    - sed -i 's/-Wall -Werror/-Wall/' configure
++    # iodemo is a test app, and it is built unconditionally: test/apps/
++    # Makefile.am puts `SUBDIRS += iodemo` ABOVE the `if HAVE_TEST_APPS`
++    # block, so --disable-test-apps (already the default) does not exclude it.
++    # It uses std::random_shuffle, removed in C++17:
++    #
++    #   io_demo.cc:3035: error: no member named 'random_shuffle' in namespace 'std'
++    #
++    # Nothing here ships it — `provides` lists ucx_info, ucx_perftest and
++    # ucx_read_profile — so drop the one subdirectory rather than move the
++    # whole build back to C++14 for a demo.
++    - sed -i 's|^SUBDIRS = profiling iodemo$|SUBDIRS = profiling|' test/apps/Makefile.in
 +    - ./configure $ARGS
 +    - make --jobs {{hw.concurrency}}
 +    - make install
