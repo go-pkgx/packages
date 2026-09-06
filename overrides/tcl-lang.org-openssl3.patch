@@ -1,23 +1,15 @@
 diff --git a/projects/tcl-lang.org/package.yml b/projects/tcl-lang.org/package.yml
-index bcde671..e4ebfcb 100644
+index bcde671..85461a0 100644
 --- a/projects/tcl-lang.org/package.yml
 +++ b/projects/tcl-lang.org/package.yml
-@@ -2,15 +2,27 @@ distributable:
+@@ -2,15 +2,19 @@ distributable:
    url: https://downloads.sourceforge.net/project/tcl/Tcl/{{version}}/tcl{{version}}-src.tar.gz
    strip-components: 1
  
-+# Enumerate where the tarball actually lives. The two halves of this recipe
-+# disagreed: `distributable` downloads from SourceForge, while `versions`
-+# scraped tcl-lang.org's download page, which lists only what upstream
-+# currently recommends. When 8.6.16 dropped off that page the recipe could no
-+# longer produce a version SourceForge still serves, and consumers failed a step
-+# further out, naming tcl rather than the listing:
-+#
-+#   tcl-lang.org latest — versions failed: no version matches "=8.6.16"
-+#
-+# SourceForge keeps the whole history (79 versions enumerate, 8.6.16 among
-+# them) and still serves its tarball: HTTP 200, gzip magic. A version source
-+# that forgets is not a version source.
++# Enumerate where the tarball actually lives: `distributable` downloads from
++# SourceForge, while this scraped tcl-lang.org's download page, which lists only
++# what upstream currently recommends. When 8.6.16 dropped off that page the
++# recipe could no longer produce a version SourceForge still serves.
  versions:
 -  url: https://www.tcl-lang.org/software/tcltk/download.html
 -  match: /tcl\d+\.\d+\.\d+-src\.tar\.gz/
@@ -35,3 +27,53 @@ index bcde671..e4ebfcb 100644
    zlib.net: ^1.3
    freetype.org: ^2
    freedesktop.org/pkg-config: ^0.29
+@@ -117,32 +121,23 @@ build:
+         s|='\(.*\){{prefix}}\(.*\)'|="\1$(cd $(dirname $0) \&\& pwd)/../..\2"|g
+         s|="\(.*\){{prefix}}\(.*\)"|="\1$(cd $(dirname $0) \&\& pwd)/../..\2"|g
+ 
+-    # darwin: we skip fix-machos because its ruby-macho re-sign keeps a lib's ld
+-    # `linker-signed` flag with stale hashes -> invalid sig -> arm64 Killed:9. So
+-    # do the relocation ourselves with cctools + a clean codesign. For every
+-    # Mach-O: rewrite its own id and any {{prefix}}/ self-reference (libtcl,
+-    # libtcl9tk, ...; names vary by version, so match generically rather than
+-    # hardcode) to a @loader_path path, swap the absolute pkgx-root rpath baked
+-    # by the build for a @loader_path-relative one, then re-sign. All paths are
+-    # computed per file depth (../-chain from the file's dir back to {{prefix}},
+-    # then two more up to the pkgx root). This makes the bottle self-contained.
+-    - run:
+-        - for f in $(find bin lib -type f); do
+-        - file "$f" | grep -q Mach-O || continue
+-        - up="$(dirname "$f" | sed 's:[^/][^/]*:..:g')"
+-        - id=$(otool -D "$f" | sed -n 2p)
+-        - case "$id" in {{prefix}}/*) install_name_tool -id "@rpath/${id##*/}" "$f";; esac
+-        - for dep in $(otool -L "$f" | awk 'NR>1{print $1}' | grep -F "{{prefix}}/"); do
+-        - install_name_tool -change "$dep" "@loader_path/$up/${dep#{{prefix}}/}" "$f"
+-        - done
+-        - install_name_tool -add_rpath "@loader_path/$up/../.." "$f"
+-        - if otool -l "$f" | grep -qF "{{pkgx.prefix}} (offset"; then install_name_tool -delete_rpath {{pkgx.prefix}} "$f"; fi
+-        - codesign --remove-signature "$f"
+-        - codesign -s - --force "$f"
+-        - done
+-      working-directory: ${{prefix}}
+-      if: darwin
+-  skip: fix-machos
++    # The hand-rolled Mach-O relocation that stood here is gone, and so is the
++    # `skip: fix-machos` that went with it. Its own comment gave the reason for
++    # both: fix-machos' "ruby-macho re-sign keeps a lib's ld `linker-signed`
++    # flag with stale hashes -> invalid sig -> arm64 Killed:9".
++    #
++    # That is upstream's implementation. Ours recomputes the code-slot hashes
++    # in pure Go (go-pkgx/bk#96 — checked against 8159 of 8159 stored hashes on
++    # a published bottle), rewrites install names to @rpath and major-versions
++    # them (#97, #104, #107), and links the @loader_path rpaths in at build
++    # time (#97). So the workaround is not merely redundant, it FAILS:
++    #
++    #   option "-add_rpath @loader_path/../../../.." would duplicate path,
++    #     file already has LC_RPATH for: @loader_path/../../../..
++    #
++    # install_name_tool errors on a duplicate, so tcl 8.6.16 configured, built,
++    # and then died in its own post-install. Six other recipes hand-roll the
++    # same surgery and will meet the same wall.
+   env:
+     res_critcl: https://github.com/andreas-kupries/critcl/archive/refs/tags/3.3.1.tar.gz
+     res_tcllib: https://downloads.sourceforge.net/project/tcllib/tcllib/2.0/tcllib-2.0.tar.xz
