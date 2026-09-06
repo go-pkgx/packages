@@ -1,8 +1,33 @@
 diff --git a/projects/tcl-lang.org/package.yml b/projects/tcl-lang.org/package.yml
+index bcde671..e4ebfcb 100644
 --- a/projects/tcl-lang.org/package.yml
 +++ b/projects/tcl-lang.org/package.yml
-@@ -10,7 +10,7 @@
-     - /-src\.tar\.gz/
+@@ -2,15 +2,27 @@ distributable:
+   url: https://downloads.sourceforge.net/project/tcl/Tcl/{{version}}/tcl{{version}}-src.tar.gz
+   strip-components: 1
+ 
++# Enumerate where the tarball actually lives. The two halves of this recipe
++# disagreed: `distributable` downloads from SourceForge, while `versions`
++# scraped tcl-lang.org's download page, which lists only what upstream
++# currently recommends. When 8.6.16 dropped off that page the recipe could no
++# longer produce a version SourceForge still serves, and consumers failed a step
++# further out, naming tcl rather than the listing:
++#
++#   tcl-lang.org latest — versions failed: no version matches "=8.6.16"
++#
++# SourceForge keeps the whole history (79 versions enumerate, 8.6.16 among
++# them) and still serves its tarball: HTTP 200, gzip magic. A version source
++# that forgets is not a version source.
+ versions:
+-  url: https://www.tcl-lang.org/software/tcltk/download.html
+-  match: /tcl\d+\.\d+\.\d+-src\.tar\.gz/
++  url: https://sourceforge.net/projects/tcl/files/Tcl/
++  match: /Tcl\/\d+\.\d+\.\d+\//
+   strip:
+-    - /^tcl/
+-    - /-src\.tar\.gz/
++    - /^Tcl\//
++    - /\/$/
  
  dependencies:
 -  openssl.org: ^1.1
