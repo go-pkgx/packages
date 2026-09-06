@@ -1,0 +1,23 @@
+diff --git a/projects/zlib.net/package.yml b/projects/zlib.net/package.yml
+index 6ee2af7..4f3eadb 100644
+--- a/projects/zlib.net/package.yml
++++ b/projects/zlib.net/package.yml
+@@ -1,5 +1,17 @@
++# Download where the versions are enumerated. zlib.net's front page carries
++# only the CURRENT release, so every older version 404s the moment a new one
++# ships — while `versions:` happily lists them all from GitHub:
++#
++#   zlib.net 1.3.1 — build failed: fetch: GET https://zlib.net/zlib-1.3.1.tar.gz:
++#     404 Not Found
++#
++# with 1.3.1 still named by python.org's `zlib.net: =1.3.1` pin, which then took
++# freedesktop.org/p11-kit down with it. zlib.net keeps old releases under
++# fossils/ but not the current one, so neither path covers everything; the
++# GitHub release does, for every version the recipe can enumerate (verified:
++# 1.3.1 and 1.3.2 both 200).
+ distributable:
+-  url: https://zlib.net/zlib-{{version.raw}}.tar.gz
++  url: https://github.com/madler/zlib/releases/download/v{{version.raw}}/zlib-{{version.raw}}.tar.gz
+   strip-components: 1
+ 
+ versions:
