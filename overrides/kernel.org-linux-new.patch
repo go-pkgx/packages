@@ -1,9 +1,9 @@
 diff --git a/projects/kernel.org/linux/package.yml b/projects/kernel.org/linux/package.yml
 new file mode 100644
-index 0000000..cd0c110
+index 0000000..7578c20
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,125 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -77,14 +77,24 @@ index 0000000..cd0c110
 +        make olddefconfig
 +    # $KERNEL_IMAGE is the target and $KERNEL_IMAGE_PATH where it lands: Image on
 +    # arm64, bzImage on x86-64 — the very file the microVM runtime boots.
-+    # TEMPORARY (go-pkgx/packages#121). Four LINK flags reach a compile-only
-+    # clang invocation and the kernel's -Werror makes them fatal, while bk's
-+    # own -Wno-unused-command-line-argument is in CC and does not arrive with
-+    # them. Reading the code does not say how, so ask the build: V=1 prints the
-+    # command line, and $CC is echoed beside it for comparison.
-+    - 'echo "BKPROBE CC = $CC"'
-+    - 'echo "BKPROBE HOSTCC = ${HOSTCC:-unset}"'
-+    - make V=1 --jobs {{ hw.concurrency }} $KERNEL_IMAGE
++    # KCFLAGS, and this one flag, for a collision of ORDER rather than a bug on
++    # either side. bk's driver carries link flags on every invocation
++    # (--rtlib=compiler-rt, -fuse-ld=lld, --unwindlib=none, -L…) plus a
++    # -Wno-unused-command-line-argument to keep clang quiet about them when it
++    # is merely compiling. The kernel then asks for
++    #
++    #     -Werror=unused-command-line-argument
++    #
++    # explicitly — and -Werror=X RE-ENABLES X even when -Wno-X came earlier, so
++    # the kernel's flag wins on position and every compile-only step dies:
++    #
++    #     clang: error: argument unused during compilation: '--rtlib=compiler-rt'
++    #     make[2]: *** [scripts/Makefile.build:184:
++    #       scripts/mod/devicetable-offsets.s] Error 1
++    #
++    # kbuild appends KCFLAGS AFTER its own flags, so this is the one place the
++    # order can be settled without touching either party's defaults.
++    - make KCFLAGS=-Wno-error=unused-command-line-argument --jobs {{ hw.concurrency }} $KERNEL_IMAGE
 +    - mkdir -p "{{prefix}}/boot" "{{prefix}}/share/kernel"
 +    - cp "$KERNEL_IMAGE_PATH" "{{prefix}}/boot/Image"
 +    - cp .config "{{prefix}}/share/kernel/config"
