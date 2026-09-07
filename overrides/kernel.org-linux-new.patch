@@ -1,9 +1,9 @@
 diff --git a/projects/kernel.org/linux/package.yml b/projects/kernel.org/linux/package.yml
 new file mode 100644
-index 0000000..c97d793
+index 0000000..887faa3
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,108 @@
+@@ -0,0 +1,115 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -77,7 +77,14 @@ index 0000000..c97d793
 +        make olddefconfig
 +    # $KERNEL_IMAGE is the target and $KERNEL_IMAGE_PATH where it lands: Image on
 +    # arm64, bzImage on x86-64 — the very file the microVM runtime boots.
-+    - make --jobs {{ hw.concurrency }} $KERNEL_IMAGE
++    # TEMPORARY (go-pkgx/packages#121). Four LINK flags reach a compile-only
++    # clang invocation and the kernel's -Werror makes them fatal, while bk's
++    # own -Wno-unused-command-line-argument is in CC and does not arrive with
++    # them. Reading the code does not say how, so ask the build: V=1 prints the
++    # command line, and $CC is echoed beside it for comparison.
++    - echo "--- CC is: $CC"
++    - echo "--- HOSTCC is: ${HOSTCC:-unset}"
++    - make V=1 --jobs {{ hw.concurrency }} $KERNEL_IMAGE
 +    - mkdir -p "{{prefix}}/boot" "{{prefix}}/share/kernel"
 +    - cp "$KERNEL_IMAGE_PATH" "{{prefix}}/boot/Image"
 +    - cp .config "{{prefix}}/share/kernel/config"
