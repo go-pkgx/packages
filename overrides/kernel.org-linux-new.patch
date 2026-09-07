@@ -1,9 +1,9 @@
 diff --git a/projects/kernel.org/linux/package.yml b/projects/kernel.org/linux/package.yml
 new file mode 100644
-index 0000000..afbe1cf
+index 0000000..c97d793
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,108 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -42,6 +42,21 @@ index 0000000..afbe1cf
 +    # config with unexplained lines is a config nobody dares change.
 +    - make defconfig
 +    - run: |
++        # RDMA, and the software transports that make it reachable without
++        # hardware. rdma-core is in the pantry now, and libibverbs opens
++        # /dev/infiniband/uverbs* — a device this kernel did not create, so the
++        # userspace half had nothing to talk to. RXE (soft-RoCE) and SIW
++        # (soft-iWARP) give a working RDMA stack over ordinary Ethernet, which
++        # is what makes UCX's --with-verbs path testable in a microVM on a
++        # laptop rather than only on a cluster.
++        #
++        # mlx5 is the HCA an actual cluster has, and only reachable in a guest
++        # once VFIO can hand the device through. VFIO earns its place the same
++        # way for GPUs. PCI_P2PDMA is GPUDirect: the NIC reading GPU memory
++        # without a bounce through the host.
++        #
++        # All =y, because MODULES is disabled below: a microVM kernel that
++        # needed a modules tree beside it would not be one artefact any more.
 +        ./scripts/config \
 +          --enable VIRTIO --enable VIRTIO_PCI --enable VIRTIO_MMIO \
 +          --enable VIRTIO_BLK --enable VIRTIO_NET --enable VIRTIO_CONSOLE \
@@ -53,6 +68,11 @@ index 0000000..afbe1cf
 +          --enable OVERLAY_FS --enable SECCOMP --enable SECCOMP_FILTER \
 +          --enable TMPFS --enable TMPFS_POSIX_ACL --enable DEVTMPFS \
 +          --enable DEVTMPFS_MOUNT --enable BLK_DEV_INITRD --enable RD_GZIP \
++          --enable INFINIBAND --enable INFINIBAND_USER_ACCESS \
++          --enable INFINIBAND_ADDR_TRANS --enable RDMA_RXE --enable RDMA_SIW \
++          --enable MLX5_CORE --enable MLX5_INFINIBAND \
++          --enable VFIO --enable VFIO_PCI --enable VFIO_IOMMU_TYPE1 \
++          --enable TRANSPARENT_HUGEPAGE --enable PCI_P2PDMA \
 +          --disable MODULES
 +        make olddefconfig
 +    # $KERNEL_IMAGE is the target and $KERNEL_IMAGE_PATH where it lands: Image on
@@ -87,3 +107,8 @@ index 0000000..afbe1cf
 +    grep -q "^CONFIG_VIRTIO_FS=y" {{prefix}}/share/kernel/config
 +    grep -q "^CONFIG_OVERLAY_FS=y" {{prefix}}/share/kernel/config
 +    grep -q "^CONFIG_USER_NS=y" {{prefix}}/share/kernel/config
++    grep -q "^CONFIG_INFINIBAND_USER_ACCESS=y" {{prefix}}/share/kernel/config
++    grep -q "^CONFIG_INFINIBAND_ADDR_TRANS=y" {{prefix}}/share/kernel/config
++    grep -q "^CONFIG_RDMA_RXE=y" {{prefix}}/share/kernel/config
++    grep -q "^CONFIG_VFIO_PCI=y" {{prefix}}/share/kernel/config
++    grep -q "^CONFIG_TRANSPARENT_HUGEPAGE=y" {{prefix}}/share/kernel/config
