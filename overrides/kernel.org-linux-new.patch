@@ -1,6 +1,6 @@
 diff --git a/projects/kernel.org/linux/package.yml b/projects/kernel.org/linux/package.yml
 new file mode 100644
-index 0000000..887faa3
+index 0000000..cd0c110
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
 @@ -0,0 +1,115 @@
@@ -82,8 +82,8 @@ index 0000000..887faa3
 +    # own -Wno-unused-command-line-argument is in CC and does not arrive with
 +    # them. Reading the code does not say how, so ask the build: V=1 prints the
 +    # command line, and $CC is echoed beside it for comparison.
-+    - echo "--- CC is: $CC"
-+    - echo "--- HOSTCC is: ${HOSTCC:-unset}"
++    - 'echo "BKPROBE CC = $CC"'
++    - 'echo "BKPROBE HOSTCC = ${HOSTCC:-unset}"'
 +    - make V=1 --jobs {{ hw.concurrency }} $KERNEL_IMAGE
 +    - mkdir -p "{{prefix}}/boot" "{{prefix}}/share/kernel"
 +    - cp "$KERNEL_IMAGE_PATH" "{{prefix}}/boot/Image"
