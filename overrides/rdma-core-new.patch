@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/linux-rdma/rdma-core/package.yml b/projects/github.com/linux-rdma/rdma-core/package.yml
 new file mode 100644
-index 0000000..e6cbbdc
+index 0000000..d8f6d71
 --- /dev/null
 +++ b/projects/github.com/linux-rdma/rdma-core/package.yml
-@@ -0,0 +1,67 @@
+@@ -0,0 +1,70 @@
 +# rdma-core — the userspace half of the kernel's RDMA stack.
 +#
 +# libibverbs and librdmacm are what a transport library talks to in order to
@@ -17,8 +17,11 @@ index 0000000..e6cbbdc
 +# whether a registry may redistribute them at all, and that is not a build
 +# question.
 +
++# version.raw, NOT version: upstream tags v65.0 and ships rdma-core-65.0.tar.gz,
++# while the normalised version is 65.0.0 — which asks for a release that does
++# not exist and gets a 404 at fetch time, long after the version resolved fine.
 +distributable:
-+  url: https://github.com/linux-rdma/rdma-core/releases/download/v{{version}}/rdma-core-{{version}}.tar.gz
++  url: https://github.com/linux-rdma/rdma-core/releases/download/v{{version.raw}}/rdma-core-{{version.raw}}.tar.gz
 +  strip-components: 1
 +
 +versions:
