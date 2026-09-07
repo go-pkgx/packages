@@ -1,0 +1,87 @@
+diff --git a/projects/nvidia.com/cuda-cudart/package.yml b/projects/nvidia.com/cuda-cudart/package.yml
+new file mode 100644
+index 0000000..b1dd5e4
+--- /dev/null
++++ b/projects/nvidia.com/cuda-cudart/package.yml
+@@ -0,0 +1,81 @@
++# CUDA Runtime (cudart), from NVIDIA's own redistributable set.
++#
++# ── The licence question, stated rather than assumed ────────────────────────
++# NVIDIA publishes these archives under compute/cuda/redist/ with a JSON
++# manifest per toolkit release, and the CUDA Toolkit EULA shipped inside each
++# archive names, in Attachment A, exactly which files may be distributed:
++#
++#     Component: CUDA Runtime
++#     Linux: libcudart.so, libcudart_static.a, libcudadevrt.a
++#
++# with the condition that they are distributed "with applications developed by
++# you". Whether a package REGISTRY meets that condition is a judgement, and the
++# ecosystem has answered it both ways: conda-forge mirrors these archives,
++# Spack downloads them from NVIDIA at install time and republishes nothing.
++#
++# This recipe downloads from NVIDIA and verifies NVIDIA's own sha256. Publishing
++# the resulting bottle is the step that constitutes redistribution, and that is
++# a decision for the maintainer, not for a build script.
++#
++# ── Why cudart first ────────────────────────────────────────────────────────
++# It is what a GPU-aware transport links against. UCX's --with-cuda needs
++# libcudart plus the driver stub this archive carries; the driver itself is not
++# redistributable and is not here — it comes from the machine's own NVIDIA
++# installation, which is where it belongs.
++
++versions:
++  # The redist root lists one manifest per toolkit release. Component versions
++  # differ from toolkit versions (cudart 12.8.57 ships in toolkit 12.8.0), so
++  # the manifest is read at build time rather than guessed at here.
++  url: https://developer.download.nvidia.com/compute/cuda/redist/
++  match: /redistrib_\d+\.\d+\.\d+\.json/
++  strip:
++    - /^redistrib_/
++    - /\.json$/
++
++platforms:
++  - linux
++
++build:
++  dependencies:
++    python.org: ^3
++    curl.se: '*'
++  script:
++    # NVIDIA's manifest is the source of truth for the component version, the
++    # per-architecture path AND the checksum. Reading it beats hardcoding three
++    # things that move independently.
++    - |
++      python3 - <<'PY'
++      import hashlib, json, os, subprocess, sys, urllib.request
++      base = "https://developer.download.nvidia.com/compute/cuda/redist"
++      toolkit = "{{version}}"
++      # pkgx says x86-64 / aarch64; NVIDIA says x86_64, and distinguishes sbsa
++      # (server ARM, what a cluster has) from aarch64 (Tegra). HPC wants sbsa.
++      arch = {"x86-64": "linux-x86_64", "aarch64": "linux-sbsa"}["{{hw.arch}}"]
++      man = json.load(urllib.request.urlopen(f"{base}/redistrib_{toolkit}.json"))
++      comp = man["cuda_cudart"]
++      if arch not in comp:
++          sys.exit(f"cuda_cudart has no {arch} in toolkit {toolkit}")
++      rel, want = comp[arch]["relative_path"], comp[arch]["sha256"]
++      print(f"cudart {comp['version']} for {arch}", flush=True)
++      data = urllib.request.urlopen(f"{base}/{rel}").read()
++      got = hashlib.sha256(data).hexdigest()
++      if got != want:
++          sys.exit(f"sha256 mismatch: NVIDIA says {want}, got {got}")
++      open("cudart.tar.xz", "wb").write(data)
++      PY
++    - mkdir -p {{prefix}}
++    - tar -xJf cudart.tar.xz --strip-components=1 -C {{prefix}}
++    # The archive carries a pkg-config dir keyed to NVIDIA's own layout; drop it
++    # rather than ship .pc files whose prefixes point where nothing is.
++    - rm -rf {{prefix}}/pkg-config
++
++provides: []
++
++test:
++  # No GPU on a build machine, and none needed: what this package owes its
++  # consumers is a linkable runtime with headers, which is checkable without one.
++  script:
++    - test -f {{prefix}}/lib/libcudart.so
++    - test -f {{prefix}}/include/cuda_runtime.h
++    - test -f {{prefix}}/LICENSE
