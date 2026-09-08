@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/ROCm/ROCR-Runtime/package.yml b/projects/github.com/ROCm/ROCR-Runtime/package.yml
 new file mode 100644
-index 0000000..b01f29c
+index 0000000..87e7b8a
 --- /dev/null
 +++ b/projects/github.com/ROCm/ROCR-Runtime/package.yml
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,163 @@
 +# ROCr — the HSA runtime an AMD GPU is driven through, built from source.
 +#
 +# ── Why this is not the CUDA story ──────────────────────────────────────────
@@ -68,8 +68,51 @@ index 0000000..b01f29c
 +  dependencies:
 +    cmake.org: ^3
 +    freedesktop.org/pkg-config: '*'
++    # od and wc, for the blit-shader header the recipe generates below.
++    gnu.org/coreutils: '*'
 +  working-directory: build
 +  script:
++    # AMD turns the compiled GPU blit shaders into a C header with a shell
++    # script, and that script needs two things a from-scratch rootfs does not
++    # have: `#!/bin/bash -e` (there is no /bin/bash) and `xxd` (nothing in this
++    # pantry provides it — not even vim's bottle, which was checked).
++    #
++    #   ./create_blit_shader_header.sh: /bin/bash: bad interpreter
++    #
++    # Neither is worth importing. bash would need the shebang rewritten anyway,
++    # since it names an absolute path, and a partial `xxd` shim would be a tool
++    # that mimics another tool in the one mode we happen to use — the kind of
++    # thing that is right until someone relies on it.
++    #
++    # So the script is replaced by a POSIX one using od and sed, which are
++    # already here. It must emit exactly what `xxd -i` does, because the C++
++    # names the symbols: `unsigned char <file>[]` and `unsigned int <file>_len`,
++    # where <file> is the argument. A trailing comma before `}` is legal C, and
++    # is what xxd emits too.
++    - |
++      cat > ../runtime/hsa-runtime/core/runtime/blit_shaders/create_blit_shader_header.sh <<'SHEOF'
++      #!/bin/sh -e
++      out="$1"; shift
++      {
++        echo "//=========================================================="
++        echo "//  Generated during the build; do not edit."
++        echo "//=========================================================="
++        echo
++        echo "namespace rocr {"
++        echo "namespace AMD {"
++        echo
++        for f in "$@"; do
++          echo "unsigned char $f[] = {"
++          od -An -v -tx1 "$f" | sed -e 's/[0-9a-f][0-9a-f]/0x&,/g'
++          echo "};"
++          echo "unsigned int ${f}_len = $(wc -c < "$f");"
++          echo
++        done
++        echo "} // namespace AMD"
++        echo "} // namespace rocr"
++      } > "$out"
++      SHEOF
++    - chmod +x ../runtime/hsa-runtime/core/runtime/blit_shaders/create_blit_shader_header.sh
 +    - cmake .. $ARGS
 +    - make --jobs {{ hw.concurrency }}
 +    - make install
