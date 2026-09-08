@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/ROCm/ROCR-Runtime/package.yml b/projects/github.com/ROCm/ROCR-Runtime/package.yml
 new file mode 100644
-index 0000000..87e7b8a
+index 0000000..cfbf377
 --- /dev/null
 +++ b/projects/github.com/ROCm/ROCR-Runtime/package.yml
-@@ -0,0 +1,163 @@
+@@ -0,0 +1,172 @@
 +# ROCr — the HSA runtime an AMD GPU is driven through, built from source.
 +#
 +# ── Why this is not the CUDA story ──────────────────────────────────────────
@@ -72,47 +72,56 @@ index 0000000..87e7b8a
 +    gnu.org/coreutils: '*'
 +  working-directory: build
 +  script:
-+    # AMD turns the compiled GPU blit shaders into a C header with a shell
-+    # script, and that script needs two things a from-scratch rootfs does not
-+    # have: `#!/bin/bash -e` (there is no /bin/bash) and `xxd` (nothing in this
-+    # pantry provides it — not even vim's bottle, which was checked).
++    # AMD turns compiled GPU code into C headers with a shell script that needs
++    # two things a from-scratch rootfs does not have: `#!/bin/bash -e` (there is
++    # no /bin/bash) and `xxd` (nothing in this pantry provides it — not even
++    # vim's bottle, which was checked).
 +    #
 +    #   ./create_blit_shader_header.sh: /bin/bash: bad interpreter
 +    #
-+    # Neither is worth importing. bash would need the shebang rewritten anyway,
-+    # since it names an absolute path, and a partial `xxd` shim would be a tool
-+    # that mimics another tool in the one mode we happen to use — the kind of
-+    # thing that is right until someone relies on it.
++    # There are THREE such scripts, not one — blit_shaders, trap_handler and
++    # image/blit_src — so they are found by what they DO, `xxd -i`, rather than
++    # by name. Fixing the first alone bought exactly one more percent of the
++    # build before it stopped at the second.
 +    #
-+    # So the script is replaced by a POSIX one using od and sed, which are
-+    # already here. It must emit exactly what `xxd -i` does, because the C++
-+    # names the symbols: `unsigned char <file>[]` and `unsigned int <file>_len`,
-+    # where <file> is the argument. A trailing comma before `}` is legal C, and
-+    # is what xxd emits too.
++    # And they are NOT interchangeable, which is why this transforms each script
++    # instead of replacing it with one of my own: two emit into namespace
++    # rocr::AMD and take their files as arguments, the third emits into
++    # rocr::image and GLOBS ocl_blit_object*. A single replacement would have
++    # produced a header in the wrong namespace with nothing in it.
++    #
++    # So only the two incompatibilities are changed — the shebang, and `echo -e`,
++    # which under a POSIX shell prints a literal "-e" into the C++. `xxd` becomes
++    # a shell function defined in the script that calls it, three lines above its
++    # only caller. That is not the same as installing an `xxd` on PATH: this one
++    # cannot be picked up by anything else, and its single caller is visible from
++    # its definition. It also satisfies the script's own `command -v xxd` guard,
++    # which a rewrite would have had to delete.
++    #
++    # Verified by running both shapes on fixture files and COMPILING the headers
++    # they produce, not by reading the format off a man page.
 +    - |
-+      cat > ../runtime/hsa-runtime/core/runtime/blit_shaders/create_blit_shader_header.sh <<'SHEOF'
-+      #!/bin/sh -e
-+      out="$1"; shift
-+      {
-+        echo "//=========================================================="
-+        echo "//  Generated during the build; do not edit."
-+        echo "//=========================================================="
-+        echo
-+        echo "namespace rocr {"
-+        echo "namespace AMD {"
-+        echo
-+        for f in "$@"; do
-+          echo "unsigned char $f[] = {"
-+          od -An -v -tx1 "$f" | sed -e 's/[0-9a-f][0-9a-f]/0x&,/g'
-+          echo "};"
-+          echo "unsigned int ${f}_len = $(wc -c < "$f");"
-+          echo
-+        done
-+        echo "} // namespace AMD"
-+        echo "} // namespace rocr"
-+      } > "$out"
-+      SHEOF
-+    - chmod +x ../runtime/hsa-runtime/core/runtime/blit_shaders/create_blit_shader_header.sh
++      found=0
++      for s in $(grep -rl 'xxd -i' .. --include='*.sh'); do
++        {
++          echo '#!/bin/sh -e'
++          echo 'xxd() {'
++          echo '  f=$2'
++          echo '  echo "unsigned char $f[] = {"'
++          echo "  od -An -v -tx1 \"\$f\" | sed -e 's/[0-9a-f][0-9a-f]/0x&,/g'"
++          echo '  echo "};"'
++          echo '  echo "unsigned int ${f}_len = $(wc -c < "$f");"'
++          echo '}'
++          tail -n +2 "$s" | sed -e "s/echo -e '\\\\n'/echo/"
++        } > "$s.new"
++        mv "$s.new" "$s"
++        chmod +x "$s"
++        echo "de-xxd'd $s"
++        found=$((found + 1))
++      done
++      # If upstream stops using xxd this loop would silently do nothing and the
++      # build would fail on a bash shebang with no explanation here.
++      test "$found" -gt 0 || { echo "no xxd-based generator found; is this still needed?" >&2; exit 1; }
 +    - cmake .. $ARGS
 +    - make --jobs {{ hw.concurrency }}
 +    - make install
