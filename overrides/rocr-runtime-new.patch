@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/ROCm/ROCR-Runtime/package.yml b/projects/github.com/ROCm/ROCR-Runtime/package.yml
 new file mode 100644
-index 0000000..2fa96c5
+index 0000000..0388d52
 --- /dev/null
 +++ b/projects/github.com/ROCm/ROCR-Runtime/package.yml
-@@ -0,0 +1,190 @@
+@@ -0,0 +1,215 @@
 +# ROCr — the HSA runtime an AMD GPU is driven through, built from source.
 +#
 +# ── Why this is not the CUDA story ──────────────────────────────────────────
@@ -100,6 +100,31 @@ index 0000000..2fa96c5
 +    #
 +    # Verified by running both shapes on fixture files and COMPILING the headers
 +    # they produce, not by reading the format off a man page.
++    # ROCm 7.2.4 predates libc++ 22, and libc++ 22 reaches for the TRANSPARENT
++    # comparator where earlier versions did not:
++    #
++    #   __utility/lazy_synth_three_way_comparator.h:45: error: no matching
++    #     function for call to object of type 'const std::less<void>'
++    #   note: in instantiation of member function
++    #     'std::__lazy_compare_result<std::less<void>, hsa_signal_s, hsa_signal_s>'
++    #
++    # ROCr does specialise std::less<hsa_signal_t> — signal.h:76, so that
++    # std::map<hsa_signal_t, V> works — but std::less<void> is a DIFFERENT type,
++    # and it does `a < b`, which hsa_signal_s does not have.
++    #
++    # So give it one, beside the specialisation that already exists and with the
++    # same body. Checked rather than reasoned: `std::less<void>` on this struct
++    # fails to compile without an operator< and succeeds with it.
++    - |
++      h=../runtime/hsa-runtime/core/inc/signal.h
++      awk '/^\/\/ Allow hsa_signal_t to be keys in STL structures\.$/ {
++             print "inline bool operator<(const hsa_signal_t\& x, const hsa_signal_t\& y) { return x.handle < y.handle; }"
++             print ""
++           }
++           { print }' "$h" > "$h.new"
++      mv "$h.new" "$h"
++      grep -q 'inline bool operator<(const hsa_signal_t' "$h" \
++        || { echo "signal.h did not take the operator< insertion" >&2; exit 1; }
 +    - |
 +      found=0
 +      for s in $(grep -rl 'xxd -i' .. --include='*.sh'); do
