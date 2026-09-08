@@ -1,9 +1,9 @@
 diff --git a/projects/kernel.org/linux/package.yml b/projects/kernel.org/linux/package.yml
 new file mode 100644
-index 0000000..2176179
+index 0000000..d1de1e9
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,139 @@
+@@ -0,0 +1,131 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -94,21 +94,13 @@ index 0000000..2176179
 +    #
 +    # kbuild appends KCFLAGS AFTER its own flags, so this is the one place the
 +    # order can be settled without touching either party's defaults.
-+    # Two flags, one cause. kbuild decides which warnings to disable by PROBING
-+    # the compiler (`cc-disable-warning` compiles a trivial file and keeps the
-+    # flag if it is accepted). Those probes inherit bk's link flags, so under
-+    # -Werror=unused-command-line-argument they all fail, and the kernel
-+    # concludes the compiler supports none of them — silently dropping
-+    # -Wno-address-of-packed-member among others, which x86's own
-+    # processor.h then trips:
-+    #
-+    #   asm/processor.h:536: taking address of packed member 'sp0' … may result
-+    #     in an unaligned pointer value [-Werror,-Waddress-of-packed-member]
-+    #
-+    # So the first flag unpoisons the probes and the second covers the warning
-+    # the probes were meant to disable. If more of these appear, the probes are
-+    # still failing and the answer is upstream of here, not another -Wno-.
-+    - make KCFLAGS="-Wno-error=unused-command-line-argument -Wno-address-of-packed-member" --jobs {{ hw.concurrency }} $KERNEL_IMAGE
++    # No -Wno- crutches here any more. The link flags that made every
++    # compile-only step fail — and, worse, made kbuild's warning PROBES fail, so
++    # the kernel dropped the warnings it meant to disable — are no longer handed
++    # to a compile-only invocation at all (go-pkgx/bk#111). KCFLAGS did not fix
++    # it: the probes never see KCFLAGS, and eleven unused-argument errors
++    # survived that attempt, which is what located the defect in the shim.
++    - make --jobs {{ hw.concurrency }} $KERNEL_IMAGE
 +    - mkdir -p "{{prefix}}/boot" "{{prefix}}/share/kernel"
 +    - cp "$KERNEL_IMAGE_PATH" "{{prefix}}/boot/Image"
 +    - cp .config "{{prefix}}/share/kernel/config"
