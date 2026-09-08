@@ -29,6 +29,16 @@ jobs:
       - run: go vet ./...
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      # A project that upstream does not carry lives in two places — the override
+      # patch the factory BUILDS from, and the overlay a consumer RESOLVES from.
+      # Four such projects were published, signed, and unreachable to any
+      # consumer because only the build half existed; nothing said so, because
+      # the bottles were there and only a recipe fetch would have failed. This
+      # reads the published overlay, not a checkout: a checkout can be right
+      # while what is served is not.
+      - name: both halves of a new project agree
+        run: go run ./overlaycheck
+
       - name: test + 100% coverage gate
         run: |
           go test ./... -covermode=atomic -coverprofile=cov.out
