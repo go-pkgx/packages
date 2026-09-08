@@ -1,0 +1,184 @@
+// Command overlaycheck fails when a project that exists ONLY here has drifted
+// from, or is missing in, the consumer half.
+//
+// The factory keeps a recipe in two places and they must agree:
+//
+//   - overrides/<name>-new.patch, applied to a fresh pkgxdev/pantry clone, is
+//     what `bk` BUILDS from;
+//   - go-pkgx/pantry-overlay/projects/<project>/package.yml is what a consumer
+//     RESOLVES over HTTP (bottle's fetchRecipe tries the overlay, then upstream,
+//     and nothing else).
+//
+// For a project that upstream does not carry — openucx.org, rdma-core,
+// cuda-cudart, ROCr — the overlay is the ONLY place a consumer can learn the
+// dependencies and the runtime environment. Four such projects were published,
+// signed and unreachable to any consumer for days because only the build half
+// existed. Nothing said so: the bottles were there, the registry listed them,
+// and every fetch of a recipe returned 404 from both pantries.
+//
+// This checks only the case where the answer is not a judgement call — a patch
+// that ADDS a whole project. A patch that MODIFIES an upstream recipe may
+// belong in the overlay or may be build-only, and flagging every one of those
+// would train people to ignore the check.
+package main
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+// overlayBase is where a consumer reads recipes from, and therefore where this
+// check reads them from too: the published URL, not a checkout, because a
+// checkout can be right while what is served is not.
+const overlayBase = "https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects"
+
+// httpGet is a seam so the tests do not reach the network.
+var httpGet = func(url string) (int, []byte, error) {
+	c := &http.Client{Timeout: 30 * time.Second}
+	resp, err := c.Get(url)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	return resp.StatusCode, body, err
+}
+
+// osExit is a seam so a test can exercise the failure path without exiting.
+var osExit = os.Exit
+
+func main() {
+	dir := "overrides"
+	if len(os.Args) > 1 {
+		dir = os.Args[1]
+	}
+	if code := run(dir, os.Stdout); code != 0 {
+		osExit(code)
+	}
+}
+
+// run compares every added project against the overlay and returns a process
+// exit code.
+func run(dir string, out io.Writer) int {
+	added, err := addedProjects(dir)
+	if err != nil {
+		fmt.Fprintln(out, "overlaycheck:", err)
+		return 2
+	}
+	names := make([]string, 0, len(added))
+	for p := range added {
+		names = append(names, p)
+	}
+	sort.Strings(names)
+
+	bad := 0
+	for _, project := range names {
+		status, body, err := httpGet(overlayBase + "/" + project + "/package.yml")
+		switch {
+		case err != nil:
+			fmt.Fprintf(out, "✗ %s: cannot read the overlay: %v\n", project, err)
+			bad++
+		case status == http.StatusNotFound:
+			fmt.Fprintf(out, "✗ %s: added here, absent from the overlay — no consumer can resolve it\n", project)
+			bad++
+		case status != http.StatusOK:
+			fmt.Fprintf(out, "✗ %s: overlay answered %d\n", project, status)
+			bad++
+		case !sameRecipe(body, added[project]):
+			fmt.Fprintf(out, "✗ %s: the two halves have drifted\n", project)
+			bad++
+		default:
+			fmt.Fprintf(out, "✓ %s\n", project)
+		}
+	}
+	if bad > 0 {
+		fmt.Fprintf(out, "\n%d of %d projects disagree between the halves.\n", bad, len(names))
+		return 1
+	}
+	fmt.Fprintf(out, "\n%d projects, both halves in agreement.\n", len(names))
+	return 0
+}
+
+// sameRecipe compares two recipes ignoring trailing whitespace and a missing
+// final newline — differences a copy between repositories can introduce and
+// that change nothing about what either half reads.
+func sameRecipe(a, b []byte) bool {
+	return strings.TrimRight(string(a), "\n \t") == strings.TrimRight(string(b), "\n \t")
+}
+
+// addedProjects reads every patch in dir and returns, per project, the content
+// of a package.yml the patch ADDS. A patch that only modifies existing files
+// contributes nothing.
+func addedProjects(dir string) (map[string][]byte, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]byte{}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".patch") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			return nil, err
+		}
+		for project, content := range addedRecipes(string(b)) {
+			out[project] = content
+		}
+	}
+	return out, nil
+}
+
+// addedRecipes extracts, from one unified diff, the full content of every
+// projects/<project>/package.yml the diff creates.
+//
+// "Creates" is read off `new file mode`, not off the presence of + lines: a
+// patch that appends to an existing recipe is a modification, and the content
+// reconstructed from its hunks would be a fragment presented as a whole file.
+func addedRecipes(patch string) map[string][]byte {
+	out := map[string][]byte{}
+	var project string
+	var body []string
+	inHunk, isNew := false, false
+
+	flush := func() {
+		if project != "" && isNew {
+			out[project] = []byte(strings.Join(body, "\n") + "\n")
+		}
+		project, body, inHunk, isNew = "", nil, false, false
+	}
+
+	for _, line := range strings.Split(patch, "\n") {
+		switch {
+		case strings.HasPrefix(line, "diff --git "):
+			flush()
+		case strings.HasPrefix(line, "new file mode "):
+			isNew = true
+		case strings.HasPrefix(line, "+++ b/"):
+			project = projectOf(strings.TrimPrefix(line, "+++ b/"))
+		case strings.HasPrefix(line, "@@"):
+			inHunk = true
+		case inHunk && strings.HasPrefix(line, "+"):
+			body = append(body, line[1:])
+		}
+	}
+	flush()
+	return out
+}
+
+// projectOf turns projects/<project>/package.yml into <project>, and returns ""
+// for any other path — a patch may touch sibling files (a .patch prop, a
+// helper script) and those are not recipes.
+func projectOf(path string) string {
+	if !strings.HasPrefix(path, "projects/") || !strings.HasSuffix(path, "/package.yml") {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimPrefix(path, "projects/"), "/package.yml")
+}
