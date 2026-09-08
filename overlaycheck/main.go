@@ -33,15 +33,49 @@ import (
 	"time"
 )
 
-// overlayBase is where a consumer reads recipes from, and therefore where this
-// check reads them from too: the published URL, not a checkout, because a
-// checkout can be right while what is served is not.
-const overlayBase = "https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects"
+// overlayBase names the overlay's recipes through the GitHub contents API
+// rather than through raw.githubusercontent.com.
+//
+// A checkout is the wrong source — it can be right while what is published is
+// not — but so, it turns out, is the raw CDN. Seconds after an overlay change
+// merged, three requests for the same file returned the OLD 3959-byte recipe
+// and only the API returned the new 6077-byte one:
+//
+//	plain             3959
+//	Cache-Control: no-cache   3959
+//	?t=<nanoseconds>  3959
+//	contents API      6077
+//
+// Neither a request-side cache directive nor a query-string buster dislodges
+// it. So the check would have reported a drift that was already fixed, for as
+// long as the CDN held the file — and a check that cries wolf after every fix
+// teaches people to re-run it until it agrees, which is the same as not having
+// one.
+//
+// Worth knowing beyond this tool: bottle's fetchRecipe reads that same CDN, so
+// a consumer can resolve a stale recipe for minutes after a change merges. That
+// is a property of the delivery path, not of this check, and it is not what
+// this check is for — a maintainer forgetting a half is about what is
+// COMMITTED.
+const overlayBase = "https://api.github.com/repos/go-pkgx/pantry-overlay/contents/projects"
 
 // httpGet is a seam so the tests do not reach the network.
 var httpGet = func(url string) (int, []byte, error) {
 	c := &http.Client{Timeout: 30 * time.Second}
-	resp, err := c.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return 0, nil, err
+	}
+	// The raw media type asks the contents API for the file itself rather than
+	// its base64-in-JSON envelope.
+	req.Header.Set("Accept", "application/vnd.github.raw")
+	req.Header.Set("User-Agent", "overlaycheck")
+	// Unauthenticated is 60 requests an hour, ample for a handful of recipes;
+	// CI has a token anyway and 5000 removes the question.
+	if tok := os.Getenv("GITHUB_TOKEN"); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	resp, err := c.Do(req)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -79,7 +113,7 @@ func run(dir string, out io.Writer) int {
 
 	bad := 0
 	for _, project := range names {
-		status, body, err := httpGet(overlayBase + "/" + project + "/package.yml")
+		status, body, err := httpGet(overlayBase + "/" + project + "/package.yml?ref=main")
 		switch {
 		case err != nil:
 			fmt.Fprintf(out, "✗ %s: cannot read the overlay: %v\n", project, err)

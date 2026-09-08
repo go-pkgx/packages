@@ -97,7 +97,7 @@ func TestRunAgreement(t *testing.T) {
 	old := httpGet
 	defer func() { httpGet = old }()
 	httpGet = func(url string) (int, []byte, error) {
-		if !strings.HasSuffix(url, "/projects/acme.org/tool/package.yml") {
+		if !strings.Contains(url, "/projects/acme.org/tool/package.yml") {
 			t.Errorf("unexpected url %q", url)
 		}
 		return 200, []byte("distributable:\n  url: https://acme.org/tool-{{version}}.tar.gz\ndisplay-name: tool\n"), nil
@@ -171,10 +171,19 @@ func TestRunUnreadablePatch(t *testing.T) {
 }
 
 // The default seam must be the real one; exercising it without a network is
-// what a bad address is for.
+// what a bad address is for. Both credential paths are walked: a token is what
+// CI has, and its absence is what a laptop has.
 func TestHTTPGetIsWired(t *testing.T) {
-	if _, _, err := httpGet("http://127.0.0.1:1/nothing"); err == nil {
-		t.Error("want a transport error from a closed port")
+	for _, tok := range []string{"", "not-a-real-token"} {
+		t.Setenv("GITHUB_TOKEN", tok)
+		if _, _, err := httpGet("http://127.0.0.1:1/nothing"); err == nil {
+			t.Errorf("GITHUB_TOKEN=%q: want a transport error from a closed port", tok)
+		}
+	}
+	// A URL the request builder itself rejects, so the failure is not the
+	// transport's: the error must still reach the caller rather than a nil.
+	if _, _, err := httpGet("://malformed"); err == nil {
+		t.Error("want an error from an unbuildable request")
 	}
 }
 
