@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/ROCm/ROCR-Runtime/package.yml b/projects/github.com/ROCm/ROCR-Runtime/package.yml
 new file mode 100644
-index 0000000..cfbf377
+index 0000000..2fa96c5
 --- /dev/null
 +++ b/projects/github.com/ROCm/ROCR-Runtime/package.yml
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,190 @@
 +# ROCr — the HSA runtime an AMD GPU is driven through, built from source.
 +#
 +# ── Why this is not the CUDA story ──────────────────────────────────────────
@@ -135,6 +135,24 @@ index 0000000..cfbf377
 +      - -DCMAKE_INSTALL_LIBDIR=lib
 +      - -DCMAKE_BUILD_TYPE=Release
 +      - -DBUILD_SHARED_LIBS=ON
++      # IMAGE_SUPPORT defaults ON for x86 and compiles OpenCL blit kernels for
++      # a dozen gfx targets, which needs ROCm's DEVICE LIBRARY — the ocml/ockl
++      # bitcode of ROCm-Device-Libs, a separate component this pantry does not
++      # carry:
++      #
++      #   clang-22: error: cannot find ROCm device library; provide its path via
++      #     '--rocm-path' or '--rocm-device-lib-path', or pass '-nogpulib'
++      #
++      # Off, deliberately, and it costs nothing this package is here for. The
++      # HSA image extension serves OpenCL and HIP image APIs; what a GPU-aware
++      # TRANSPORT needs is hsa.h, hsa_ext_amd.h and hsa_init, and UCX's rocm.m4
++      # asks for exactly those. The trap handlers and blit shaders are device
++      # code too and they compile fine — only the OpenCL kernels want the
++      # bitcode.
++      #
++      # Packaging ROCm-Device-Libs would let this come back; it is the next
++      # component up, and the one HIP needs anyway.
++      - -DIMAGE_SUPPORT=OFF
 +      # libhsakmt does `find_library(LIBC NAMES c REQUIRED)` and puts the RESULT
 +      # on its link line. There is no /usr/lib in a from-scratch rootfs, so the
 +      # search finds nothing and configuration stops before any of the real
