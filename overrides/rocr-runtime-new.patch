@@ -1,0 +1,113 @@
+diff --git a/projects/github.com/ROCm/ROCR-Runtime/package.yml b/projects/github.com/ROCm/ROCR-Runtime/package.yml
+new file mode 100644
+index 0000000..2620346
+--- /dev/null
++++ b/projects/github.com/ROCm/ROCR-Runtime/package.yml
+@@ -0,0 +1,107 @@
++# ROCr — the HSA runtime an AMD GPU is driven through, built from source.
++#
++# ── Why this is not the CUDA story ──────────────────────────────────────────
++# nvidia.com/cuda-cudart downloads a vendor archive and rests on a judgement
++# about redistributing it. Nothing of the sort applies here: ROCr is
++# NCSA-licensed source on GitHub, so it compiles like any other package in this
++# pantry. A machine that can reach a git tag can rebuild the GPU runtime with
++# no vendor in the loop — "keep working when the vendor does not answer" is a
++# property AMD's stack has by construction and NVIDIA's must be engineered
++# around.
++#
++# ── Why this component, and why first ───────────────────────────────────────
++# UCX states the requirement itself, in config/m4/rocm.m4: it compiles with
++# -I$ROCM/include/hsa, links -lhsa-runtime64 -lhsakmt, and probes hsa.h,
++# hsa_ext_amd.h and hsa_init(). All four come from this repository and from
++# nowhere else. HIP (-lamdhip64) is a separate matter — it needs AMD's fork of
++# LLVM — and UCX's ROCm transport does not require it.
++#
++# ── What is deliberately absent ─────────────────────────────────────────────
++# The kernel driver. amdkfd is in-tree Linux (CONFIG_HSA_AMD, on top of
++# CONFIG_DRM_AMDGPU); no userspace runtime can ship it and this one does not
++# pretend to. A build machine has no /dev/kfd, which is why the test below
++# claims a runtime that links and starts, not a working GPU.
++#
++# ── Dependencies, read off the CMake rather than off the README ─────────────
++#   runtime/hsa-runtime/CMakeLists.txt: find_package(LibElf REQUIRED),
++#     pkg_check_modules(drm REQUIRED libdrm)
++#   libhsakmt/CMakeLists.txt: find_library(NUMA NAMES numa REQUIRED),
++#     pkg_check_modules(DRM_AMDGPU REQUIRED libdrm_amdgpu)
++# The README also names rocm-core and rocprofiler-register. Neither is a build
++# requirement: they appear only in CPACK's Debian/RPM dependency strings, and
++# find_package(rocprofiler-register) is guarded by an _FOUND test. Reading the
++# CMake rather than the prose is what kept two packages out of this list.
++#
++# All three real dependencies were checked against our OWN published bottles
++# before this recipe was written, not assumed from their names:
++#   dri.freedesktop.org 2.4.134 carries lib/pkgconfig/libdrm_amdgpu.pc and
++#     libdrm_amdgpu.so — so the amdgpu pkg-config module, the one thing here
++#     that a stripped-down libdrm would silently lack, is present
++#   elfutils.org 0.196 carries include/{libelf,gelf}.h and lib/libelf.so
++#   github.com/numactl/numactl 2.0.19 carries include/numa.h and lib/libnuma.so
++
++distributable:
++  url: https://github.com/ROCm/ROCR-Runtime/archive/refs/tags/{{version.tag}}.tar.gz
++  strip-components: 1
++
++versions:
++  github: ROCm/ROCR-Runtime/tags
++  strip: /^rocm-/
++
++display-name: ROCr
++
++platforms:
++  - linux
++
++dependencies:
++  elfutils.org: '*'
++  dri.freedesktop.org: '*'
++  github.com/numactl/numactl: '*'
++
++build:
++  dependencies:
++    cmake.org: ^3
++    freedesktop.org/pkg-config: '*'
++  working-directory: build
++  script:
++    - cmake .. $ARGS
++    - make --jobs {{ hw.concurrency }}
++    - make install
++  env:
++    ARGS:
++      - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
++      # GNUInstallDirs answers lib64 on some hosts. Consumers — starting with
++      # UCX, whose ROCM_LDFLAGS is "-L$ROCM/lib -L$ROCM/lib64 -L$ROCM/hsa/lib" —
++      # cope either way, but a bottle whose layout depends on the build host is
++      # a difference that turns up somewhere else later.
++      - -DCMAKE_INSTALL_LIBDIR=lib
++      - -DCMAKE_BUILD_TYPE=Release
++      - -DBUILD_SHARED_LIBS=ON
++
++provides: []
++
++test:
++  script:
++    - test -f {{prefix}}/lib/libhsa-runtime64.so
++    - test -f {{prefix}}/include/hsa/hsa.h
++    - test -f {{prefix}}/include/hsa/hsa_ext_amd.h
++    # UCX puts -lhsakmt on the same link line. Since ROCm 6 libhsakmt is
++    # `add_library(hsakmt STATIC ...)`, merged into libhsa-runtime64, so what
++    # must exist for that -l to resolve is the ARCHIVE, not a shared object.
++    # Asserting it here is what catches an upstream change that would otherwise
++    # surface as a link failure inside a different package.
++    - test -f {{prefix}}/lib/libhsakmt.a
++    # The honest claim on a machine with no /dev/kfd: the runtime links, loads
++    # and runs. hsa_init() answers OUT_OF_RESOURCES without a GPU; the test
++    # requires it to ANSWER — the symbol resolved and the library executed —
++    # and does not require success.
++    - mv $FIXTURE test.c
++    - cc test.c -lhsa-runtime64 -o test
++    - ./test | grep -q '^hsa_init='
++  fixture: |
++    #include <hsa/hsa.h>
++    #include <stdio.h>
++    int main(void) {
++      printf("hsa_init=%d\n", (int)hsa_init());
++      return 0;
++    }
