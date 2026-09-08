@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/ROCm/ROCR-Runtime/package.yml b/projects/github.com/ROCm/ROCR-Runtime/package.yml
 new file mode 100644
-index 0000000..2620346
+index 0000000..b01f29c
 --- /dev/null
 +++ b/projects/github.com/ROCm/ROCR-Runtime/package.yml
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,120 @@
 +# ROCr — the HSA runtime an AMD GPU is driven through, built from source.
 +#
 +# ── Why this is not the CUDA story ──────────────────────────────────────────
@@ -83,6 +83,19 @@ index 0000000..2620346
 +      - -DCMAKE_INSTALL_LIBDIR=lib
 +      - -DCMAKE_BUILD_TYPE=Release
 +      - -DBUILD_SHARED_LIBS=ON
++      # libhsakmt does `find_library(LIBC NAMES c REQUIRED)` and puts the RESULT
++      # on its link line. There is no /usr/lib in a from-scratch rootfs, so the
++      # search finds nothing and configuration stops before any of the real
++      # dependencies are even looked for.
++      #
++      # Pre-seeding the cache variable answers the question truthfully rather
++      # than pointing CMake at a path: the C library is linked as `-lc`, which
++      # is what every link here already does. Handing it an ABSOLUTE libc path
++      # would be worse than useless — libhsakmt is a static library whose link
++      # interface is exported to consumers, so a build-machine path would
++      # travel into other packages, which is the whole class of defect the
++      # darwin relocatability work existed to remove.
++      - -DLIBC=c
 +
 +provides: []
 +
