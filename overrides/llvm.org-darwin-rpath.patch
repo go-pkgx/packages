@@ -1,8 +1,8 @@
 diff --git a/projects/llvm.org/package.yml b/projects/llvm.org/package.yml
-index 1363f32..66ae23b 100644
+index 1363f32..c2c95d0 100644
 --- a/projects/llvm.org/package.yml
 +++ b/projects/llvm.org/package.yml
-@@ -38,6 +38,38 @@ build:
+@@ -38,6 +38,59 @@ build:
      crates.io/semverator: '*'
    working-directory: build
    script:
@@ -22,6 +22,27 @@ index 1363f32..66ae23b 100644
 +        echo "PROBE: <locale> alone FAILS — the SDK on this image is the story"
 +        head -20 /tmp/probe.err
 +      fi
++      echo "--- the include environment bk exports:"
++      echo "CPATH=$CPATH"
++      echo "CPLUS_INCLUDE_PATH=$CPLUS_INCLUDE_PATH"
++      echo "SDKROOT=$SDKROOT"
++      echo "MACOSX_DEPLOYMENT_TARGET=$MACOSX_DEPLOYMENT_TARGET"
++      echo "--- <locale> with the environment REMOVED:"
++      if echo '#include <locale>' | env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH -u SDKROOT -u MACOSX_DEPLOYMENT_TARGET /usr/bin/c++ -std=c++17 -x c++ -c - -o /dev/null 2>/tmp/bare.err; then
++        echo "BARE: compiles with a clean environment — the ENVIRONMENT is the story"
++      else
++        echo "BARE: still fails with a clean environment — the image is the story"
++        head -8 /tmp/bare.err
++      fi
++      echo "--- which single variable does it? (adding them back one at a time)"
++      for v in CPATH CPLUS_INCLUDE_PATH SDKROOT MACOSX_DEPLOYMENT_TARGET; do
++        eval "val=\$$v"
++        if echo '#include <locale>' | env -u CPATH -u CPLUS_INCLUDE_PATH -u C_INCLUDE_PATH -u SDKROOT -u MACOSX_DEPLOYMENT_TARGET $v="$val" /usr/bin/c++ -std=c++17 -x c++ -c - -o /dev/null 2>/dev/null; then
++          echo "WITH $v: still OK"
++        else
++          echo "WITH $v: FAILS  <-- this one"
++        fi
++      done
 +      echo "--- which candidate fix compiles <locale> on THIS sdk?"
 +      for f in "-std=c++17" "-std=gnu++17" "-std=c++17 -D_DARWIN_C_SOURCE" "-std=gnu++17 -pedantic"; do
 +        if echo '#include <locale>' | /usr/bin/c++ $f -stdlib=libc++ -mmacosx-version-min=11.0 -x c++ -c - -o /dev/null 2>/dev/null; then
@@ -41,7 +62,7 @@ index 1363f32..66ae23b 100644
      # Building compiler-rt on darwin+aarch64 fails for versions less than
      # 14 with the below configuration. FIXME if possible, of course.
      - run: |
-@@ -102,6 +134,28 @@ build:
+@@ -102,6 +155,28 @@ build:
          - -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON
      darwin:
        ARGS:
