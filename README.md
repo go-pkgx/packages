@@ -20,6 +20,56 @@ Signatures verify against the pinned public key
 `bottle.VerifySignature` checks it; set **`PKGX_VERIFY=1`** to fail closed —
 an unsigned or badly-signed package is refused rather than installed.
 
+That covers what leaves. What went *in* was recorded by nothing until
+[`bk`#112](https://github.com/go-pkgx/bk/issues/112): of 1858 recipes with a
+distributable URL, exactly one declared a checksum and `bk` verified none, so a
+source tarball that changed upstream produced a different bottle, correctly
+signed, attesting a URL rather than the bytes that came back from it. The
+provenance now carries the source's SHA-256 (or a git checkout's commit) as a
+SLSA `resolvedDependency`, and where a recipe declares a `sha:` URL — the form
+the pantry format already had and nothing read — a mismatch fails the build
+instead of falling through to the next mirror.
+
+## Trees upstream does not have
+
+Most of what is here is a pkgx pantry recipe built differently. These are
+projects the pantry does not carry at all, written for this factory — the HPC
+and GPU floor an MPI actually needs, which upstream stops just above:
+
+| project | | |
+|---|---|---|
+| `openucx.org` | 1.22.0 | the transport OpenMPI, MPICH and OpenSHMEM all reach shared memory and RDMA through. Built `--with-verbs`, so `libuct_ib.so`, `libuct_ib_mlx5.so` and `libuct_ib_efa.so` are there rather than TCP alone |
+| `github.com/linux-rdma/rdma-core` | 65.0 | `libibverbs` — what makes the previous line more than a configure flag |
+| `github.com/ROCm/ROCR-Runtime` | 7.2.4 | the HSA runtime an AMD GPU is driven through, **built from NCSA source**. A machine that can reach a git tag rebuilds it with no vendor in the loop |
+| `nvidia.com/cuda-cudart` | 13.3.1 | the CUDA runtime, from NVIDIA's own redistributable set, verified against the sha256 in their manifest. `linux-x86_64` and `linux-sbsa` — server ARM, not Tegra |
+| `kernel.org/linux` | 6.19.14 | the microVM kernel, now with `INFINIBAND_USER_ACCESS`, `RDMA_RXE`, `RDMA_SIW`, `MLX5_*`, `VFIO_*`, `TRANSPARENT_HUGEPAGE` and `PCI_P2PDMA` — the devices `libibverbs` opens, and GPUDirect |
+| `github.com/containers/crun` | 1.29.1 | the runtime that closes the microVM boot loop |
+
+The difference between the two GPU rows is worth stating: ROCm is source we
+compile, CUDA is an archive we fetch under a licence that names which files may
+travel. Sovereignty is not the same thing on the two sides, and the recipes say
+so where it matters.
+
+Nothing here needs a GPU or a fabric to *build*. What a build machine can
+honestly check is that a runtime links, loads and answers — `hsa_init()`
+returning "out of resources" with no `/dev/kfd` is a pass — and that a transport
+module was compiled at all, since a silently declined `--with-verbs` looks
+exactly like a missing `libuct_ib.so`.
+
+### Both halves, or neither
+
+A project upstream does not carry lives in two places that must agree:
+`overrides/<name>-new.patch`, applied to a fresh pantry clone, is what **`bk`
+builds** from; [`pantry-overlay`](https://github.com/go-pkgx/pantry-overlay) is
+what a consumer **resolves** over HTTP — `bottle`'s `fetchRecipe` tries the
+overlay, then upstream, and nothing else.
+
+Four of these projects were published, signed and unreachable to every consumer
+because only the build half existed. Nothing said so: the bottles were in the
+registry and only a *recipe* fetch would have failed. `go run ./overlaycheck`
+now fails a pull request when the two disagree, and found a fifth on its first
+run.
+
 ## How it runs
 
 `.github/workflows/build.yml` runs a `linux/x86-64` + `linux/aarch64` matrix on our
