@@ -1,8 +1,39 @@
 diff --git a/projects/llvm.org/package.yml b/projects/llvm.org/package.yml
-index 1363f32..740941a 100644
+index 1363f32..b3fc3a4 100644
 --- a/projects/llvm.org/package.yml
 +++ b/projects/llvm.org/package.yml
-@@ -102,6 +102,28 @@ build:
+@@ -38,6 +38,30 @@ build:
+     crates.io/semverator: '*'
+   working-directory: build
+   script:
++    - |
++      echo "=== toolchain probe (throwaway branch, go-pkgx/packages#133) ==="
++      /usr/bin/c++ --version || true
++      echo "xcode-select: $(xcode-select -p 2>&1)"
++      echo "sdk: $(xcrun --show-sdk-path 2>&1) version $(xcrun --show-sdk-version 2>&1)"
++      echo "--- predefined macros the driver sets:"
++      /usr/bin/c++ -std=c++17 -pedantic -stdlib=libc++ -mmacosx-version-min=11.0 -dM -E -x c++ /dev/null 2>/dev/null | grep -E "__DARWIN_C_LEVEL|_POSIX_C_SOURCE|__STRICT_ANSI__|__APPLE__|_XOPEN_SOURCE" || echo "(none of them are predefined)"
++      echo "--- _LIBCPP_VERSION:"
++      echo '#include <version>' | /usr/bin/c++ -std=c++17 -stdlib=libc++ -dM -E -x c++ - 2>/dev/null | grep -E "_LIBCPP_VERSION" || echo "(unknown)"
++      echo "--- does <locale> compile ALONE with the same flags?"
++      if echo '#include <locale>' | /usr/bin/c++ -std=c++17 -pedantic -stdlib=libc++ -mmacosx-version-min=11.0 -x c++ -c - -o /dev/null 2>/tmp/probe.err; then
++        echo "PROBE: <locale> alone COMPILES — so the failure needs something else in the TU"
++      else
++        echo "PROBE: <locale> alone FAILS — the SDK on this image is the story"
++        head -20 /tmp/probe.err
++      fi
++      echo "--- and through <functional>, the real chain:"
++      if echo '#include <functional>' | /usr/bin/c++ -std=c++17 -pedantic -stdlib=libc++ -mmacosx-version-min=11.0 -x c++ -c - -o /dev/null 2>/tmp/probe2.err; then
++        echo "PROBE: <functional> COMPILES"
++      else
++        echo "PROBE: <functional> FAILS — reproduced in three lines"
++        head -20 /tmp/probe2.err
++      fi
++      echo "=== end probe ==="
+     # Building compiler-rt on darwin+aarch64 fails for versions less than
+     # 14 with the below configuration. FIXME if possible, of course.
+     - run: |
+@@ -102,6 +126,28 @@ build:
          - -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON
      darwin:
        ARGS:
