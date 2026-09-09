@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/ROCm/ROCR-Runtime/package.yml b/projects/github.com/ROCm/ROCR-Runtime/package.yml
 new file mode 100644
-index 0000000..0388d52
+index 0000000..60866ef
 --- /dev/null
 +++ b/projects/github.com/ROCm/ROCR-Runtime/package.yml
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,222 @@
 +# ROCr — the HSA runtime an AMD GPU is driven through, built from source.
 +#
 +# ── Why this is not the CUDA story ──────────────────────────────────────────
@@ -183,14 +183,21 @@ index 0000000..0388d52
 +      # search finds nothing and configuration stops before any of the real
 +      # dependencies are even looked for.
 +      #
-+      # Pre-seeding the cache variable answers the question truthfully rather
-+      # than pointing CMake at a path: the C library is linked as `-lc`, which
-+      # is what every link here already does. Handing it an ABSOLUTE libc path
-+      # would be worse than useless — libhsakmt is a static library whose link
-+      # interface is exported to consumers, so a build-machine path would
-+      # travel into other packages, which is the whole class of defect the
-+      # darwin relocatability work existed to remove.
-+      - -DLIBC=c
++      # Pre-seeding the cache answers the question instead of pointing CMake at
++      # a path — an ABSOLUTE libc path would be worse than useless, since
++      # libhsakmt is a STATIC library whose link interface is exported to
++      # consumers, and a build-machine path would travel into other packages.
++      #
++      # The value is the FLAG, not the bare name. `-DLIBC=c` looks right and is
++      # not: CMake treats a plain word in target_link_libraries as a target or a
++      # file, so the build asked make for something it had no rule to build —
++      #
++      #   make[2]: *** No rule to make target 'c', needed by
++      #     'rocr/lib/libhsa-runtime64.so.1.18.0'.  Stop.
++      #
++      # — after compiling the entire runtime. An item beginning with `-` is
++      # passed to the linker verbatim, which is what was wanted all along.
++      - -DLIBC=-lc
 +
 +provides: []
 +
