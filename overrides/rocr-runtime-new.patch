@@ -1,0 +1,237 @@
+diff --git a/projects/github.com/ROCm/ROCR-Runtime/package.yml b/projects/github.com/ROCm/ROCR-Runtime/package.yml
+new file mode 100644
+index 0000000..ad3e1dd
+--- /dev/null
++++ b/projects/github.com/ROCm/ROCR-Runtime/package.yml
+@@ -0,0 +1,231 @@
++# ROCr — the HSA runtime an AMD GPU is driven through, built from source.
++#
++# ── Why this is not the CUDA story ──────────────────────────────────────────
++# nvidia.com/cuda-cudart downloads a vendor archive and rests on a judgement
++# about redistributing it. Nothing of the sort applies here: ROCr is
++# NCSA-licensed source on GitHub, so it compiles like any other package in this
++# pantry. A machine that can reach a git tag can rebuild the GPU runtime with
++# no vendor in the loop — "keep working when the vendor does not answer" is a
++# property AMD's stack has by construction and NVIDIA's must be engineered
++# around.
++#
++# ── Why this component, and why first ───────────────────────────────────────
++# UCX states the requirement itself, in config/m4/rocm.m4: it compiles with
++# -I$ROCM/include/hsa, links -lhsa-runtime64 -lhsakmt, and probes hsa.h,
++# hsa_ext_amd.h and hsa_init(). All four come from this repository and from
++# nowhere else. HIP (-lamdhip64) is a separate matter — it needs AMD's fork of
++# LLVM — and UCX's ROCm transport does not require it.
++#
++# ── What is deliberately absent ─────────────────────────────────────────────
++# The kernel driver. amdkfd is in-tree Linux (CONFIG_HSA_AMD, on top of
++# CONFIG_DRM_AMDGPU); no userspace runtime can ship it and this one does not
++# pretend to. A build machine has no /dev/kfd, which is why the test below
++# claims a runtime that links and starts, not a working GPU.
++#
++# ── Dependencies, read off the CMake rather than off the README ─────────────
++#   runtime/hsa-runtime/CMakeLists.txt: find_package(LibElf REQUIRED),
++#     pkg_check_modules(drm REQUIRED libdrm)
++#   libhsakmt/CMakeLists.txt: find_library(NUMA NAMES numa REQUIRED),
++#     pkg_check_modules(DRM_AMDGPU REQUIRED libdrm_amdgpu)
++# The README also names rocm-core and rocprofiler-register. Neither is a build
++# requirement: they appear only in CPACK's Debian/RPM dependency strings, and
++# find_package(rocprofiler-register) is guarded by an _FOUND test. Reading the
++# CMake rather than the prose is what kept two packages out of this list.
++#
++# All three real dependencies were checked against our OWN published bottles
++# before this recipe was written, not assumed from their names:
++#   dri.freedesktop.org 2.4.134 carries lib/pkgconfig/libdrm_amdgpu.pc and
++#     libdrm_amdgpu.so — so the amdgpu pkg-config module, the one thing here
++#     that a stripped-down libdrm would silently lack, is present
++#   elfutils.org 0.196 carries include/{libelf,gelf}.h and lib/libelf.so
++#   github.com/numactl/numactl 2.0.19 carries include/numa.h and lib/libnuma.so
++
++distributable:
++  url: https://github.com/ROCm/ROCR-Runtime/archive/refs/tags/{{version.tag}}.tar.gz
++  strip-components: 1
++
++versions:
++  github: ROCm/ROCR-Runtime/tags
++  strip: /^rocm-/
++
++display-name: ROCr
++
++platforms:
++  - linux
++
++dependencies:
++  elfutils.org: '*'
++  dri.freedesktop.org: '*'
++  github.com/numactl/numactl: '*'
++
++build:
++  dependencies:
++    cmake.org: ^3
++    freedesktop.org/pkg-config: '*'
++    # od and wc, for the blit-shader header the recipe generates below.
++    gnu.org/coreutils: '*'
++  working-directory: build
++  script:
++    # AMD turns compiled GPU code into C headers with a shell script that needs
++    # two things a from-scratch rootfs does not have: `#!/bin/bash -e` (there is
++    # no /bin/bash) and `xxd` (nothing in this pantry provides it — not even
++    # vim's bottle, which was checked).
++    #
++    #   ./create_blit_shader_header.sh: /bin/bash: bad interpreter
++    #
++    # There are THREE such scripts, not one — blit_shaders, trap_handler and
++    # image/blit_src — so they are found by what they DO, `xxd -i`, rather than
++    # by name. Fixing the first alone bought exactly one more percent of the
++    # build before it stopped at the second.
++    #
++    # And they are NOT interchangeable, which is why this transforms each script
++    # instead of replacing it with one of my own: two emit into namespace
++    # rocr::AMD and take their files as arguments, the third emits into
++    # rocr::image and GLOBS ocl_blit_object*. A single replacement would have
++    # produced a header in the wrong namespace with nothing in it.
++    #
++    # So only the two incompatibilities are changed — the shebang, and `echo -e`,
++    # which under a POSIX shell prints a literal "-e" into the C++. `xxd` becomes
++    # a shell function defined in the script that calls it, three lines above its
++    # only caller. That is not the same as installing an `xxd` on PATH: this one
++    # cannot be picked up by anything else, and its single caller is visible from
++    # its definition. It also satisfies the script's own `command -v xxd` guard,
++    # which a rewrite would have had to delete.
++    #
++    # Verified by running both shapes on fixture files and COMPILING the headers
++    # they produce, not by reading the format off a man page.
++    # ROCm 7.2.4 predates libc++ 22, and libc++ 22 reaches for the TRANSPARENT
++    # comparator where earlier versions did not:
++    #
++    #   __utility/lazy_synth_three_way_comparator.h:45: error: no matching
++    #     function for call to object of type 'const std::less<void>'
++    #   note: in instantiation of member function
++    #     'std::__lazy_compare_result<std::less<void>, hsa_signal_s, hsa_signal_s>'
++    #
++    # ROCr does specialise std::less<hsa_signal_t> — signal.h:76, so that
++    # std::map<hsa_signal_t, V> works — but std::less<void> is a DIFFERENT type,
++    # and it does `a < b`, which hsa_signal_s does not have.
++    #
++    # So give it one, beside the specialisation that already exists and with the
++    # same body. Checked rather than reasoned: `std::less<void>` on this struct
++    # fails to compile without an operator< and succeeds with it.
++    - |
++      h=../runtime/hsa-runtime/core/inc/signal.h
++      awk '/^\/\/ Allow hsa_signal_t to be keys in STL structures\.$/ {
++             print "inline bool operator<(const hsa_signal_t\& x, const hsa_signal_t\& y) { return x.handle < y.handle; }"
++             print ""
++           }
++           { print }' "$h" > "$h.new"
++      mv "$h.new" "$h"
++      grep -q 'inline bool operator<(const hsa_signal_t' "$h" \
++        || { echo "signal.h did not take the operator< insertion" >&2; exit 1; }
++    - |
++      found=0
++      for s in $(grep -rl 'xxd -i' .. --include='*.sh'); do
++        {
++          echo '#!/bin/sh -e'
++          echo 'xxd() {'
++          echo '  f=$2'
++          echo '  echo "unsigned char $f[] = {"'
++          echo "  od -An -v -tx1 \"\$f\" | sed -e 's/[0-9a-f][0-9a-f]/0x&,/g'"
++          echo '  echo "};"'
++          echo '  echo "unsigned int ${f}_len = $(wc -c < "$f");"'
++          echo '}'
++          tail -n +2 "$s" | sed -e "s/echo -e '\\\\n'/echo/"
++        } > "$s.new"
++        mv "$s.new" "$s"
++        chmod +x "$s"
++        echo "de-xxd'd $s"
++        found=$((found + 1))
++      done
++      # If upstream stops using xxd this loop would silently do nothing and the
++      # build would fail on a bash shebang with no explanation here.
++      test "$found" -gt 0 || { echo "no xxd-based generator found; is this still needed?" >&2; exit 1; }
++    # libhsakmt does `find_library(LIBC NAMES c REQUIRED)` and puts the RESULT
++    # on its link line. There is no /usr/lib in a from-scratch rootfs, so the
++    # search finds nothing and configuration stops before elfutils, libdrm or
++    # numactl are even looked for.
++    #
++    # Two attempts at answering the question INSTEAD of letting CMake find the
++    # library both failed, each after compiling a large part of the tree:
++    #
++    #   -DLIBC=c     make[2]: *** No rule to make target 'c', needed by
++    #                  'rocr/lib/libhsa-runtime64.so.1.18.0'.  Stop.
++    #   -DLIBC=-lc   make[2]: *** No rule to make target '-lc', …
++    #
++    # Both are classified as FILES somewhere along the propagation from
++    # libhsakmt's PRIVATE interface into the shared runtime that consumes it —
++    # and a minimal reproduction of that shape links both forms happily, so the
++    # cause is something else in this build and guessing at it costs an hour a
++    # round.
++    #
++    # So stop substituting a value and give the SEARCH what it needs: the
++    # directory the compiler itself would take libc from. Upstream's machinery
++    # then behaves exactly as upstream intended, and the answer is the real
++    # file rather than a token whose classification I keep predicting wrongly.
++    - |
++      libcdir=$(dirname "$($CC -print-file-name=libc.so)")
++      test -f "$libcdir/libc.so" || {
++        echo "cannot locate libc.so: $CC -print-file-name=libc.so said $($CC -print-file-name=libc.so)" >&2
++        exit 1
++      }
++      echo "libc.so found in $libcdir"
++      cmake .. $ARGS -DCMAKE_LIBRARY_PATH="$libcdir"
++    - make --jobs {{ hw.concurrency }}
++    - make install
++  env:
++    ARGS:
++      - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
++      # GNUInstallDirs answers lib64 on some hosts. Consumers — starting with
++      # UCX, whose ROCM_LDFLAGS is "-L$ROCM/lib -L$ROCM/lib64 -L$ROCM/hsa/lib" —
++      # cope either way, but a bottle whose layout depends on the build host is
++      # a difference that turns up somewhere else later.
++      - -DCMAKE_INSTALL_LIBDIR=lib
++      - -DCMAKE_BUILD_TYPE=Release
++      - -DBUILD_SHARED_LIBS=ON
++      # IMAGE_SUPPORT defaults ON for x86 and compiles OpenCL blit kernels for
++      # a dozen gfx targets, which needs ROCm's DEVICE LIBRARY — the ocml/ockl
++      # bitcode of ROCm-Device-Libs, a separate component this pantry does not
++      # carry:
++      #
++      #   clang-22: error: cannot find ROCm device library; provide its path via
++      #     '--rocm-path' or '--rocm-device-lib-path', or pass '-nogpulib'
++      #
++      # Off, deliberately, and it costs nothing this package is here for. The
++      # HSA image extension serves OpenCL and HIP image APIs; what a GPU-aware
++      # TRANSPORT needs is hsa.h, hsa_ext_amd.h and hsa_init, and UCX's rocm.m4
++      # asks for exactly those. The trap handlers and blit shaders are device
++      # code too and they compile fine — only the OpenCL kernels want the
++      # bitcode.
++      #
++      # Packaging ROCm-Device-Libs would let this come back; it is the next
++      # component up, and the one HIP needs anyway.
++      - -DIMAGE_SUPPORT=OFF
++
++provides: []
++
++test:
++  script:
++    - test -f {{prefix}}/lib/libhsa-runtime64.so
++    - test -f {{prefix}}/include/hsa/hsa.h
++    - test -f {{prefix}}/include/hsa/hsa_ext_amd.h
++    # UCX puts -lhsakmt on the same link line. Since ROCm 6 libhsakmt is
++    # `add_library(hsakmt STATIC ...)`, merged into libhsa-runtime64, so what
++    # must exist for that -l to resolve is the ARCHIVE, not a shared object.
++    # Asserting it here is what catches an upstream change that would otherwise
++    # surface as a link failure inside a different package.
++    - test -f {{prefix}}/lib/libhsakmt.a
++    # The honest claim on a machine with no /dev/kfd: the runtime links, loads
++    # and runs. hsa_init() answers OUT_OF_RESOURCES without a GPU; the test
++    # requires it to ANSWER — the symbol resolved and the library executed —
++    # and does not require success.
++    - mv $FIXTURE test.c
++    - cc test.c -lhsa-runtime64 -o test
++    - ./test | grep -q '^hsa_init='
++  fixture: |
++    #include <hsa/hsa.h>
++    #include <stdio.h>
++    int main(void) {
++      printf("hsa_init=%d\n", (int)hsa_init());
++      return 0;
++    }
