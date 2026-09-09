@@ -56,6 +56,22 @@ returning "out of resources" with no `/dev/kfd` is a pass — and that a transpo
 module was compiled at all, since a silently declined `--with-verbs` looks
 exactly like a missing `libuct_ib.so`.
 
+These are packages, not a scheduler integration — but the piece that usually
+follows is already in `pkgx`: **`pkge`**, a module front-end shaped like Lmod's,
+over pkgx's own resolution, with no Lua interpreter and no modulefile tree.
+
+    eval "$(pkgx env init)"
+    pkge load openucx.org
+    pkge save mpi-stack          # and `pkge restore mpi-stack` later
+
+On a cluster that already runs Lmod nothing has to change — `pkgx --modulefile
++openucx.org` publishes a modulefile the site's own Lmod loads, so conflicts,
+hierarchies and `spider` keep working. Where there is no Lmod,
+`pkgx env init --module` defines `module` and `ml`; where there is one it
+**refuses** to, because two implementations answering one command is how a
+support ticket becomes unanswerable. See
+[Environments and HPC](https://go-pkgx.github.io/docs/environments/).
+
 ### Both halves, or neither
 
 A project upstream does not carry lives in two places that must agree:
