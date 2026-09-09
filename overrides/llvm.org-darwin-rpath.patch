@@ -1,8 +1,8 @@
 diff --git a/projects/llvm.org/package.yml b/projects/llvm.org/package.yml
-index 1363f32..c2c95d0 100644
+index 1363f32..743e0b3 100644
 --- a/projects/llvm.org/package.yml
 +++ b/projects/llvm.org/package.yml
-@@ -38,6 +38,59 @@ build:
+@@ -38,6 +38,64 @@ build:
      crates.io/semverator: '*'
    working-directory: build
    script:
@@ -34,6 +34,11 @@ index 1363f32..c2c95d0 100644
 +        echo "BARE: still fails with a clean environment — the image is the story"
 +        head -8 /tmp/bare.err
 +      fi
++      echo "--- WHICH FILE shadows Apple's? -H prints the include tree:"
++      echo '#include <locale>' | /usr/bin/c++ -std=c++17 -x c++ -E -H - -o /dev/null 2>/tmp/tree.txt || true
++      grep -v "MacOSX.sdk" /tmp/tree.txt | grep -E "^\.+ /" | head -20 || echo "(every header came from the SDK)"
++      echo "--- and the last few includes before the error:"
++      tail -25 /tmp/tree.txt | head -25
 +      echo "--- which single variable does it? (adding them back one at a time)"
 +      for v in CPATH CPLUS_INCLUDE_PATH SDKROOT MACOSX_DEPLOYMENT_TARGET; do
 +        eval "val=\$$v"
@@ -62,7 +67,7 @@ index 1363f32..c2c95d0 100644
      # Building compiler-rt on darwin+aarch64 fails for versions less than
      # 14 with the below configuration. FIXME if possible, of course.
      - run: |
-@@ -102,6 +155,28 @@ build:
+@@ -102,6 +160,28 @@ build:
          - -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON
      darwin:
        ARGS:
