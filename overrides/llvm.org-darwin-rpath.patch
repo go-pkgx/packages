@@ -1,8 +1,8 @@
 diff --git a/projects/llvm.org/package.yml b/projects/llvm.org/package.yml
-index 1363f32..b3fc3a4 100644
+index 1363f32..66ae23b 100644
 --- a/projects/llvm.org/package.yml
 +++ b/projects/llvm.org/package.yml
-@@ -38,6 +38,30 @@ build:
+@@ -38,6 +38,38 @@ build:
      crates.io/semverator: '*'
    working-directory: build
    script:
@@ -22,6 +22,14 @@ index 1363f32..b3fc3a4 100644
 +        echo "PROBE: <locale> alone FAILS — the SDK on this image is the story"
 +        head -20 /tmp/probe.err
 +      fi
++      echo "--- which candidate fix compiles <locale> on THIS sdk?"
++      for f in "-std=c++17" "-std=gnu++17" "-std=c++17 -D_DARWIN_C_SOURCE" "-std=gnu++17 -pedantic"; do
++        if echo '#include <locale>' | /usr/bin/c++ $f -stdlib=libc++ -mmacosx-version-min=11.0 -x c++ -c - -o /dev/null 2>/dev/null; then
++          echo "CANDIDATE OK   : $f"
++        else
++          echo "CANDIDATE FAILS: $f"
++        fi
++      done
 +      echo "--- and through <functional>, the real chain:"
 +      if echo '#include <functional>' | /usr/bin/c++ -std=c++17 -pedantic -stdlib=libc++ -mmacosx-version-min=11.0 -x c++ -c - -o /dev/null 2>/tmp/probe2.err; then
 +        echo "PROBE: <functional> COMPILES"
@@ -33,7 +41,7 @@ index 1363f32..b3fc3a4 100644
      # Building compiler-rt on darwin+aarch64 fails for versions less than
      # 14 with the below configuration. FIXME if possible, of course.
      - run: |
-@@ -102,6 +126,28 @@ build:
+@@ -102,6 +134,28 @@ build:
          - -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON
      darwin:
        ARGS:
