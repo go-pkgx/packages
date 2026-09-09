@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/ROCm/ROCR-Runtime/package.yml b/projects/github.com/ROCm/ROCR-Runtime/package.yml
 new file mode 100644
-index 0000000..60866ef
+index 0000000..ad3e1dd
 --- /dev/null
 +++ b/projects/github.com/ROCm/ROCR-Runtime/package.yml
-@@ -0,0 +1,222 @@
+@@ -0,0 +1,231 @@
 +# ROCr — the HSA runtime an AMD GPU is driven through, built from source.
 +#
 +# ── Why this is not the CUDA story ──────────────────────────────────────────
@@ -147,7 +147,36 @@ index 0000000..60866ef
 +      # If upstream stops using xxd this loop would silently do nothing and the
 +      # build would fail on a bash shebang with no explanation here.
 +      test "$found" -gt 0 || { echo "no xxd-based generator found; is this still needed?" >&2; exit 1; }
-+    - cmake .. $ARGS
++    # libhsakmt does `find_library(LIBC NAMES c REQUIRED)` and puts the RESULT
++    # on its link line. There is no /usr/lib in a from-scratch rootfs, so the
++    # search finds nothing and configuration stops before elfutils, libdrm or
++    # numactl are even looked for.
++    #
++    # Two attempts at answering the question INSTEAD of letting CMake find the
++    # library both failed, each after compiling a large part of the tree:
++    #
++    #   -DLIBC=c     make[2]: *** No rule to make target 'c', needed by
++    #                  'rocr/lib/libhsa-runtime64.so.1.18.0'.  Stop.
++    #   -DLIBC=-lc   make[2]: *** No rule to make target '-lc', …
++    #
++    # Both are classified as FILES somewhere along the propagation from
++    # libhsakmt's PRIVATE interface into the shared runtime that consumes it —
++    # and a minimal reproduction of that shape links both forms happily, so the
++    # cause is something else in this build and guessing at it costs an hour a
++    # round.
++    #
++    # So stop substituting a value and give the SEARCH what it needs: the
++    # directory the compiler itself would take libc from. Upstream's machinery
++    # then behaves exactly as upstream intended, and the answer is the real
++    # file rather than a token whose classification I keep predicting wrongly.
++    - |
++      libcdir=$(dirname "$($CC -print-file-name=libc.so)")
++      test -f "$libcdir/libc.so" || {
++        echo "cannot locate libc.so: $CC -print-file-name=libc.so said $($CC -print-file-name=libc.so)" >&2
++        exit 1
++      }
++      echo "libc.so found in $libcdir"
++      cmake .. $ARGS -DCMAKE_LIBRARY_PATH="$libcdir"
 +    - make --jobs {{ hw.concurrency }}
 +    - make install
 +  env:
@@ -178,26 +207,6 @@ index 0000000..60866ef
 +      # Packaging ROCm-Device-Libs would let this come back; it is the next
 +      # component up, and the one HIP needs anyway.
 +      - -DIMAGE_SUPPORT=OFF
-+      # libhsakmt does `find_library(LIBC NAMES c REQUIRED)` and puts the RESULT
-+      # on its link line. There is no /usr/lib in a from-scratch rootfs, so the
-+      # search finds nothing and configuration stops before any of the real
-+      # dependencies are even looked for.
-+      #
-+      # Pre-seeding the cache answers the question instead of pointing CMake at
-+      # a path — an ABSOLUTE libc path would be worse than useless, since
-+      # libhsakmt is a STATIC library whose link interface is exported to
-+      # consumers, and a build-machine path would travel into other packages.
-+      #
-+      # The value is the FLAG, not the bare name. `-DLIBC=c` looks right and is
-+      # not: CMake treats a plain word in target_link_libraries as a target or a
-+      # file, so the build asked make for something it had no rule to build —
-+      #
-+      #   make[2]: *** No rule to make target 'c', needed by
-+      #     'rocr/lib/libhsa-runtime64.so.1.18.0'.  Stop.
-+      #
-+      # — after compiling the entire runtime. An item beginning with `-` is
-+      # passed to the linker verbatim, which is what was wanted all along.
-+      - -DLIBC=-lc
 +
 +provides: []
 +
