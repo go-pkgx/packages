@@ -1,0 +1,33 @@
+diff --git a/projects/llvm.org/package.yml b/projects/llvm.org/package.yml
+index 1363f32..740941a 100644
+--- a/projects/llvm.org/package.yml
++++ b/projects/llvm.org/package.yml
+@@ -102,6 +102,28 @@ build:
+         - -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON
+     darwin:
+       ARGS:
++        # WITHOUT this, every Mach-O here can only run on the machine that built
++        # it. llvm/cmake/modules/AddLLVM.cmake's llvm_setup_rpath sets each
++        # target's INSTALL_RPATH to "@loader_path/../lib" on Apple and turns on
++        # BUILD_WITH_INSTALL_RPATH — so the -Wl,-rpath flags bk supplies through
++        # LDFLAGS never reach the installed binary, and no later fix-up can add
++        # one, because an LC_RPATH load command cannot grow in place.
++        #
++        # From bin/, "@loader_path/../lib" is llvm's own lib directory. The
++        # references it must resolve are to SIBLING packages —
++        # @rpath/zlib.net/v1.3.1/lib/libz.1.3.1.dylib — which live one level
++        # above the project directory. Published, that left clang-22 with one
++        # usable rpath and one absolute /Users/runner/.pkgx, so on any machine
++        # but the runner:
++        #
++        #   dyld: Library not loaded: @rpath/zlib.net/v1.3.1/lib/libz.1.3.1.dylib
++        #
++        # 145 of the bottle's 145 Mach-O files with an LC_RPATH were in that
++        # state. llvm_setup_rpath returns early when CMAKE_INSTALL_RPATH is
++        # already set, which is the hook upstream provides for exactly this.
++        # $PKGX_DIR is <prefix>/../.. and bin/ and lib/ are both one level under
++        # the prefix, so one relative entry serves both.
++        - -DCMAKE_INSTALL_RPATH="@loader_path/../lib;@loader_path/../../.."
+         #FIXME shouldn’t *have to* require the command line tools package
+         #FIXME this is no good for systems with only Xcode installed
+         #NOTE how do Apple make their LLVM find both? we want the same trick
