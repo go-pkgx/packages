@@ -1,9 +1,9 @@
 diff --git a/projects/openucx.org/package.yml b/projects/openucx.org/package.yml
 new file mode 100644
-index 0000000..1a8a843
+index 0000000..4f4c051
 --- /dev/null
 +++ b/projects/openucx.org/package.yml
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,153 @@
 +# UCX — the transport layer an MPI actually runs over on a cluster.
 +#
 +# The pantry carries open-mpi.org, PMIx and hwloc but nothing beneath them, so
@@ -20,11 +20,23 @@ index 0000000..1a8a843
 +# include/infiniband/verbs.h and lib/libibverbs.so, which are exactly the header
 +# and symbol src/uct/ib/configure.m4 probes for.
 +#
-+# CUDA and ROCm remain off. nvidia.com/cuda-cudart is in the pantry now, but its
++# ROCm followed, for the same reason: github.com/ROCm/ROCR-Runtime is in the
++# pantry now, so `--with-rocm` gives the GPU transports instead of nothing.
++# UCX's config/m4/rocm.m4 states its requirement exactly — -I$ROCM/include/hsa,
++# -lhsa-runtime64 -lhsakmt, probing hsa.h, hsa_ext_amd.h and hsa_init() — and
++# the ROCr bottle was checked against that list before the flag was added, not
++# after: it carries include/hsa/hsa.h, include/hsa/hsa_ext_amd.h,
++# lib/libhsa-runtime64.so and lib/libhsakmt.a. All four, and the archive rather
++# than a shared object for hsakmt, which is what -lhsakmt needs.
++#
++# The dependency costs 688 KB. It is linux-only, like this package.
++#
++# CUDA remains off for now. nvidia.com/cuda-cudart is in the pantry, but its
 +# lib/stubs/libcuda.so would make libuct_cuda.so record a NEEDED on libcuda.so.1
 +# that no package provides — resolved at runtime by the machine's own driver,
-+# which is right, and something the closure scanner has to be taught rather than
-+# surprised by. One capability at a time, each verifiable on its own.
++# which is right. go-pkgx/bottle#63 taught the closure scanner that boundary;
++# turning the flag on is the next step, on its own, so it is verifiable on its
++# own.
 +
 +distributable:
 +  url: https://github.com/openucx/ucx/releases/download/v{{version}}/ucx-{{version}}.tar.gz
@@ -41,8 +53,15 @@ index 0000000..1a8a843
 +
 +dependencies:
 +  zlib.net: ^1.3
-+  # Runtime, not build-only: libuct_ib.so links libibverbs.
-+  github.com/linux-rdma/rdma-core: '*' 
++  # Runtime, not build-only: libuct_ib.so links libibverbs, and
++  # libuct_rocm.so links libhsa-runtime64.
++  github.com/linux-rdma/rdma-core: '*'
++  # ROCr only builds for x86-64 (upstream's utils.h calls an x86 intrinsic
++  # unguarded), so the dependency is keyed the same way. Declaring it for both
++  # arches would fail resolution on aarch64 for a transport that could not be
++  # built there anyway.
++  linux/x86-64:
++    github.com/ROCm/ROCR-Runtime: '*'
 +
 +build:
 +  dependencies:
@@ -95,11 +114,18 @@ index 0000000..1a8a843
 +      # not get built is the kind of thing nobody notices until a benchmark is
 +      # half as fast as it should be.
 +      - --without-cuda
-+      - --without-rocm
 +      # An explicit prefix rather than bare `--with-verbs`, which means /usr —
 +      # a directory a from-scratch rootfs does not have, and `test -d` on it
 +      # decides the whole feature silently.
 +      - --with-verbs={{deps.github.com/linux-rdma/rdma-core.prefix}}
++    # ROCm is keyed by arch because ROCr is: upstream's utils.h calls an x86
++    # intrinsic unguarded, so there is no aarch64 bottle to point at.
++    linux/x86-64:
++      ARGS:
++        - --with-rocm={{deps.github.com/ROCm/ROCR-Runtime.prefix}}
++    linux/aarch64:
++      ARGS:
++        - --without-rocm
 +
 +provides:
 +  - bin/ucx_info
@@ -119,3 +145,15 @@ index 0000000..1a8a843
 +    # module was built. Its absence is what a silently-declined --with-verbs
 +    # looks like, and that is the failure this line exists to catch.
 +    - test -f {{prefix}}/lib/ucx/libuct_ib.so
++    # Same reasoning for ROCm: a build machine has no AMD GPU, so `ucx_info -d`
++    # cannot list a rocm transport, but a silently declined --with-rocm looks
++    # exactly like a missing module — and configure DOES decline silently, with
++    # a warning nobody reads.
++    #
++    # Only where ROCr exists. Asserting the module on aarch64 would fail a build
++    # for the absence of something deliberately not asked for.
++    - |
++      case "$(uname -m)" in
++        x86_64) test -f {{prefix}}/lib/ucx/libuct_rocm.so ;;
++        *) echo "no rocm transport on $(uname -m): ROCr is x86-64 only" ;;
++      esac
