@@ -1,0 +1,31 @@
+diff --git a/projects/freetds.org/package.yml b/projects/freetds.org/package.yml
+index 84e442c..73d23e7 100644
+--- a/projects/freetds.org/package.yml
++++ b/projects/freetds.org/package.yml
+@@ -50,11 +50,21 @@ build:
+       - --enable-krb5
+       - --enable-odbc-wide
+     darwin:
+-      CMAKE_ARGS:
+-        - -DCMAKE_EXE_LINKER_FLAGS=-liconv
+-        - -DCMAKE_SHARED_LINKER_FLAGS=-liconv
+-        - -DCMAKE_MODULE_LINKER_FLAGS=-liconv
+-      LDFLAGS: -liconv
++      # $LDFLAGS, not `-liconv` alone. A recipe's env is emitted AFTER bk's
++      # preamble, so a bare assignment takes the variable WHOLE — and what it
++      # took here was the set of relative rpaths every darwin bottle needs to
++      # resolve anywhere but the build machine. bin/bsqldb came out with no
++      # LC_RPATH at all and a bare @rpath/libsybdb.5.1.0.dylib reference, which
++      # `fixup` refuses to publish:
++      #
++      #   fixup: @rpath reference with no LC_RPATH: .../bin/bsqldb
++      #     references @rpath/libsybdb.5.1.0.dylib
++      #
++      # The three -DCMAKE_*_LINKER_FLAGS go with it: CMake seeds all three from
++      # $LDFLAGS on first configure, so naming them explicitly only overrode
++      # what LDFLAGS was already carrying. (Same trap as the CFLAGS line below,
++      # which already writes `$CFLAGS ...` for this reason.)
++      LDFLAGS: $LDFLAGS -liconv
+       CFLAGS: $CFLAGS -Wno-implicit-function-declaration -Wno-int-conversion
+ 
+ provides:
