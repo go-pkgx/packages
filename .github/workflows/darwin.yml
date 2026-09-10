@@ -25,6 +25,10 @@ on:
         description: "build ONLY the projects named in recipes, not their dependency closure. For a REPAIR run: the dependencies are already published, and walking to them costs a version resolution each and can drag a toolchain in behind them."
         required: false
         default: ""
+      source_mirror:
+        description: "keep every source archive this run downloads in this registry, addressed by its sha256. Blank = keep nothing. 57% of the pantry builds from tarballs GitHub GENERATES on request rather than stores, so for those it is the first stored artefact they have ever had."
+        required: false
+        default: "oci://ghcr.io/go-pkgx"
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — the cheap way to restore a platform an index lost"
         required: false
@@ -137,6 +141,7 @@ jobs:
           VERSIONS: ${{ github.event.inputs.versions }}
           MAX_VERSIONS: ${{ github.event.inputs.max_versions }}
           MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
+          SOURCE_MIRROR: ${{ github.event.inputs.source_mirror }}
           # Resolve from OUR signed registry and OUR overlay, exactly as the
           # linux lane does. Without these two the darwin bottles were resolved
           # against upstream's dist and upstream's recipes — a different closure
@@ -175,7 +180,8 @@ jobs:
             --bottles dist \
             ${VERSIONS:+--versions "$VERSIONS"} \
             ${MAX_VERSIONS:+--max-versions "$MAX_VERSIONS"} \
-            ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"}
+            ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"} \
+            ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
 
       - name: upload dist tree
         if: always()
