@@ -1,9 +1,9 @@
 diff --git a/projects/kernel.org/linux/package.yml b/projects/kernel.org/linux/package.yml
 new file mode 100644
-index 0000000..bf59732
+index 0000000..5757968
 --- /dev/null
 +++ b/projects/kernel.org/linux/package.yml
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,148 @@
 +distributable:
 +  url: https://cdn.kernel.org/pub/linux/kernel/v{{version.major}}.x/linux-{{version}}.tar.xz
 +  strip-components: 1
@@ -84,7 +84,40 @@ index 0000000..bf59732
 +    # to a compile-only invocation at all (go-pkgx/bk#111). KCFLAGS did not fix
 +    # it: the probes never see KCFLAGS, and eleven unused-argument errors
 +    # survived that attempt, which is what located the defect in the shim.
-+    - make --jobs {{ hw.concurrency }} $KERNEL_IMAGE
++    #
++    # A kernel is FREESTANDING: it brings its own headers and its own runtime,
++    # and the sovereign driver's `-isystem <glibc>/include` is not merely
++    # unnecessary there — it is wrong.
++    # arch/arm64/include/asm/neon-intrinsics.h redefines __INT64_TYPE__ to
++    # `long long` so that THE COMPILER's stdint.h derives an int64_t compatible
++    # with the kernel's s64. glibc's derives nothing: its bits/types.h fixes
++    # __int64_t at `long`. So arch/arm64/lib/xor-neon.c — the one file in the
++    # tree that includes <arm_neon.h> — got glibc's:
++    #
++    #   bits/stdint-intn.h:27: error: typedef redefinition with different types
++    #     ('__int64_t' (aka 'long') vs 's64' (aka 'long long'))
++    #
++    # The kernel already asks for the right thing and cannot get it. It passes
++    # `-nostdinc -isystem $(CC -print-file-name=include)`, and neither half
++    # reaches the driver's entry: -nostdinc drops the standard and builtin dirs
++    # but never an explicit -isystem, and the driver's is PREPENDED, so it
++    # outranks whatever the caller adds. go-pkgx/bk#124 offers the escape —
++    # $BK_CC_FREESTANDING is the pinned pkgx clang and nothing else.
++    #
++    # On the make COMMAND LINE, not in the environment: kbuild assigns CC in the
++    # makefile, which beats an exported CC, so a kernel otherwise compiles
++    # through bk's `gcc` shim and straight back into the hosted driver.
++    #
++    # -ffreestanding was tried first and is the wrong lever: it sets
++    # __STDC_HOSTED__ to 0, the condition inside clang's stdint.h — a file that
++    # is never opened here, because the include chain goes arm_neon.h ->
++    # glibc/include/stdint.h directly. `KCFLAGS=-ffreestanding` reached the
++    # compile and the error came back unchanged (go-pkgx/packages#126).
++    #
++    # Both arches, not only aarch64. x86-64 builds today only because no x86
++    # file includes <arm_neon.h>; it was compiling against glibc's headers just
++    # as wrongly and had merely not collided yet.
++    - make --jobs {{ hw.concurrency }} CC="$BK_CC_FREESTANDING" $KERNEL_IMAGE
 +    - mkdir -p "{{prefix}}/boot" "{{prefix}}/share/kernel"
 +    - cp "$KERNEL_IMAGE_PATH" "{{prefix}}/boot/Image"
 +    - cp .config "{{prefix}}/share/kernel/config"
