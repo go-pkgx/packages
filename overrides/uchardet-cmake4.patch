@@ -1,0 +1,21 @@
+diff --git a/projects/freedesktop.org/uchardet/package.yml b/projects/freedesktop.org/uchardet/package.yml
+index f1ca13f..159d270 100644
+--- a/projects/freedesktop.org/uchardet/package.yml
++++ b/projects/freedesktop.org/uchardet/package.yml
+@@ -19,6 +19,16 @@ build:
+     ARGS:
+       - -DCMAKE_INSTALL_PREFIX={{prefix}}
+       - -DCMAKE_BUILD_TYPE=Release
++      # uchardet 0.0.8 was released in 2022 and its CMakeLists.txt asks for a
++      # minimum below 3.5. CMake 4 removed compatibility with those outright:
++      #
++      #   CMake Error at CMakeLists.txt:2 (cmake_minimum_required):
++      #   Compatibility with CMake < 3.5 has been removed from CMake.
++      #
++      # so `cmake` in this pantry no longer configures it at all. This is the
++      # escape hatch CMake ships for exactly that: it raises the floor the
++      # project asked for without touching its source.
++      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+ 
+ provides:
+   - bin/uchardet
