@@ -1,16 +1,18 @@
 diff --git a/projects/pkgx.sh/package.yml b/projects/pkgx.sh/package.yml
-index 85fb0a7..d4e738a 100644
+index 85fb0a7..35151a6 100644
 --- a/projects/pkgx.sh/package.yml
 +++ b/projects/pkgx.sh/package.yml
-@@ -14,6 +14,15 @@ build:
+@@ -14,6 +14,17 @@ build:
    dependencies:
      deno.land: ~2 # since 1.3.0
      rust-lang.org: ^1.56 # since 2.0
 +    # `cargo install` needs cargo, and the rust-lang.org bottle does not ship
 +    # it: its bin/ has cargo-clippy and cargo-fmt and no `cargo` at all.
 +    # Upstream gets away with naming only rust-lang.org because THAT recipe
-+    # carries `companions: rust-lang.org/cargo` — a key bk parses and never
-+    # reads (go-pkgx/bk#130). Here the build died on
++    # carries `companions: rust-lang.org/cargo`, and upstream pkgx adds a
++    # package's companions to an environment containing it. Our pkgx resolves
++    # environments through go-pkgx/bottle, whose recipe reader knows only
++    # `dependencies` and `provides` — go-pkgx/bottle#65. So the build died on
 +    #   "cargo": executable file not found in $PATH
 +    # and shipped nothing, which is how pkgx.sh's own darwin bottle stayed
 +    # broken (go-pkgx/packages#140).
