@@ -1,0 +1,33 @@
+diff --git a/projects/boost.org/package.yml b/projects/boost.org/package.yml
+index f96b20a..7baa0cf 100644
+--- a/projects/boost.org/package.yml
++++ b/projects/boost.org/package.yml
+@@ -19,9 +19,28 @@ build:
+ 
+     # boost.org has libs that end up with name @rpath/libboost_atomic.dylib (offset 24)
+     # so we need to add @loader_path to the rpath
++    #
++    # @loader_path reaches boost's OWN libraries and nothing else. Its
++    # references to other packages are qualified —
++    # libboost_iostreams.dylib names @rpath/zlib.net/v1.3.2/lib/libz.1.dylib —
++    # and those resolve only from an rpath that reaches $PKGX_DIR. b2 does not
++    # read LDFLAGS, so the ones bk links into every other package never arrive
++    # here, and the bottle was refused rather than published:
++    #
++    #   fixup: sibling package reachable only through an absolute rpath:
++    #     .../lib/libboost_iostreams.dylib references
++    #     @rpath/zlib.net/v1.3.2/lib/libz.1.dylib but its only rpaths are
++    #     @loader_path
++    #
++    # From <prefix>/lib, $PKGX_DIR is three levels up: lib -> v1.91.0 ->
++    # boost.org -> $PKGX_DIR. The count is a fact about where this package
++    # installs, which is why it is written here and not guessed by the linker.
++    # There is room for the extra load command because ARGS already passes
++    # -headerpad_max_install_names.
+     - run: |
+         for LIB in *.dylib; do
+           install_name_tool -add_rpath @loader_path $LIB
++          install_name_tool -add_rpath @loader_path/../../.. $LIB
+         done
+       working-directory: ${{prefix}}/lib
+       if: darwin
