@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/heimdal/heimdal/package.yml b/projects/github.com/heimdal/heimdal/package.yml
 new file mode 100644
-index 0000000..0d6959f
+index 0000000..2fc76a0
 --- /dev/null
 +++ b/projects/github.com/heimdal/heimdal/package.yml
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,91 @@
 +# Heimdal — the OTHER Kerberos 5, next to MIT's kerberos.org.
 +#
 +# Both are here on purpose. Kerberised NFS is a GSSAPI client talking to a KDC,
@@ -38,6 +38,13 @@ index 0000000..0d6959f
 +    github.com/westes/flex: '*'
 +    perl.org: '*'
 +    freedesktop.org/pkg-config: '*'
++    # Not optional and not obvious: configure ENDS with
++    #   configure: error: no suitable Python interpreter found
++    # after trying python, python2, python3 and every python3.N and python2.N
++    # down to 2.0. Heimdal uses it to generate parts of the ASN.1 and test
++    # tooling, so there is nothing to switch off — the interpreter has to be in
++    # the closure.
++    python.org: '*'
 +  script:
 +    - ./configure $ARGS
 +    - make --jobs {{ hw.concurrency }}
