@@ -1,0 +1,90 @@
+diff --git a/projects/github.com/heimdal/heimdal/package.yml b/projects/github.com/heimdal/heimdal/package.yml
+new file mode 100644
+index 0000000..0d6959f
+--- /dev/null
++++ b/projects/github.com/heimdal/heimdal/package.yml
+@@ -0,0 +1,84 @@
++# Heimdal — the OTHER Kerberos 5, next to MIT's kerberos.org.
++#
++# Both are here on purpose. Kerberised NFS is a GSSAPI client talking to a KDC,
++# and which implementation supplies the GSSAPI mechanism is a site's choice, not
++# ours: MIT krb5 is what most Linux distributions ship, Heimdal is what the BSDs
++# and macOS descend from, and a site with an existing Heimdal KDC cannot simply
++# be told to use the other one. They install under separate prefixes and provide
++# the same command names, so a consumer picks one — they are alternatives, not
++# companions.
++
++distributable:
++  url: https://github.com/heimdal/heimdal/releases/download/heimdal-{{version}}/heimdal-{{version}}.tar.gz
++  strip-components: 1
++
++versions:
++  # `releases/tags` lists tag_names (heimdal-7.8.0); `releases` would list the
++  # display NAMES ("Heimdal 7.8"), which are not versions and do not always
++  # match the tag.
++  github: heimdal/heimdal/releases/tags
++  strip:
++    - /^heimdal-/
++
++dependencies:
++  openssl.org: ^3
++  sqlite.org: '*'
++  gnu.org/readline: '*'
++  invisible-island.net/ncurses: '*'
++
++build:
++  dependencies:
++    gnu.org/bison: '*'
++    github.com/westes/flex: '*'
++    perl.org: '*'
++    freedesktop.org/pkg-config: '*'
++  script:
++    - ./configure $ARGS
++    - make --jobs {{ hw.concurrency }}
++    - make install
++  env:
++    ARGS:
++      - --prefix={{prefix}}
++      - --with-openssl={{deps.openssl.org.prefix}}
++      - --with-sqlite3={{deps.sqlite.org.prefix}}
++      - --with-readline={{deps.gnu.org/readline.prefix}}
++      # Everything below is a probe that would otherwise reach for a system
++      # library this closure does not contain. `configure` treats most of them
++      # as [default=check], so leaving them unstated makes the build depend on
++      # what the machine happens to have — which is the one thing a sovereign
++      # factory must not do.
++      - --without-berkeley-db
++      - --without-openldap
++      - --without-libintl
++      - --without-capng
++      # The manuals need texinfo and produce nothing a consumer of the libraries
++      # uses.
++      - --disable-heimdal-documentation
++      # OTP wants its own database and is not part of the GSSAPI path.
++      - --disable-otp
++      - --disable-afs-support
++
++provides:
++  - bin/kinit
++  - bin/klist
++  - bin/kdestroy
++  - bin/kgetcred
++  - bin/kpasswd
++  - bin/kswitch
++  - bin/ktutil
++  - bin/string2key
++  - bin/hxtool
++  - bin/asn1_compile
++  - sbin/kdc
++  - sbin/kadmind
++  - sbin/kstash
++  - sbin/iprop-log
++
++# `kinit --version` prints "kinit (Heimdal <version>)", which is the one line
++# that distinguishes this from MIT's kinit of the same name — exactly what a
++# site with both on its shelf needs to be able to check. And the GSSAPI library
++# is the whole reason this package exists for kerberised NFS, so its absence
++# must fail the build rather than ship a Kerberos with no mechanism in it.
++test: |
++  kinit --version | grep -i heimdal
++  ls {{prefix}}/lib/libgssapi.*

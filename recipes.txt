@@ -702,6 +702,7 @@ github.com/h4ckf0r0day/obscura
 github.com/hadolint/hadolint
 github.com/hanslub42/rlwrap
 github.com/hatoo/oha
+github.com/heimdal/heimdal
 github.com/helmfile/helmfile
 github.com/helmfile/vals
 github.com/homeport/dyff
