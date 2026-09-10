@@ -34,6 +34,10 @@ on:
         description: "blank = build inside the FROM-scratch rootfs `bk builder` stages, so neither the host's libc nor its compiler takes part. `0` falls back to the runner's distribution. Ignored when mirror_from is set, which compiles nothing and would stage a toolchain for no reason."
         required: false
         default: ""
+      source_mirror:
+        description: "keep every source archive this run downloads in this registry, addressed by its sha256. Blank = keep nothing. 57% of the pantry builds from tarballs GitHub GENERATES on request rather than stores, so for those it is the first stored artefact they have ever had."
+        required: false
+        default: "oci://ghcr.io/go-pkgx"
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — republished signed + attested (used for the glibc sweep)."
         required: false
@@ -202,6 +206,7 @@ jobs:
         env:
           SOVEREIGN: ${{ github.event.inputs.sovereign }}
           MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
+          SOURCE_MIRROR: ${{ github.event.inputs.source_mirror }}
         run: |
           if [ "$SOVEREIGN" = 0 ] || [ -n "$MIRROR_FROM" ]; then
             echo "building with the runner's distribution"
@@ -266,6 +271,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
           GLIBC: ${{ github.event.inputs.glibc }}
           MIRROR_FROM: ${{ github.event.inputs.mirror_from }}
+          SOURCE_MIRROR: ${{ github.event.inputs.source_mirror }}
           # The overlay is what bk's `--overrides` does for the recipes bk READS,
           # but for the recipes PKGX reads while materialising a build's
           # dependency environment. Without it, a dependency whose upstream recipe
@@ -342,7 +348,8 @@ jobs:
               --bottles dist \
               ${GLIBC:+--glibc "$GLIBC"} \
               ${VERSIONS:+--versions "$VERSIONS"} \
-              ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"}
+              ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"} \
+            ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
           fi
 
       # The pkgx dist tree `bk factory --bottles dist` writes — unioned into
