@@ -1,19 +1,23 @@
 diff --git a/projects/developers.yubico.com/libfido2/package.yml b/projects/developers.yubico.com/libfido2/package.yml
 --- a/projects/developers.yubico.com/libfido2/package.yml
 +++ b/projects/developers.yubico.com/libfido2/package.yml
-@@ -25,6 +25,15 @@
+@@ -25,6 +25,19 @@
      ARGS:
        - -DCMAKE_BUILD_TYPE=Release
        - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
-+      # regress/mock.c calls err(3) without including <err.h>, which clang
-+      # refuses outright now that an implicit declaration is an error rather
-+      # than a warning:
-+      #   regress/mock.c:88:4: error: call to undeclared function 'err'
-+      # `if(BUILD_TESTS) add_subdirectory(regress)` in the top-level
-+      # CMakeLists gates exactly that directory. A bottle does not need
-+      # upstream's regression suite, and the recipe's own `test:` block still
-+      # compiles and runs a program against the built library.
++      # regress/ and examples/ both call err(3)/errx(3) without including
++      # <err.h>, which clang now refuses outright:
++      #   regress/mock.c:88:4:      error: call to undeclared function 'err'
++      #   examples/manifest.c:24:3: error: call to undeclared function 'errx'
++      # Each directory has its own gate in the top-level CMakeLists —
++      # `if(BUILD_TESTS) add_subdirectory(regress)` and
++      # `if(BUILD_EXAMPLES) add_subdirectory(examples)` — so turning both off
++      # removes exactly those two and nothing else. BUILD_TOOLS, BUILD_MANPAGES
++      # and the shared library are untouched, so `provides:` still holds, and
++      # the recipe's own `test:` block still compiles a program against the
++      # built library.
 +      - -DBUILD_TESTS=OFF
++      - -DBUILD_EXAMPLES=OFF
  
  provides:
    - bin/fido2-assert
