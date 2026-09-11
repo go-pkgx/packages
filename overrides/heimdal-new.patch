@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/heimdal/heimdal/package.yml b/projects/github.com/heimdal/heimdal/package.yml
 new file mode 100644
-index 0000000..44c4d59
+index 0000000..6072db2
 --- /dev/null
 +++ b/projects/github.com/heimdal/heimdal/package.yml
-@@ -0,0 +1,129 @@
+@@ -0,0 +1,144 @@
 +# Heimdal — the OTHER Kerberos 5, next to MIT's kerberos.org.
 +#
 +# Both are here on purpose. Kerberised NFS is a GSSAPI client talking to a KDC,
@@ -27,7 +27,6 @@ index 0000000..44c4d59
 +    - /^heimdal-/
 +
 +dependencies:
-+  openssl.org: ^3
 +  sqlite.org: '*'
 +  gnu.org/readline: '*'
 +  invisible-island.net/ncurses: '*'
@@ -89,7 +88,23 @@ index 0000000..44c4d59
 +  env:
 +    ARGS:
 +      - --prefix={{prefix}}
-+      - --with-openssl={{deps.openssl.org.prefix}}
++      # NOT --with-openssl. Heimdal 7.8.0 predates OpenSSL 3, and its bundled
++      # hcrypto declares the same names unconditionally:
++      #
++      #   lib/hcrypto/hmac.h:56: typedef struct hc_HMAC_CTX HMAC_CTX;
++      #
++      # with no guard. Put OpenSSL's headers on the include path and that
++      # collides with openssl/hmac.h —
++      #
++      #   error: typedef redefinition with different types
++      #     ('struct hc_HMAC_CTX' vs 'struct hmac_ctx_st')
++      #   error: invalid application of 'sizeof' to an incomplete type 'HMAC_CTX'
++      #
++      # the second because OpenSSL 3 made HMAC_CTX opaque. There is no version
++      # of OpenSSL in this registry old enough to satisfy the other reading, and
++      # hcrypto is self-contained: Heimdal builds and runs on it, which is what
++      # it does by default. So the dependency is gone rather than silenced.
++      - --without-openssl
 +      - --with-sqlite3={{deps.sqlite.org.prefix}}
 +      - --with-readline={{deps.gnu.org/readline.prefix}}
 +      - --with-libedit={{deps.thrysoee.dk/editline.prefix}}
