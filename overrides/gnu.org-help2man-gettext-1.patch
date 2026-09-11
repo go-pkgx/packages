@@ -1,0 +1,19 @@
+diff --git a/projects/gnu.org/help2man/package.yml b/projects/gnu.org/help2man/package.yml
+--- a/projects/gnu.org/help2man/package.yml
++++ b/projects/gnu.org/help2man/package.yml
+@@ -10,7 +10,14 @@
+     - /\.tar\.xz/
+ 
+ dependencies:
+-  gnu.org/gettext: ^0
++  # gettext renumbered 0.26 -> 1.0.0 and kept the same library (both ship
++  # libintl.8.dylib). `^0` now excludes the current release, and help2man's
++  # perl XS records the pkgx MAJOR in its reference:
++  #   Library not loaded: @rpath/gnu.org/gettext/v0/lib/libintl.dylib
++  # so it cannot load in an environment holding 1.0.0 — which is what
++  # gnu.org/texinfo's build produces, since that recipe asks for `*`.
++  # This is the BUILD half; the consumption half is pantry-overlay#24.
++  gnu.org/gettext: '*'
+   perl.org: ~5.44 # perl modules require matching minors; must match gettext
+ 
+ runtime:
