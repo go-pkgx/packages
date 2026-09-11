@@ -1,0 +1,24 @@
+diff --git a/projects/grpc.io/package.yml b/projects/grpc.io/package.yml
+--- a/projects/grpc.io/package.yml
++++ b/projects/grpc.io/package.yml
+@@ -108,7 +108,19 @@
+     COMMON_ARGS:
+       - -DCMAKE_BUILD_TYPE=Release
+       - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
+-      - -DCMAKE_INSTALL_RPATH={{prefix}}
++      # CMAKE_INSTALL_RPATH REPLACES the rpath at install, so the five
++      # @loader_path depths bk passes through LDFLAGS do not survive and a
++      # sibling package becomes unreachable:
++      #   fixup: sibling package reachable only through an absolute rpath:
++      #     libgpr.56.0.0.dylib references
++      #     @rpath/abseil.io/v20250512/lib/libabsl_status.2505.0.0.dylib
++      #     but its only rpaths are /Users/runner/.pkgx,
++      #     /Users/runner/.pkgx/grpc.io/v1.84.0
++      # (those two are exactly {{pkgx.prefix}} from CMAKE_SHARED_LINKER_FLAGS
++      # and {{prefix}} from this line — nothing else was left.)
++      # Quoted because the value is a ';'-separated CMake list and $COMMON_ARGS
++      # is expanded unquoted: a bare ';' would end the cmake command.
++      - -DCMAKE_INSTALL_RPATH="{{prefix}};@loader_path/../../..;@loader_path/../../../..;@loader_path/../../../../..;@loader_path/../../../../../..;@loader_path/../../../../../../.."
+       - -DBUILD_SHARED_LIBS=ON
+     ARGS:
+       - -DCMAKE_CXX_STANDARD=17
