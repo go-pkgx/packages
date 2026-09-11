@@ -1,0 +1,24 @@
+diff --git a/projects/oracle.com/berkeley-db/package.yml b/projects/oracle.com/berkeley-db/package.yml
+--- a/projects/oracle.com/berkeley-db/package.yml
++++ b/projects/oracle.com/berkeley-db/package.yml
+@@ -25,6 +25,20 @@
+       - --enable-sql_codegen
+       - --enable-dbm
+       - --enable-stl
++    # configure's TLS probe has two paths and modern clang refuses both, so
++    # dbstl stops the build with
++    #   dbstl_common.h:57:2: error: "No appropriate TLS modifier defined."
++    # The __thread probe uses NULL with no header to declare it; the pthread
++    # fallback that used to carry the detection passes &key to
++    # pthread_getspecific, which takes a pthread_key_t, not a pointer to one.
++    # That was a warning for years and is now an error:
++    #   incompatible pointer to integer conversion passing 'pthread_key_t *'
++    #   to parameter of type 'pthread_key_t'; remove &
++    # Measured both ways: with the flag the fallback compiles and configure
++    # settles on HAVE_PTHREAD_TLS; without it, three errors. Same idiom as
++    # freetds.org's recipe, and $CFLAGS is kept whole because a recipe's env
++    # is emitted after the preamble that sets it.
++    CFLAGS: $CFLAGS -Wno-int-conversion
+ 
+ test:
+   script: |
