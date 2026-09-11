@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/heimdal/heimdal/package.yml b/projects/github.com/heimdal/heimdal/package.yml
 new file mode 100644
-index 0000000..1ed6eb5
+index 0000000..702b7ce
 --- /dev/null
 +++ b/projects/github.com/heimdal/heimdal/package.yml
-@@ -0,0 +1,100 @@
+@@ -0,0 +1,120 @@
 +# Heimdal — the OTHER Kerberos 5, next to MIT's kerberos.org.
 +#
 +# Both are here on purpose. Kerberised NFS is a GSSAPI client talking to a KDC,
@@ -54,6 +54,26 @@ index 0000000..1ed6eb5
 +    # the closure.
 +    python.org: '*'
 +  script:
++    # The pantry's ncurses ships only the WIDE variants: libncursesw, and no
++    # libncurses or libcurses at all. Heimdal recurses into its bundled
++    # lib/libedit UNCONDITIONALLY — `subdirs="$subdirs lib/libedit"` in the
++    # generated configure has no guard, so --with-libedit does not prevent it —
++    # and that sub-configure link-tests -lcurses and then -lncurses by those
++    # names before ending with
++    #
++    #   configure: error: libcurses or libncurses are required!
++    #   configure: error: ./configure failed for lib/libedit
++    #
++    # Distributions answer this with a compatibility symlink; so does this, in
++    # the build tree rather than in anyone's bottle. The SONAME recorded in the
++    # result is still libncursesw's, so nothing downstream learns a name that
++    # does not exist.
++    - run: |
++        mkdir -p "$SRCROOT/compat-lib"
++        for w in {{deps.invisible-island.net/ncurses.prefix}}/lib/libncursesw.*; do
++          ln -sf "$w" "$SRCROOT/compat-lib/$(basename "$w" | sed 's/ncursesw/ncurses/')"
++        done
++        export LDFLAGS="-L$SRCROOT/compat-lib ${LDFLAGS:-}"
 +    - ./configure $ARGS
 +    - make --jobs {{ hw.concurrency }}
 +    - make install
