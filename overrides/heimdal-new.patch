@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/heimdal/heimdal/package.yml b/projects/github.com/heimdal/heimdal/package.yml
 new file mode 100644
-index 0000000..702b7ce
+index 0000000..44c4d59
 --- /dev/null
 +++ b/projects/github.com/heimdal/heimdal/package.yml
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,129 @@
 +# Heimdal — the OTHER Kerberos 5, next to MIT's kerberos.org.
 +#
 +# Both are here on purpose. Kerberised NFS is a GSSAPI client talking to a KDC,
@@ -68,12 +68,21 @@ index 0000000..702b7ce
 +    # the build tree rather than in anyone's bottle. The SONAME recorded in the
 +    # result is still libncursesw's, so nothing downstream learns a name that
 +    # does not exist.
++    #
++    # The symlink alone is not enough, and the reason is worth stating because
++    # it looks like the same problem twice: this ncurses is built --with-termlib,
++    # so the terminfo functions live in libtinfo and NOT in libncursesw.
++    # Measured on the bottle — `tgetent` appears in libtinfo.so.5 and does not
++    # appear in libncursesw.so.6.6 — which is why `checking for tgetent in
++    # -lncurses` still answered `no` with the library sitting right there.
++    # AC_CHECK_LIB links `-lncurses $LIBS`, so LIBS is where the other half goes.
 +    - run: |
 +        mkdir -p "$SRCROOT/compat-lib"
 +        for w in {{deps.invisible-island.net/ncurses.prefix}}/lib/libncursesw.*; do
 +          ln -sf "$w" "$SRCROOT/compat-lib/$(basename "$w" | sed 's/ncursesw/ncurses/')"
 +        done
 +        export LDFLAGS="-L$SRCROOT/compat-lib ${LDFLAGS:-}"
++        export LIBS="-ltinfo ${LIBS:-}"
 +    - ./configure $ARGS
 +    - make --jobs {{ hw.concurrency }}
 +    - make install
