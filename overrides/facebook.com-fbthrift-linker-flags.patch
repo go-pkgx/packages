@@ -1,0 +1,27 @@
+diff --git a/projects/facebook.com/fbthrift/package.yml b/projects/facebook.com/fbthrift/package.yml
+--- a/projects/facebook.com/fbthrift/package.yml
++++ b/projects/facebook.com/fbthrift/package.yml
+@@ -126,8 +126,21 @@
+         # trying to track an issue in watchman
+         - -fno-assume-unique-vtables
+       CMAKE_ARGS:
+-        - -DCMAKE_SHARED_LINKER_FLAGS=-Wl,-undefined,dynamic_lookup,-dead_strip_dylibs
+-        - -DCMAKE_EXE_LINKER_FLAGS=-Wl,-dead_strip_dylibs
++        # cmake SEEDS CMAKE_*_LINKER_FLAGS from the LDFLAGS environment
++        # variable, and an explicit -D REPLACES that seed. Measured:
++        #   LDFLAGS=-Wl,-rpath,/SENTINEL cmake -S src -B b
++        #     → CMAKE_EXE_LINKER_FLAGS = -Wl,-rpath,/SENTINEL
++        #   …the same, plus -DCMAKE_EXE_LINKER_FLAGS=-Wl,-dead_strip_dylibs
++        #     → CMAKE_EXE_LINKER_FLAGS = -Wl,-dead_strip_dylibs
++        # So bk's rpaths were dropped and the thrift1 this build compiles could
++        # not start, which killed the generator step rather than the link:
++        #   Library not loaded: @rpath/openssl.org/v3.6.4/lib/libcrypto.3.dylib
++        #     tried '/usr/local/lib/libcrypto.3.dylib', '/usr/lib/…'
++        #   make: *** [gen-cpp2/thrift_constants.h] Error 134
++        # Quoted: $LDFLAGS holds several space-separated entries and $ARGS is
++        # expanded unquoted.
++        - -DCMAKE_SHARED_LINKER_FLAGS="$LDFLAGS -Wl,-undefined,dynamic_lookup,-dead_strip_dylibs"
++        - -DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS -Wl,-dead_strip_dylibs"
+ 
+ provides:
+   - bin/thrift1
