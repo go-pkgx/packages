@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/heimdal/heimdal/package.yml b/projects/github.com/heimdal/heimdal/package.yml
 new file mode 100644
-index 0000000..2fc76a0
+index 0000000..1ed6eb5
 --- /dev/null
 +++ b/projects/github.com/heimdal/heimdal/package.yml
-@@ -0,0 +1,91 @@
+@@ -0,0 +1,100 @@
 +# Heimdal — the OTHER Kerberos 5, next to MIT's kerberos.org.
 +#
 +# Both are here on purpose. Kerberised NFS is a GSSAPI client talking to a KDC,
@@ -31,6 +31,14 @@ index 0000000..2fc76a0
 +  sqlite.org: '*'
 +  gnu.org/readline: '*'
 +  invisible-island.net/ncurses: '*'
++  # The pantry's libedit. Without it Heimdal falls back to the copy it bundles
++  # in lib/libedit, whose own configure ends with
++  #   configure: error: libcurses or libncurses are required!
++  #   configure: error: ./configure failed for lib/libedit
++  # even with ncurses in the closure. Pointing at a real libedit skips that
++  # sub-configure entirely, which is better than teaching a vendored copy where
++  # to look.
++  thrysoee.dk/editline: '*'
 +
 +build:
 +  dependencies:
@@ -55,6 +63,7 @@ index 0000000..2fc76a0
 +      - --with-openssl={{deps.openssl.org.prefix}}
 +      - --with-sqlite3={{deps.sqlite.org.prefix}}
 +      - --with-readline={{deps.gnu.org/readline.prefix}}
++      - --with-libedit={{deps.thrysoee.dk/editline.prefix}}
 +      # Everything below is a probe that would otherwise reach for a system
 +      # library this closure does not contain. `configure` treats most of them
 +      # as [default=check], so leaving them unstated makes the build depend on
