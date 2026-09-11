@@ -1,0 +1,21 @@
+diff --git a/projects/github.com/aws/aws-sdk-cpp/package.yml b/projects/github.com/aws/aws-sdk-cpp/package.yml
+--- a/projects/github.com/aws/aws-sdk-cpp/package.yml
++++ b/projects/github.com/aws/aws-sdk-cpp/package.yml
+@@ -26,7 +26,16 @@
+     - cmake --build build -j {{hw.concurrency}}
+     - cmake --install build
+   env:
+-    LDFLAGS: -Wl,-rpath,{{prefix}}
++    # A BARE assignment takes the variable whole: a recipe's env is emitted
++    # AFTER the preamble that sets LDFLAGS, so this replaced bk's five
++    # @loader_path depths with one absolute rpath. The guard says exactly that:
++    #   fixup: sibling package reachable only through an absolute rpath:
++    #     libaws-c-auth.1.0.0.dylib references
++    #     @rpath/openssl.org/v3.6.4/lib/libcrypto.3.dylib but its only rpaths
++    #     are /Users/runner/.pkgx/github.com/aws/aws-sdk-cpp/v1.11.890, $ORIGIN
++    # ($ORIGIN is a linux token and means nothing to dyld, so on darwin the
++    # builder's own path was the only thing left.)
++    LDFLAGS: $LDFLAGS -Wl,-rpath,{{prefix}}
+     ARGS:
+       - -DCMAKE_BUILD_TYPE=Release
+       - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
