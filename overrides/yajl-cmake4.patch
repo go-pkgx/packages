@@ -1,0 +1,23 @@
+diff --git a/projects/lloyd.github.io/yajl/package.yml b/projects/lloyd.github.io/yajl/package.yml
+index 79f74ee..94fb8f3 100644
+--- a/projects/lloyd.github.io/yajl/package.yml
++++ b/projects/lloyd.github.io/yajl/package.yml
+@@ -22,6 +22,18 @@ build:
+       - -DCMAKE_FIND_FRAMEWORK=LAST
+       - -DCMAKE_VERBOSE_MAKEFILE=ON
+       - -Wno-dev
++      # yajl 2.1.0 is from 2014 and its CMakeLists.txt asks for a minimum below
++      # 3.5; CMake 4 removed compatibility with those outright, so `cmake` in
++      # this pantry stops at line 15 of the file:
++      #
++      #   CMake Error at CMakeLists.txt:15 (CMAKE_MINIMUM_REQUIRED):
++      #   Compatibility with CMake < 3.5 has been removed from CMake.
++      #
++      # This is the escape hatch CMake ships for exactly that — it raises the
++      # floor the project asked for without touching its source, and without
++      # pinning an old cmake into the closure. Same treatment as
++      # freedesktop.org/uchardet, mariadb.com/server and kallisto.
++      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+       - -DBUILD_TESTING=OFF
+ provides:
+   - bin/json_reformat
