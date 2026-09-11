@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/heimdal/heimdal/package.yml b/projects/github.com/heimdal/heimdal/package.yml
 new file mode 100644
-index 0000000..6072db2
+index 0000000..fc14360
 --- /dev/null
 +++ b/projects/github.com/heimdal/heimdal/package.yml
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,166 @@
 +# Heimdal — the OTHER Kerberos 5, next to MIT's kerberos.org.
 +#
 +# Both are here on purpose. Kerberised NFS is a GSSAPI client talking to a KDC,
@@ -82,6 +82,28 @@ index 0000000..6072db2
 +        done
 +        export LDFLAGS="-L$SRCROOT/compat-lib ${LDFLAGS:-}"
 +        export LIBS="-ltinfo ${LIBS:-}"
++    # hcrypto declares its own HMAC_CTX, and OpenSSL 3's types.h declares one
++    # too — as an OPAQUE struct:
++    #
++    #   ./hmac.h:56: error: typedef redefinition with different types
++    #     ('struct hc_HMAC_CTX' vs 'struct hmac_ctx_st')
++    #   /pkgx/openssl.org/v3.6.4/include/openssl/types.h:144: previous definition
++    #   hmac.c:42: error: invalid application of 'sizeof' to an incomplete type
++    #
++    # Dropping --with-openssl does not help, and that is the interesting part:
++    # openssl is on this build's CPATH because `python.org` — required above,
++    # since configure refuses to run without an interpreter — carries it in its
++    # closure. A recipe cannot take an include directory off a path the factory
++    # puts there for the whole closure, so the collision has to be resolved in
++    # the source.
++    #
++    # Upstream's answer after 7.8.0 was to stop using the bare name. This is the
++    # one-line form of it: the struct tag is already hc_HMAC_CTX, so the typedef
++    # names it as itself and a macro sends hcrypto's own uses there. OpenSSL's
++    # typedef arrives first and is left untouched.
++    - run: |
++        sed -i.bak           -e 's/^typedef struct hc_HMAC_CTX HMAC_CTX;$/typedef struct hc_HMAC_CTX hc_HMAC_CTX;\n#define HMAC_CTX hc_HMAC_CTX/'           lib/hcrypto/hmac.h
++        grep -q '^#define HMAC_CTX hc_HMAC_CTX$' lib/hcrypto/hmac.h
 +    - ./configure $ARGS
 +    - make --jobs {{ hw.concurrency }}
 +    - make install
