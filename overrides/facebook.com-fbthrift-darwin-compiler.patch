@@ -1,0 +1,20 @@
+diff --git a/projects/facebook.com/fbthrift/package.yml b/projects/facebook.com/fbthrift/package.yml
+--- a/projects/facebook.com/fbthrift/package.yml
++++ b/projects/facebook.com/fbthrift/package.yml
+@@ -32,6 +32,16 @@
+     gnu.org/bison: "*"
+     github.com/westes/flex: "*"
+     python.org: ^3.10
++    darwin:
++      # The darwin CXXFLAGS below pass -fno-assume-unique-vtables, and nothing
++      # here names a compiler — so cmake resolves `c++` to the runner image's
++      # /usr/bin/c++ and its compiler check dies before the project is even
++      # configured:
++      #   clang: error: unknown argument: '-fno-assume-unique-vtables'
++      #   make: *** [cmTC_33c06/fast] Error 2
++      # The runner is on Xcode 15.4. Naming a compiler makes the build depend
++      # on the pantry rather than on which Xcode the image happens to ship.
++      llvm.org: '*'
+     linux:
+       gnu.org/gcc: 14
+       gnu.org/binutils: "*"
