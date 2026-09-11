@@ -1,0 +1,21 @@
+diff --git a/projects/apache.org/serf/package.yml b/projects/apache.org/serf/package.yml
+--- a/projects/apache.org/serf/package.yml
++++ b/projects/apache.org/serf/package.yml
+@@ -29,7 +29,16 @@
+     - run: sed -i -f $PROP SConstruct
+       prop: |
+         s/env = Environment(variables=opts,/env = Environment(ENV = os.environ, variables=opts,/
+-    - scons $ARGS
++    # scons composes its own link line from construction variables, so LDFLAGS
++    # never reaches the linker and the built dylib has NO LC_RPATH at all:
++    #   fixup: @rpath reference with no LC_RPATH: libserf-1.1.3.0.dylib
++    #     references @rpath/openssl.org/v3.6.4/lib/libssl.3.dylib
++    # SConstruct exposes LINKFLAGS as a RawListVariable, which is the only
++    # lever here: on darwin SCons emits nothing for its own RPATH variable,
++    # so serf's env.Append(RPATH=…) calls produce no flag.
++    # Quoted as ONE word — $LDFLAGS carries five space-separated -Wl,-rpath
++    # entries, and $ARGS is expanded unquoted.
++    - scons "LINKFLAGS=$LDFLAGS" $ARGS
+     - scons install
+   env:
+     ARGS:
