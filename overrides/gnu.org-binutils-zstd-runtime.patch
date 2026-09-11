@@ -1,0 +1,24 @@
+diff --git a/projects/gnu.org/binutils/package.yml b/projects/gnu.org/binutils/package.yml
+--- a/projects/gnu.org/binutils/package.yml
++++ b/projects/gnu.org/binutils/package.yml
+@@ -23,6 +23,20 @@
+ # Building those versions is empirically validated:
+ # see projects/gnu.org/glibc/README.md "HPC bootstrap cascade".
+ 
++# --with-zstd (binutils >= 2.39) makes the BUILT binaries link libzstd, so it is
++# a RUNTIME dependency and not only a build one. Upstream declares it under
++# `build.dependencies` alone, with the comment "cheap to always include as a
++# build dep" — true when the flag did nothing, and no longer true once 2.39
++# started passing it. Measured on the published 2.47.0 bottles: 18 Mach-O on
++# darwin/aarch64 and 31 ELFs on linux/aarch64 reference libzstd.
++#
++# Nothing installs it, so every binutils tool dies at load time:
++#   dyld: Library not loaded: @rpath/facebook.com/zstd/v1/lib/libzstd.dylib
++#     Referenced from: .../gnu.org/binutils/v2.47.0/bin/strings
++# which is what stopped gnu.org/gcc 11.5.0 building for darwin/aarch64.
++dependencies:
++  facebook.com/zstd: ^1
++
+ build:
+   dependencies:
+     gnu.org/bison: "*"
