@@ -1,8 +1,39 @@
 diff --git a/projects/lloyd.github.io/yajl/package.yml b/projects/lloyd.github.io/yajl/package.yml
-index 79f74ee..2c53fb4 100644
+index 79f74ee..4efa318 100644
 --- a/projects/lloyd.github.io/yajl/package.yml
 +++ b/projects/lloyd.github.io/yajl/package.yml
-@@ -22,6 +22,22 @@ build:
+@@ -10,6 +10,30 @@ build:
+       gnu.org/gcc: '*'
+       gnu.org/make: '*'
+   script:
++    # reformatter/CMakeLists.txt:38 and verify/CMakeLists.txt:32 read
++    #
++    #   GET_TARGET_PROPERTY(binPath json_reformat LOCATION)
++    #
++    # to copy the built binary somewhere. LOCATION is what CMP0026 disallows,
++    # and -DCMAKE_POLICY_DEFAULT_CMP0026=OLD does NOT bring it back: CMake 4
++    # removed the policy outright rather than defaulting it to NEW. That was
++    # tried, and the error came back identical.
++    #
++    # $<TARGET_FILE:...> is the idiom that replaced it and is exactly what these
++    # two lines want. Checked before committing: the patched tree configures
++    # with this pantry's cmake, rc=0.
++    - run: |
++        python3 - <<'EOF'
++        import re
++        for d, tgt in (("reformatter", "json_reformat"), ("verify", "json_verify")):
++            p = d + "/CMakeLists.txt"
++            s = open(p).read()
++            before = s
++            s = re.sub(r'^GET_TARGET_PROPERTY\(binPath ' + tgt + r' LOCATION\)\n', '', s, flags=re.M)
++            s = s.replace('${binPath}', '$<TARGET_FILE:' + tgt + '>')
++            assert s != before, p
++            open(p, 'w').write(s)
++        EOF
+     - cmake . $CMAKE_ARGS
+     - make install
+     - mkdir -p {{prefix}}/include/yajl
+@@ -22,6 +46,15 @@ build:
        - -DCMAKE_FIND_FRAMEWORK=LAST
        - -DCMAKE_VERBOSE_MAKEFILE=ON
        - -Wno-dev
@@ -13,15 +44,8 @@ index 79f74ee..2c53fb4 100644
 +      #   Compatibility with CMake < 3.5 has been removed from CMake.
 +      #
 +      # Raising the floor then uncovers the next thing the same decade left
-+      # behind. reformatter/CMakeLists.txt:38 and verify/CMakeLists.txt:32 read
-+      #
-+      #   GET_TARGET_PROPERTY(binPath json_reformat LOCATION)
-+      #
-+      # to copy the built binary somewhere, and LOCATION is what CMP0026
-+      # disallows. OLD restores it for this build rather than patching two
-+      # lines of someone's 2014 CMake.
++      # behind — see the source edit in the script above.
 +      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-+      - -DCMAKE_POLICY_DEFAULT_CMP0026=OLD
        - -DBUILD_TESTING=OFF
  provides:
    - bin/json_reformat
