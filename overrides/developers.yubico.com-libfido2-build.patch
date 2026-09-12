@@ -1,0 +1,30 @@
+diff --git a/projects/developers.yubico.com/libfido2/package.yml b/projects/developers.yubico.com/libfido2/package.yml
+index 6eddecc..9c7da20 100644
+--- a/projects/developers.yubico.com/libfido2/package.yml
++++ b/projects/developers.yubico.com/libfido2/package.yml
+@@ -22,9 +22,25 @@ build:
+     - make --jobs {{ hw.concurrency }}
+     - make install
+   env:
++    # regress/, examples/ AND tools/ all call err(3)/errx(3) without including
++    # <err.h>. Clang used to warn about an implicit declaration; it now refuses:
++    #   regress/mock.c:88:4:         error: call to undeclared function 'err'
++    #   examples/manifest.c:24:3:    error: call to undeclared function 'errx'
++    #   tools/assert_verify.c:194:3: error: call to undeclared function 'errx'
++    # Turning directories off chased the failure from one to the next, and
++    # tools/ cannot be turned off: it builds fido2-assert, fido2-cred and
++    # fido2-token — every binary this recipe `provides:`. The strictness is what
++    # to address, not the directory that met it first. Same idiom as
++    # freetds.org and ffmpeg.org.
++    CFLAGS: $CFLAGS -Wno-implicit-function-declaration
+     ARGS:
+       - -DCMAKE_BUILD_TYPE=Release
+       - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
++      # A bottle does not need upstream's regression suite or its examples, and
++      # each has its own gate in the top-level CMakeLists. The recipe's own
++      # `test:` block still compiles and runs a program against the library.
++      - -DBUILD_TESTS=OFF
++      - -DBUILD_EXAMPLES=OFF
+ 
+ provides:
+   - bin/fido2-assert
