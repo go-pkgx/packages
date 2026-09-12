@@ -1,0 +1,49 @@
+diff --git a/projects/grpc.io/package.yml b/projects/grpc.io/package.yml
+index fea7966..8c07d36 100644
+--- a/projects/grpc.io/package.yml
++++ b/projects/grpc.io/package.yml
+@@ -95,11 +95,23 @@ build:
+ 
+     # grpc has libs and binaries that end up with name @rpath/libgrpc_plugin_support.{{version}}.dylib (offset 24)
+     # so we need to add @loader_path to the rpath
++    # These files are COPIED out of the build tree rather than installed by
++    # cmake, so CMAKE_INSTALL_RPATH above never applies to them and they keep
++    # the build directory as their rpath:
++    #   fixup: sibling package reachable only through an absolute rpath:
++    #     libgrpc++_test_config.1.84.0.dylib references @rpath/abseil.io/...
++    #     but its only rpaths are /Users/runner/.pkgx,
++    #     /Users/runner/Library/Caches/brewkit/.../grpc.io/v1.84.0/build/cmake/build
++    # @loader_path/../lib reaches grpc's OWN lib dir and no further, so the
++    # sibling reference needs a depth that reaches $PKGX_DIR too: from
++    # <PKGX_DIR>/grpc.io/vX/lib that is three levels up. The glob covers the
++    # VERSIONED name as well — the loop named only the symlink.
+     - run: |
+-        for f in bin/* lib/libgrpc++_test_config.dylib; do
+-          if test -f $f && ! otool -l $f | grep @loader_path/../lib; then
+-            install_name_tool -add_rpath @loader_path/../lib $f
+-          fi
++        for f in bin/* lib/libgrpc++_test_config*.dylib; do
++          test -f $f || continue
++          for rp in @loader_path/../lib @loader_path/../../..; do
++            otool -l $f | grep -q "$rp\$" || install_name_tool -add_rpath $rp $f
++          done
+         done
+       working-directory: "{{prefix}}"
+       if: darwin
+@@ -108,7 +120,15 @@ build:
+     COMMON_ARGS:
+       - -DCMAKE_BUILD_TYPE=Release
+       - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
+-      - -DCMAKE_INSTALL_RPATH={{prefix}}
++      # CMAKE_INSTALL_RPATH REPLACES the rpath at install, so the five
++      # @loader_path depths bk passes through LDFLAGS do not survive and a
++      # sibling package becomes unreachable:
++      #   fixup: sibling package reachable only through an absolute rpath:
++      #     libgpr.56.0.0.dylib references
++      #     @rpath/abseil.io/v20250512/lib/libabsl_status.2505.0.0.dylib
++      # Quoted: the value is a ';'-separated CMake list and $COMMON_ARGS is
++      # expanded unquoted, so a bare ';' would end the cmake command.
++      - -DCMAKE_INSTALL_RPATH="{{prefix}};@loader_path/../../..;@loader_path/../../../..;@loader_path/../../../../..;@loader_path/../../../../../..;@loader_path/../../../../../../.."
+       - -DBUILD_SHARED_LIBS=ON
+     ARGS:
+       - -DCMAKE_CXX_STANDARD=17
