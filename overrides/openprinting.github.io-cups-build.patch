@@ -1,0 +1,31 @@
+diff --git a/projects/openprinting.github.io/cups/package.yml b/projects/openprinting.github.io/cups/package.yml
+index 8377511..3ab5b73 100644
+--- a/projects/openprinting.github.io/cups/package.yml
++++ b/projects/openprinting.github.io/cups/package.yml
+@@ -14,8 +14,26 @@ dependencies:
+ build:
+   script:
+     - ./configure $ARGS
++    # --disable-debug leaves INSTALL_STRIP=-s, so `install -c -s` strips the
++    # dylib AFTER the arm64 linker has ad-hoc signed it, and what lands carries
++    # a signature describing the pre-strip file:
++    #   libcups.2.dylib: fixup: malformed Mach-O code signature:
++    #     code limit 589920 is not within the 534272-byte slice
++    # @INSTALL_STRIP@ is an autoconf SUBSTITUTION, not a make variable, so
++    # `make INSTALL_STRIP= install` changes nothing. Take it out of the two
++    # lines that carry it. Costs 56 KiB on libcups.
++    - sed -i -E 's/^(INSTALL_(BIN|LIB)[[:space:]]*=.*[^-])[[:space:]]-s[[:space:]]*$/\1/' Makedefs
+     - make --jobs {{ hw.concurrency }} install
+   env:
++    # cups links its SHARED libraries with DSOFLAGS, not LDFLAGS:
++    #   ALL_DSOFLAGS = -L../cups @ARCHFLAGS@ @RELROFLAGS@ $(DSOFLAGS) $(OPTIM)
++    # so bk's rpaths never reached libcups.2.dylib and the guard refused it:
++    #   fixup: @rpath reference with no LC_RPATH: libcups.2.dylib references
++    #     @rpath/openssl.org/v3.6.4/lib/libssl.3.dylib
++    # configure SEEDS DSOFLAGS from the environment — `DSOFLAGS="${DSOFLAGS:=}"`
++    # in cups-sharedlibs.m4 — and then appends its platform flags, so setting it
++    # here is additive rather than a replacement.
++    DSOFLAGS: $LDFLAGS
+     ARGS:
+       - --prefix="{{prefix}}"
+       - --with-components=core
