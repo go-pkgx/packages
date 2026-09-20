@@ -29,6 +29,10 @@ on:
         description: "keep every source archive this run downloads in this registry, addressed by its sha256. Blank = keep nothing. 57% of the pantry builds from tarballs GitHub GENERATES on request rather than stores, so for those it is the first stored artefact they have ever had."
         required: false
         default: "oci://ghcr.io/go-pkgx"
+      arch:
+        description: "restrict the matrix to one arch: blank = both, `x86-64`, `aarch64`. A targeted repair usually concerns one of them, and building the other reruns an hour of macOS runner for nothing — the openssl-v1 repairs ran on aarch64 while x86-64 stayed on the pre-repair version, so the two halves genuinely diverge."
+        required: false
+        default: ""
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — the cheap way to restore a platform an index lost"
         required: false
@@ -71,6 +75,14 @@ jobs:
                  {runner:"macos-15-intel",platform:"darwin/x86-64",slug:"darwin-x86-64"})
               + {chunk:($c|tostring)}]}')
           fi
+          # `arch` drops one half of the pair. The filter is on the slug, so an
+          # unknown value yields an empty matrix rather than silently building
+          # both — and the check below turns that into a refusal.
+          ONLY="${{ github.event.inputs.arch }}"
+          m=$(echo "$m" | jq -c --arg only "$ONLY" \
+            '{include: [.include[] | select($only == "" or (.slug | endswith($only)))]}')
+          [ "$(echo "$m" | jq '.include | length')" -gt 0 ] || {
+            echo "arch=$ONLY matched no platform (expected blank, x86-64 or aarch64)" >&2; exit 1; }
           echo "matrix=$m" >> "$GITHUB_OUTPUT"
           echo "$m" | jq '.include | length | "\(.) build jobs"'
 
