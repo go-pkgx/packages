@@ -1,22 +1,34 @@
 diff --git a/projects/developers.yubico.com/libfido2/package.yml b/projects/developers.yubico.com/libfido2/package.yml
-index 6eddecc..9c7da20 100644
+index 6eddecc..03ea183 100644
 --- a/projects/developers.yubico.com/libfido2/package.yml
 +++ b/projects/developers.yubico.com/libfido2/package.yml
-@@ -22,9 +22,25 @@ build:
+@@ -22,9 +22,37 @@ build:
      - make --jobs {{ hw.concurrency }}
      - make install
    env:
 +    # regress/, examples/ AND tools/ all call err(3)/errx(3) without including
 +    # <err.h>. Clang used to warn about an implicit declaration; it now refuses:
-+    #   regress/mock.c:88:4:         error: call to undeclared function 'err'
-+    #   examples/manifest.c:24:3:    error: call to undeclared function 'errx'
-+    #   tools/assert_verify.c:194:3: error: call to undeclared function 'errx'
++    #   regress/mock.c:88:4:    error: call to undeclared function 'err'
++    #   examples/manifest.c:24:3: error: call to undeclared function 'errx'
++    #   tools/cred_make.c:37:3:  error: call to undeclared function 'errx'
 +    # Turning directories off chased the failure from one to the next, and
 +    # tools/ cannot be turned off: it builds fido2-assert, fido2-cred and
-+    # fido2-token — every binary this recipe `provides:`. The strictness is what
-+    # to address, not the directory that met it first. Same idiom as
-+    # freetds.org and ffmpeg.org.
-+    CFLAGS: $CFLAGS -Wno-implicit-function-declaration
++    # fido2-token — every binary this recipe `provides:`.
++    #
++    # -Wno-implicit-function-declaration is NOT enough, and the first attempt
++    # at this failed for exactly that reason: src/ and tools/ are compiled with
++    # different flags, and only tools/ carries -pedantic-errors:
++    #   src/   … -Wno-implicit-function-declaration -Wall -Wextra -Werror …
++    #   tools/ … -Wno-implicit-function-declaration … -pedantic-errors …
++    # -pedantic-errors comes AFTER the suppression and makes the diagnostic a
++    # hard error again, so src/ built and tools/ did not.
++    #
++    # So declare the function instead of muting the complaint that it is not
++    # declared. Upstream already defines HAVE_ERR_H; the tools simply do not
++    # include it. -include is processed before the first token of the
++    # translation unit, so no flag ordering can defeat it, and a file that
++    # already includes <err.h> is unaffected.
++    CFLAGS: $CFLAGS -include err.h
      ARGS:
        - -DCMAKE_BUILD_TYPE=Release
        - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
