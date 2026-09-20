@@ -1,28 +1,49 @@
 diff --git a/projects/facebook.com/fbthrift/package.yml b/projects/facebook.com/fbthrift/package.yml
-index d3c94df..2880d7f 100644
+index d3c94df..ae60642 100644
 --- a/projects/facebook.com/fbthrift/package.yml
 +++ b/projects/facebook.com/fbthrift/package.yml
-@@ -136,8 +136,21 @@ build:
+@@ -100,7 +100,21 @@ build:
+     # llvm's `as` likes to be first, wrongly
+     - run: export PATH={{deps.gnu.org/binutils.prefix}}/bin:$PATH
+       if: linux
+-    - cmake -S . $CMAKE_ARGS
++    # These two cannot travel in $CMAKE_ARGS. bk renders a recipe's env through
++    # posixQuote, which replaces every " with "" — two quotes that close and
++    # reopen, so the quoting DISAPPEARS — and the value is expanded unquoted at
++    # the call. A flag list with spaces in it therefore arrives as separate
++    # words, and cmake read the second one as an option of its own:
++    #   CMake Error: The warning category "l,-rpath,@loader_path/../../../../.."
++    #   is not known.
++    # On the cmake line the quotes survive, because a script step is emitted as
++    # written.
++    - run: cmake -S . $CMAKE_ARGS
++        "-DCMAKE_SHARED_LINKER_FLAGS=$LDFLAGS -Wl,-undefined,dynamic_lookup,-dead_strip_dylibs"
++        "-DCMAKE_EXE_LINKER_FLAGS=$LDFLAGS -Wl,-dead_strip_dylibs"
++      if: darwin
++    - run: cmake -S . $CMAKE_ARGS
++      if: linux
+     - cmake --build .
+     - cmake --install .
+ 
+@@ -135,9 +149,18 @@ build:
+         # based on https://github.com/facebook/fbthrift/issues/607
          # trying to track an issue in watchman
          - -fno-assume-unique-vtables
-       CMAKE_ARGS:
+-      CMAKE_ARGS:
 -        - -DCMAKE_SHARED_LINKER_FLAGS=-Wl,-undefined,dynamic_lookup,-dead_strip_dylibs
 -        - -DCMAKE_EXE_LINKER_FLAGS=-Wl,-dead_strip_dylibs
-+        # cmake SEEDS CMAKE_*_LINKER_FLAGS from the LDFLAGS environment
-+        # variable, and an explicit -D REPLACES that seed. Measured:
-+        #   LDFLAGS=-Wl,-rpath,/SENTINEL cmake -S src -B b
-+        #     -> CMAKE_EXE_LINKER_FLAGS = -Wl,-rpath,/SENTINEL
-+        #   the same, plus -DCMAKE_EXE_LINKER_FLAGS=-Wl,-dead_strip_dylibs
-+        #     -> CMAKE_EXE_LINKER_FLAGS = -Wl,-dead_strip_dylibs
-+        # So bk's rpaths were dropped and the thrift1 this build compiles could
-+        # not start, which killed the generator step rather than the link:
-+        #   Library not loaded: @rpath/openssl.org/v3.6.4/lib/libcrypto.3.dylib
-+        #     Referenced from: .../build/bin/thrift1
-+        #   make: *** [gen-cpp2/thrift_constants.h] Error 134
-+        # Quoted: $LDFLAGS holds several space-separated entries and $CMAKE_ARGS
-+        # is expanded unquoted.
-+        - -DCMAKE_SHARED_LINKER_FLAGS="$LDFLAGS -Wl,-undefined,dynamic_lookup,-dead_strip_dylibs"
-+        - -DCMAKE_EXE_LINKER_FLAGS="$LDFLAGS -Wl,-dead_strip_dylibs"
++      # The linker flags moved to the cmake line above: an explicit
++      # -DCMAKE_*_LINKER_FLAGS REPLACES the seed cmake takes from $LDFLAGS, and
++      # that seed is where bk's five @loader_path rpaths live. Measured:
++      #   LDFLAGS=-Wl,-rpath,/SENTINEL cmake -S src -B b
++      #     -> CMAKE_EXE_LINKER_FLAGS = -Wl,-rpath,/SENTINEL
++      #   the same, plus -DCMAKE_EXE_LINKER_FLAGS=-Wl,-dead_strip_dylibs
++      #     -> CMAKE_EXE_LINKER_FLAGS = -Wl,-dead_strip_dylibs
++      # Without them the thrift1 this build compiles could not start, which
++      # killed the generator step rather than the link:
++      #   Library not loaded: @rpath/openssl.org/v3.6.4/lib/libcrypto.3.dylib
++      #     Referenced from: .../build/bin/thrift1
++      #   make: *** [gen-cpp2/thrift_constants.h] Error 134
  
  provides:
    - bin/thrift1
