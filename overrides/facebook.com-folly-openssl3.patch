@@ -1,7 +1,8 @@
 diff --git a/projects/facebook.com/folly/package.yml b/projects/facebook.com/folly/package.yml
+index 6b2b5df..74eb122 100644
 --- a/projects/facebook.com/folly/package.yml
 +++ b/projects/facebook.com/folly/package.yml
-@@ -11,7 +11,7 @@
+@@ -28,7 +28,7 @@ dependencies:
    google.com/glog: ^0.7 # since 2026.4.20
    libevent.org: "*"
    lz4.org: 1

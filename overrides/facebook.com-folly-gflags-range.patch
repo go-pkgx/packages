@@ -1,0 +1,30 @@
+diff --git a/projects/facebook.com/folly/package.yml b/projects/facebook.com/folly/package.yml
+index 380e4d0..6b2b5df 100644
+--- a/projects/facebook.com/folly/package.yml
++++ b/projects/facebook.com/folly/package.yml
+@@ -7,7 +7,24 @@ versions:
+ 
+ dependencies:
+   boost.org: <1.89 # doesn't like the newest boost
+-  gflags.github.io: ~2.2 # looking for glog's version
++  # Was `~2.2`, which excludes every gflags this registry publishes (2.3.0 and
++  # 2.3.1 — 2.2.x was never built here). bk satisfied it by building gflags
++  # 2.2.2 inside the closure and never publishing it, so the folly bottle went
++  # out referencing a file nothing can supply:
++  #   dyld: Library not loaded: @rpath/gflags.github.io/v2/lib/libgflags.2.2.2.dylib
++  #     Referenced from: .../facebook.com/folly/v2026.09.07.00/lib/libfolly.0.58.0-dev.dylib
++  #     tried: '.../gflags.github.io/v2/lib/libgflags.2.2.2.dylib' (no such file)
++  # which killed facebook.com/fbthrift's build, not folly's own.
++  #
++  # google.com/glog carries the same `~2.2` and does NOT fail, because its
++  # bottle links the unversioned symlink (libgflags.dylib) that every 2.x
++  # ships. The constraint is equally wrong there; only folly records the
++  # versioned soname and so is the one that breaks.
++  #
++  # Same shape as gnu.org/help2man's gettext `^0`: a range written before the
++  # dependency moved, which now excludes the only thing available.
++  # This is the BUILD half; the consumption half is in pantry-overlay.
++  gflags.github.io: ^2
+   google.com/glog: ^0.7 # since 2026.4.20
+   libevent.org: "*"
+   lz4.org: 1
