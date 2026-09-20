@@ -1,0 +1,32 @@
+diff --git a/projects/gnu.org/texinfo/package.yml b/projects/gnu.org/texinfo/package.yml
+index 5b0e495..3605105 100644
+--- a/projects/gnu.org/texinfo/package.yml
++++ b/projects/gnu.org/texinfo/package.yml
+@@ -17,6 +17,27 @@ build:
+     gnu.org/gettext: "*"
+     invisible-island.net/ncurses: "*"
+   script:
++    # texinfo builds a perl XS extension, and its link step never sees bk's
++    # LDFLAGS — the same gap the overlay's gnu.org/help2man entry works around
++    # for cpanm. Without this the bottle is refused at fix-up:
++    #   @rpath reference with no LC_RPATH:
++    #     .../texinfo/v7.3/lib/texi2any/XS_extension/XSParagraph.so
++    #     references @rpath/gnu.org/gettext/v1.0.0/lib/libintl.8.dylib
++    # An @rpath reference with no LC_RPATH at all resolves nowhere, on the
++    # builder included.
++    #
++    # The rpath given here is ABSOLUTE on purpose. It only has to exist: bk's
++    # fixup now rewrites an absolute rpath pointing inside $PKGX_DIR into the
++    # equivalent @loader_path one, deriving the depth from where the file sits
++    # (go-pkgx/bk#144). Getting one in is the part the build has to do.
++    - run: |
++        mkdir -p "$SRCROOT/.bk-cc"
++        printf '#!/bin/sh\nexec /usr/bin/cc -Wl,-headerpad_max_install_names -Wl,-rpath,{{pkgx.prefix}} "$@"\n' > "$SRCROOT/.bk-cc/cc"
++        chmod +x "$SRCROOT/.bk-cc/cc"
++        export PATH="$SRCROOT/.bk-cc:$PATH"
++        export CC="$SRCROOT/.bk-cc/cc"
++      if: darwin
++
+     - ./configure --prefix={{ prefix }}
+     - make --jobs {{ hw.concurrency }} install
+ 
