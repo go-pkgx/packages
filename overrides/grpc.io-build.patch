@@ -1,8 +1,8 @@
 diff --git a/projects/grpc.io/package.yml b/projects/grpc.io/package.yml
-index fea7966..8c07d36 100644
+index fea7966..9b8d7ca 100644
 --- a/projects/grpc.io/package.yml
 +++ b/projects/grpc.io/package.yml
-@@ -95,11 +95,23 @@ build:
+@@ -95,11 +95,31 @@ build:
  
      # grpc has libs and binaries that end up with name @rpath/libgrpc_plugin_support.{{version}}.dylib (offset 24)
      # so we need to add @loader_path to the rpath
@@ -25,12 +25,20 @@ index fea7966..8c07d36 100644
 +        for f in bin/* lib/libgrpc++_test_config*.dylib; do
 +          test -f $f || continue
 +          for rp in @loader_path/../lib @loader_path/../../..; do
-+            otool -l $f | grep -q "$rp\$" || install_name_tool -add_rpath $rp $f
++            # Compare the PATH FIELD, not the end of the line. otool prints
++            #     path @loader_path/../../.. (offset 12)
++            # so an anchored match never fired, install_name_tool was called
++            # for an rpath the file already had, and it exits non-zero:
++            #     option "-add_rpath @loader_path/../../.." would duplicate
++            #     path, file already has LC_RPATH for: @loader_path/../../..
++            # which failed the whole build. grpc_cli already carries that one.
++            otool -l $f | awk '$1=="path"{print $2}' | grep -qxF "$rp" ||
++              install_name_tool -add_rpath $rp $f
 +          done
          done
        working-directory: "{{prefix}}"
        if: darwin
-@@ -108,7 +120,15 @@ build:
+@@ -108,7 +128,15 @@ build:
      COMMON_ARGS:
        - -DCMAKE_BUILD_TYPE=Release
        - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
