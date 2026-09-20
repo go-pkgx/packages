@@ -1,0 +1,23 @@
+diff --git a/projects/gnu.org/gcc/package.yml b/projects/gnu.org/gcc/package.yml
+index c3e1f26..3c11723 100644
+--- a/projects/gnu.org/gcc/package.yml
++++ b/projects/gnu.org/gcc/package.yml
+@@ -244,6 +244,18 @@ build:
+       ARGS:
+         # Reliance on CLT hard path is yuck.
+         - --with-sysroot=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
++        # `--disable-multilib` is set for linux and was missing here, and the
++        # difference is which compiler builds gcc. On linux this recipe builds
++        # gcc WITH gcc (`gnu.org/gcc: ">=14"` among its build deps); on darwin
++        # it builds with the runner's clang, and libiberty's configure asks the
++        # compiler for its multi-os directory:
++        #   checking whether gcc supports -Wall... yes
++        #   clang: error: unsupported option '-print-multi-os-directory'
++        #   clang: error: no input files
++        #   make: *** [Makefile:973: all] Error 2
++        # measured on both darwin/aarch64 and darwin/x86-64, identically.
++        # macOS has no second ABI to build for, so nothing is lost by saying so.
++        - --disable-multilib
+     darwin/aarch64:
+       ARGS:
+         # https://en.wikipedia.org/wiki/Darwin_(operating_system)#Darwin_16%E2%80%9319;_OS_X_rebranded_into_macOS
