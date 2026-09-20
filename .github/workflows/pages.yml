@@ -65,9 +65,20 @@ jobs:
             echo '</tbody></table>'
           } > site/list.html
 
+      # Checked out rather than `git clone`d: this job runs on our GARM/Incus
+      # pool, whose image has no git. actions/checkout does not need one — it
+      # falls back to the REST tarball — which is why the repository's own
+      # checkout above kept working while the clone below stopped. The workflow
+      # last succeeded 2026-08-11 and every dispatch since has died here with
+      #   .../e60bd8e3-….sh: line 1: git: command not found
+      #   ##[error]Process completed with exit code 127
+      # so the published registry.json could not be refreshed by anyone, cron or
+      # not (packages#176).
+      - uses: actions/checkout@v7
+        with: { repository: go-pkgx/registry-viewer, path: registry-viewer }
+
       - name: Build the WASM tree-view viewer (go-widgets) → site root
         run: |
-          git clone --depth 1 https://github.com/go-pkgx/registry-viewer
           # build.sh consumes registry.json and emits dist/{app.wasm, wasm_exec.js,
           # index.html, registry.json}. index.html becomes the site root (the
           # interactive viewer); registry.json feeds it and the no-JS list.html.
