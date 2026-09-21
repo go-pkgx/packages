@@ -1,0 +1,35 @@
+diff --git a/projects/facebook.com/folly/package.yml b/projects/facebook.com/folly/package.yml
+index 6ce2aa2..17f7f61 100644
+--- a/projects/facebook.com/folly/package.yml
++++ b/projects/facebook.com/folly/package.yml
+@@ -40,6 +40,30 @@ build:
+       curl.se: "*"
+       gnu.org/patch: "*"
+   script:
++    # folly builds LtHash three times — simple, sse2, avx2 — and dispatches at
++    # run time. The "simple" one is compiled with SIMD switched off:
++    #   if (IS_X86_64_ARCH)
++    #     target_compile_options(folly_crypto_detail_math_operation_simple_obj
++    #       PRIVATE -mno-avx -mno-avx2 -mno-sse2)
++    # On macOS 15's SDK that no longer compiles at all, because <math.h> now
++    # declares _Float16 functions and clang refuses the TYPE without SSE2:
++    #   .../MacOSX15.5.sdk/usr/include/math.h:619:27:
++    #     error: _Float16 is not supported on this target
++    #   extern _Float16 __fabsf16(_Float16) __API_AVAILABLE(macos(15.0), ...)
++    # reached through <atomic> -> <cmath> -> <math.h>, so every translation unit
++    # that includes folly/Range.h is affected, not just this one.
++    #
++    # Only -mno-sse2 is dropped, and only on darwin. SSE2 is part of the x86-64
++    # ABI — no Mac lacks it — so the "simple" variant loses nothing it could
++    # have relied on, while -mno-avx and -mno-avx2 still keep it out of the
++    # instruction sets the runtime dispatch is there to choose between.
++    #
++    # Seen on darwin/x86-64 only: macos-15-intel carries Xcode 16.4 / SDK 15.5
++    # while macos-14 carries Xcode 15.4 / SDK 14.5, whose math.h has no
++    # _Float16. The two darwin runners are not the same machine.
++    - run: sed -i 's/ -mno-sse2)/)/' folly/crypto/detail/CMakeLists.txt
++      if: darwin
++
+     # Fix duplicate symbol definitions for linux/aarch64 AOR (Arm Optimized Routines)
+     # Remove the -use object libraries that duplicatent change broke linking for linux/aarch64
+     - run: |
