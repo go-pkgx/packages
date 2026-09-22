@@ -1,0 +1,59 @@
+diff --git a/projects/videolan.org/x265/package.yml b/projects/videolan.org/x265/package.yml
+index 4e6d2f8..8ecfdd1 100644
+--- a/projects/videolan.org/x265/package.yml
++++ b/projects/videolan.org/x265/package.yml
+@@ -14,6 +14,54 @@ build:
+     nasm.us: '*'
+   working-directory: 8bit
+   script:
++    # x265 3.x does not configure under CMake 4:
++    #   CMake Error at CMakeLists.txt:10 (cmake_policy):
++    #     Policy CMP0025 may not be set to OLD behavior because this version of
++    #     CMake no longer supports it.
++    #   CMake Error at CMakeLists.txt:20 (cmake_minimum_required):
++    #     Compatibility with CMake < 3.5 has been removed from CMake.
++    #
++    # -DCMAKE_POLICY_VERSION_MINIMUM=3.5, which the second error suggests, does
++    # not help the first: an explicit `cmake_policy(SET CMP0025 OLD)` is refused
++    # whatever the minimum says.
++    #
++    # Dropping the OLD settings is not enough on its own. CMP0025 NEW is what
++    # reports Apple's compiler as AppleClang rather than Clang, and line 150
++    # reads
++    #     if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
++    # so the whole flag block below it — `add_definitions(-Wall -Wextra
++    # -Wshadow …)` and everything else guarded by GCC — is silently skipped.
++    # Measured on the configured tree: with MATCHES, 5 generated files carry
++    # -Wshadow; with STREQUAL under CMP0025 NEW, zero. A build that quietly
++    # loses its compiler flags is worse than one that refuses.
++    #
++    # CMP0054 OLD is dropped with no replacement: its only two sites are
++    # `if("${CMAKE_SIZEOF_VOID_P}" MATCHES 8)`, already-expanded quoted
++    # arguments that the policy does not govern.
++    #
++    # Checked before committing: the patched tree configures with cmake 4.3.2,
++    # rc=0, compiler id AppleClang, flag block present.
++    - run: |
++        python3 - <<'EOF'
++        p = "source/CMakeLists.txt"
++        s = open(p).read()
++        for block in (
++            'if(POLICY CMP0025)\n    cmake_policy(SET CMP0025 OLD) # report Apple\'s Clang as just Clang\nendif()\n',
++            'if(POLICY CMP0054)\n    cmake_policy(SET CMP0054 OLD) # Only interpret if() arguments as variables or keywords when unquoted\nendif()\n',
++        ):
++            assert block in s, block.splitlines()[0]
++            s = s.replace(block, "")
++        for a, b in (
++            ("cmake_minimum_required (VERSION 2.8.8)", "cmake_minimum_required (VERSION 3.5)"),
++            ('if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")', 'if(${CMAKE_CXX_COMPILER_ID} MATCHES "Clang")'),
++        ):
++            assert a in s, a
++            s = s.replace(a, b)
++        open(p, "w").write(s)
++        EOF
++      working-directory: ..
++      if: <4
++
+     - run: |
+         cmake ../source -DENABLE_HDR10_PLUS=ON $ARGS_DEFAULT $HIGHBITARGS
+         make
