@@ -1,9 +1,9 @@
 diff --git a/projects/github.com/heimdal/heimdal/package.yml b/projects/github.com/heimdal/heimdal/package.yml
 new file mode 100644
-index 0000000..fc14360
+index 0000000..1bd0791
 --- /dev/null
 +++ b/projects/github.com/heimdal/heimdal/package.yml
-@@ -0,0 +1,166 @@
+@@ -0,0 +1,178 @@
 +# Heimdal — the OTHER Kerberos 5, next to MIT's kerberos.org.
 +#
 +# Both are here on purpose. Kerberised NFS is a GSSAPI client talking to a KDC,
