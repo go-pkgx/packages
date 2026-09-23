@@ -1,0 +1,184 @@
+diff --git a/projects/github.com/heimdal/heimdal/package.yml b/projects/github.com/heimdal/heimdal/package.yml
+new file mode 100644
+index 0000000..1bd0791
+--- /dev/null
++++ b/projects/github.com/heimdal/heimdal/package.yml
+@@ -0,0 +1,178 @@
++# Heimdal — the OTHER Kerberos 5, next to MIT's kerberos.org.
++#
++# Both are here on purpose. Kerberised NFS is a GSSAPI client talking to a KDC,
++# and which implementation supplies the GSSAPI mechanism is a site's choice, not
++# ours: MIT krb5 is what most Linux distributions ship, Heimdal is what the BSDs
++# and macOS descend from, and a site with an existing Heimdal KDC cannot simply
++# be told to use the other one. They install under separate prefixes and provide
++# the same command names, so a consumer picks one — they are alternatives, not
++# companions.
++
++distributable:
++  url: https://github.com/heimdal/heimdal/releases/download/heimdal-{{version}}/heimdal-{{version}}.tar.gz
++  strip-components: 1
++
++versions:
++  # `releases/tags` lists tag_names (heimdal-7.8.0); `releases` would list the
++  # display NAMES ("Heimdal 7.8"), which are not versions and do not always
++  # match the tag.
++  github: heimdal/heimdal/releases/tags
++  strip:
++    - /^heimdal-/
++
++dependencies:
++  sqlite.org: '*'
++  gnu.org/readline: '*'
++  invisible-island.net/ncurses: '*'
++  # The pantry's libedit. Without it Heimdal falls back to the copy it bundles
++  # in lib/libedit, whose own configure ends with
++  #   configure: error: libcurses or libncurses are required!
++  #   configure: error: ./configure failed for lib/libedit
++  # even with ncurses in the closure. Pointing at a real libedit skips that
++  # sub-configure entirely, which is better than teaching a vendored copy where
++  # to look.
++  thrysoee.dk/editline: '*'
++
++build:
++  dependencies:
++    gnu.org/bison: '*'
++    github.com/westes/flex: '*'
++    perl.org: '*'
++    freedesktop.org/pkg-config: '*'
++    # Not optional and not obvious: configure ENDS with
++    #   configure: error: no suitable Python interpreter found
++    # after trying python, python2, python3 and every python3.N and python2.N
++    # down to 2.0. Heimdal uses it to generate parts of the ASN.1 and test
++    # tooling, so there is nothing to switch off — the interpreter has to be in
++    # the closure.
++    python.org: '*'
++  script:
++    # The pantry's ncurses ships only the WIDE variants: libncursesw, and no
++    # libncurses or libcurses at all. Heimdal recurses into its bundled
++    # lib/libedit UNCONDITIONALLY — `subdirs="$subdirs lib/libedit"` in the
++    # generated configure has no guard, so --with-libedit does not prevent it —
++    # and that sub-configure link-tests -lcurses and then -lncurses by those
++    # names before ending with
++    #
++    #   configure: error: libcurses or libncurses are required!
++    #   configure: error: ./configure failed for lib/libedit
++    #
++    # Distributions answer this with a compatibility symlink; so does this, in
++    # the build tree rather than in anyone's bottle. The SONAME recorded in the
++    # result is still libncursesw's, so nothing downstream learns a name that
++    # does not exist.
++    #
++    # The symlink alone is not enough, and the reason is worth stating because
++    # it looks like the same problem twice: this ncurses is built --with-termlib,
++    # so the terminfo functions live in libtinfo and NOT in libncursesw.
++    # Measured on the bottle — `tgetent` appears in libtinfo.so.5 and does not
++    # appear in libncursesw.so.6.6 — which is why `checking for tgetent in
++    # -lncurses` still answered `no` with the library sitting right there.
++    # AC_CHECK_LIB links `-lncurses $LIBS`, so LIBS is where the other half goes.
++    - run: |
++        mkdir -p "$SRCROOT/compat-lib"
++        for w in {{deps.invisible-island.net/ncurses.prefix}}/lib/libncursesw.*; do
++          ln -sf "$w" "$SRCROOT/compat-lib/$(basename "$w" | sed 's/ncursesw/ncurses/')"
++        done
++        export LDFLAGS="-L$SRCROOT/compat-lib ${LDFLAGS:-}"
++        export LIBS="-ltinfo ${LIBS:-}"
++    # hcrypto declares its own HMAC_CTX, and OpenSSL 3's types.h declares one
++    # too — as an OPAQUE struct:
++    #
++    #   ./hmac.h:56: error: typedef redefinition with different types
++    #     ('struct hc_HMAC_CTX' vs 'struct hmac_ctx_st')
++    #   /pkgx/openssl.org/v3.6.4/include/openssl/types.h:144: previous definition
++    #   hmac.c:42: error: invalid application of 'sizeof' to an incomplete type
++    #
++    # Dropping --with-openssl does not help, and that is the interesting part:
++    # openssl is on this build's CPATH because `python.org` — required above,
++    # since configure refuses to run without an interpreter — carries it in its
++    # closure. A recipe cannot take an include directory off a path the factory
++    # puts there for the whole closure, so the collision has to be resolved in
++    # the source.
++    #
++    # Upstream's answer after 7.8.0 was to stop using the bare name. This is the
++    # one-line form of it: the struct tag is already hc_HMAC_CTX, so the typedef
++    # names it as itself and a macro sends hcrypto's own uses there. OpenSSL's
++    # typedef arrives first and is left untouched.
++    - run: |
++        sed -i.bak           -e 's/^typedef struct hc_HMAC_CTX HMAC_CTX;$/typedef struct hc_HMAC_CTX hc_HMAC_CTX;\n#define HMAC_CTX hc_HMAC_CTX/'           lib/hcrypto/hmac.h
++        grep -q '^#define HMAC_CTX hc_HMAC_CTX$' lib/hcrypto/hmac.h
++    - ./configure $ARGS
++    # SERIAL, and not for want of trying to go faster. Heimdal's Makefiles
++    # invoke slc — its command-table generator — once for the .c and once for
++    # the .h of the same input, a multiple-output rule with no ordering between
++    # the two. Under `make -j` both run at once on the same file:
++    #
++    #   ../lib/sl/slc ./ktutil-commands.in
++    #   ../lib/sl/slc ./ktutil-commands.in      ← concurrently
++    #   add.c:117:32: error: incomplete definition of type 'struct add_options'
++    #
++    # The struct is incomplete because the header was half-written when add.c
++    # read it. Measured on linux/x86-64: the same shape hits lib/gssapi's
++    # gss-commands.in too, so it is the rule and not one directory.
++    - make
++    - make install
++  env:
++    ARGS:
++      - --prefix={{prefix}}
++      # NOT --with-openssl. Heimdal 7.8.0 predates OpenSSL 3, and its bundled
++      # hcrypto declares the same names unconditionally:
++      #
++      #   lib/hcrypto/hmac.h:56: typedef struct hc_HMAC_CTX HMAC_CTX;
++      #
++      # with no guard. Put OpenSSL's headers on the include path and that
++      # collides with openssl/hmac.h —
++      #
++      #   error: typedef redefinition with different types
++      #     ('struct hc_HMAC_CTX' vs 'struct hmac_ctx_st')
++      #   error: invalid application of 'sizeof' to an incomplete type 'HMAC_CTX'
++      #
++      # the second because OpenSSL 3 made HMAC_CTX opaque. There is no version
++      # of OpenSSL in this registry old enough to satisfy the other reading, and
++      # hcrypto is self-contained: Heimdal builds and runs on it, which is what
++      # it does by default. So the dependency is gone rather than silenced.
++      - --without-openssl
++      - --with-sqlite3={{deps.sqlite.org.prefix}}
++      - --with-readline={{deps.gnu.org/readline.prefix}}
++      - --with-libedit={{deps.thrysoee.dk/editline.prefix}}
++      # Everything below is a probe that would otherwise reach for a system
++      # library this closure does not contain. `configure` treats most of them
++      # as [default=check], so leaving them unstated makes the build depend on
++      # what the machine happens to have — which is the one thing a sovereign
++      # factory must not do.
++      - --without-berkeley-db
++      - --without-openldap
++      - --without-libintl
++      - --without-capng
++      # The manuals need texinfo and produce nothing a consumer of the libraries
++      # uses.
++      - --disable-heimdal-documentation
++      # OTP wants its own database and is not part of the GSSAPI path.
++      - --disable-otp
++      - --disable-afs-support
++
++provides:
++  - bin/kinit
++  - bin/klist
++  - bin/kdestroy
++  - bin/kgetcred
++  - bin/kpasswd
++  - bin/kswitch
++  - bin/ktutil
++  - bin/string2key
++  - bin/hxtool
++  - bin/asn1_compile
++  - sbin/kdc
++  - sbin/kadmind
++  - sbin/kstash
++  - sbin/iprop-log
++
++# `kinit --version` prints "kinit (Heimdal <version>)", which is the one line
++# that distinguishes this from MIT's kinit of the same name — exactly what a
++# site with both on its shelf needs to be able to check. And the GSSAPI library
++# is the whole reason this package exists for kerberised NFS, so its absence
++# must fail the build rather than ship a Kerberos with no mechanism in it.
++test: |
++  kinit --version | grep -i heimdal
++  ls {{prefix}}/lib/libgssapi.*
