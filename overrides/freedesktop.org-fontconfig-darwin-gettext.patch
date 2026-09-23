@@ -1,0 +1,20 @@
+diff --git a/projects/freedesktop.org/fontconfig/package.yml b/projects/freedesktop.org/fontconfig/package.yml
+index 860ccf5..495402b 100644
+--- a/projects/freedesktop.org/fontconfig/package.yml
++++ b/projects/freedesktop.org/fontconfig/package.yml
+@@ -9,6 +9,15 @@ versions:
+   gitlab: gitlab.freedesktop.org:fontconfig/fontconfig/tags
+ 
+ dependencies:
++  # fontconfig links libintl and declared nothing for it, so a bottle installed
++  # into an empty store cannot start:
++  #
++  #   dyld: Library not loaded: @rpath/gnu.org/gettext/v1/lib/libintl.8.dylib
++  #
++  # The rebuilt bottle's references are all major-versioned, so the declaration
++  # is the whole fix here. darwin only: linux resolves libintl through glibc.
++  darwin:
++    gnu.org/gettext: ^1
+   sourceware.org/bzip2: 1
+   freetype.org: 2
+   zlib.net: 1

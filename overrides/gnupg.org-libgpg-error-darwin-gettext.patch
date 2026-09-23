@@ -1,0 +1,22 @@
+diff --git a/projects/gnupg.org/libgpg-error/package.yml b/projects/gnupg.org/libgpg-error/package.yml
+index 367bf8b..4d7d8a8 100644
+--- a/projects/gnupg.org/libgpg-error/package.yml
++++ b/projects/gnupg.org/libgpg-error/package.yml
+@@ -16,6 +16,17 @@ provides:
+   - bin/gpgrt-config
+   - bin/yat2m
+ 
++dependencies:
++  # libgpg-error links libintl and declares nothing, so a consumer's closure
++  # never installs it. The shipped bottle carries both reference shapes — 8
++  # full-versioned (@rpath/gnu.org/gettext/v1.0.0/…) and 6 major — so it needs a
++  # rebuild as well as this line: a full-versioned reference resolves against no
++  # gettext but the exact one it was built with.
++  #
++  # darwin only: linux resolves libintl through glibc and runs today.
++  darwin:
++    gnu.org/gettext: ^1
++
+ build:
+   script:
+     - run: |
