@@ -1,0 +1,34 @@
+diff --git a/projects/github.com/rcedgar/muscle/package.yml b/projects/github.com/rcedgar/muscle/package.yml
+index 6e82ccd..10d2607 100644
+--- a/projects/github.com/rcedgar/muscle/package.yml
++++ b/projects/github.com/rcedgar/muscle/package.yml
+@@ -42,7 +42,28 @@ build:
+       # rewrite (otherwise "Updated load commands do not fit in the header")
+     - case "$(uname)" in Darwin) LDEXTRA="-Wl,-headerpad_max_install_names";; *) LDEXTRA="";; esac
+     - c++ -ffast-math -O3 -fopenmp o/*.o $LDEXTRA -o ../bin/muscle
+-    - strip ../bin/muscle
++      # NAME the stripper on darwin. This recipe's build closure contains
++      # gnu.org/gcc, which declares gnu.org/binutils at runtime, which provides
++      # bin/strip — and `pkgx +<deps>` puts dependency bin dirs ahead of
++      # /usr/bin. So a bare `strip` here is GNU's, run on a Mach-O.
++      #
++      # It does not refuse. It rewrites the 64-bit magic as the 32-bit one and
++      # exits 0:
++      #
++      #   cffa edfe 0c00 0001   healthy: magic 0xfeedfacf, cputype ARM64
++      #   cefa edfe 0c00 0001   after:   magic 0xfeedface, cputype ARM64
++      #
++      # The bottle then builds, signs, publishes and indexes, and the kernel
++      # kills the binary on first use — exit 137, no output. That is exactly
++      # what happened to the published 5.3 darwin/aarch64 bottle.
++      #
++      # netlib.org/lapack already pins -DCMAKE_AR=/usr/bin/ar for the same
++      # reason, with the comment "binutils ar/ranlib are broken on macOS?".
++      # They are; strip is the member of that family that fails silently.
++      #
++      # linux keeps the bare name: there /usr/bin/strip may not exist at all
++      # (a FROM-scratch builder has no system toolchain) and GNU's is correct.
++    - case "$(uname)" in Darwin) /usr/bin/strip ../bin/muscle;; *) strip ../bin/muscle;; esac
+     - mkdir -p "{{prefix}}/bin"
+     - install -m0755 ../bin/muscle "{{prefix}}/bin/muscle"
+ 
