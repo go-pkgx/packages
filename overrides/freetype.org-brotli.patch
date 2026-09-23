@@ -1,0 +1,43 @@
+diff --git a/projects/freetype.org/package.yml b/projects/freetype.org/package.yml
+index 6ae944a..b271552 100644
+--- a/projects/freetype.org/package.yml
++++ b/projects/freetype.org/package.yml
+@@ -15,6 +15,21 @@ dependencies:
+   libpng.org: 1
+   zlib.net: 1
+   sourceware.org/bzip2: 1
++  # freetype's CMake build enables brotli (WOFF2 decompression) whenever it can
++  # FIND brotli, and nothing declared it. On a macOS runner it found Homebrew's,
++  # and the published bottle went out asking dyld for a path no user has:
++  #
++  #   otool -L libfreetype.6.20.6.dylib
++  #     /opt/homebrew/opt/brotli/lib/libbrotlidec.1.dylib
++  #
++  # The generated freetype2.pc inherited it too — `Requires.private: zlib,
++  # libpng, libbrotlidec` — which is why freedesktop.org/fontconfig and
++  # harfbuzz.org both stopped configuring:
++  #
++  #   Package 'libbrotlidec', required by 'freetype2', not found
++  #
++  # What a package links, it must declare.
++  github.com/google/brotli: '*'
+ 
+ #FIXME the freetype-config script contains fullpaths to libpng
+ # not sure of a portable way to fix that, probs best is using png-config
+@@ -33,6 +48,16 @@ build:
+       - -DBUILD_SHARED_LIBS=true
+       - -DCMAKE_INSTALL_PREFIX="{{ prefix }}"
+       - -DCMAKE_BUILD_TYPE=Release
++      # Each of these is OPTIONAL to freetype: it probes for the library and
++      # quietly builds without it when the probe fails. That makes the feature
++      # set of the bottle a function of what happened to be installed on the
++      # builder, which is how brotli got in from Homebrew without anyone
++      # deciding it. Requiring what we declare turns a silent variation into a
++      # build failure, which is the only kind we find out about.
++      - -DFT_REQUIRE_ZLIB=TRUE
++      - -DFT_REQUIRE_BZIP2=TRUE
++      - -DFT_REQUIRE_PNG=TRUE
++      - -DFT_REQUIRE_BROTLI=TRUE
+ 
+ test:
+   dependencies:
