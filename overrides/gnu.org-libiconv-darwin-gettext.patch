@@ -1,0 +1,22 @@
+diff --git a/projects/gnu.org/libiconv/package.yml b/projects/gnu.org/libiconv/package.yml
+index c1760e9..b83b607 100644
+--- a/projects/gnu.org/libiconv/package.yml
++++ b/projects/gnu.org/libiconv/package.yml
+@@ -12,6 +12,17 @@ versions:
+ dependencies:
+   linux:
+     gnu.org/gcc/libstdcxx: 14
++  darwin:
++    # libiconv links libintl on darwin and declared nothing, so the closure
++    # never installed gettext and iconv could not start from a clean store:
++    #
++    #   dyld: Library not loaded: @rpath/gnu.org/gettext/v1/lib/libintl.8.dylib
++    #     Referenced from: .../gnu.org/libiconv/v1.18.0/bin/iconv
++    #
++    # darwin only: glibc carries the gettext runtime, so the linux build has no
++    # libintl reference at all. gettext does not depend on libiconv, so this
++    # introduces no cycle.
++    gnu.org/gettext: ^1
+ 
+ build:
+   script:
