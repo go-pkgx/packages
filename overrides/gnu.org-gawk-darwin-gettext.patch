@@ -1,0 +1,29 @@
+diff --git a/projects/gnu.org/gawk/package.yml b/projects/gnu.org/gawk/package.yml
+index fb5c7f2..18849bf 100644
+--- a/projects/gnu.org/gawk/package.yml
++++ b/projects/gnu.org/gawk/package.yml
+@@ -9,6 +9,24 @@ versions:
+     - /gawk-/
+     - /.tar.gz/
+ 
++dependencies:
++  darwin:
++    # gawk links libintl and declared nothing, so a bottle installed into an
++    # empty store cannot start:
++    #
++    #   dyld: Library not loaded: @rpath/gnu.org/gettext/v1/lib/libintl.8.dylib
++    #     Referenced from: .../gnu.org/gawk/v5.3.2/bin/gawk
++    #
++    # The reference is correct — a major-versioned sibling, as fixup writes
++    # them — so this is a missing declaration, not a broken bottle. `^1` is the
++    # major the reference names; a bare `*` would drift off it the day gettext
++    # goes to 2.
++    #
++    # darwin only: the linux bottles link libintl through glibc and run today,
++    # and widening a dependency on a platform with no witness for it is how the
++    # closure grows for nobody.
++    gnu.org/gettext: ^1
++
+ provides:
+   - bin/awk
+   - bin/gawk
