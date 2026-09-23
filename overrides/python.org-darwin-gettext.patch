@@ -1,0 +1,24 @@
+diff --git a/projects/python.org/package.yml b/projects/python.org/package.yml
+index 982717e..550e346 100644
+--- a/projects/python.org/package.yml
++++ b/projects/python.org/package.yml
+@@ -46,6 +46,19 @@ dependencies:
+   invisible-island.net/ncurses: 6
+   facebook.com/zstd: ">=1.5" # undefined symbol: ZSTD_defaultCLevel
+   tcl-lang.org: =8.6.16 # 9.0.2 introduced a build issue on darwin
++  darwin:
++    # configure finds libintl in the build environment and links it, on darwin
++    # only — glibc carries the gettext runtime, so the linux bottle has no
++    # libintl reference at all. Undeclared, it is absent from the closure and
++    # the interpreter cannot start:
++    #
++    #   dyld: Library not loaded: @rpath/gnu.org/gettext/v1/lib/libintl.8.dylib
++    #     Referenced from: .../python.org/v3.14.7/bin/python3.14
++    #
++    # Measured on darwin/aarch64 against our own registry, with 3.12.14 and
++    # 3.14.7 both carrying the reference. ^1 because gettext renumbered
++    # 0.26 -> 1.0.0 and the rpath entry names the MAJOR directory, v1.
++    gnu.org/gettext: ^1
+   # linux:
+   #   oracle.com/berkeley-db: 18
+ 
