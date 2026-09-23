@@ -1,0 +1,27 @@
+diff --git a/projects/pkgx.sh/package.yml b/projects/pkgx.sh/package.yml
+index 85fb0a7..c825d13 100644
+--- a/projects/pkgx.sh/package.yml
++++ b/projects/pkgx.sh/package.yml
+@@ -10,6 +10,22 @@ versions:
+ provides:
+   - bin/pkgx
+ 
++dependencies:
++  darwin:
++    # pkgx links liblzma on darwin and declares nothing, so an empty store gets
++    # a binary that cannot start:
++    #
++    #   dyld: Library not loaded: @rpath/tukaani.org/xz/v5/lib/liblzma.5.dylib
++    #     Referenced from: .../pkgx.sh/v2.11.0/bin/pkgx
++    #
++    # Its rpaths are fine — @loader_path/../../.. reaches the store root, where
++    # tukaani.org/xz/v5 would be — so nothing is wrong with the bottle. The
++    # closure simply never installs xz.
++    #
++    # Darwin only: the linux binary carries no liblzma reference at all
++    # (checked on 2.11.0 linux/x86-64).
++    tukaani.org/xz: ^5
++
+ build:
+   dependencies:
+     deno.land: ~2 # since 1.3.0
