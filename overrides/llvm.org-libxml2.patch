@@ -1,0 +1,23 @@
+diff --git a/projects/llvm.org/package.yml b/projects/llvm.org/package.yml
+index 1363f32..713224e 100644
+--- a/projects/llvm.org/package.yml
++++ b/projects/llvm.org/package.yml
+@@ -27,6 +27,18 @@ provides:
+ dependencies:
+   zlib.net: 1
+   facebook.com/zstd: '*' # requested in #10856
++  # lld links libxml2 — it reads the XML manifests a Windows link needs — and
++  # nothing declared it, so the closure never installed it and lld could not
++  # start from a clean store:
++  #
++  #   dyld: Library not loaded: @rpath/gnome.org/libxml2/v2/lib/libxml2.2.dylib
++  #     Referenced from: .../llvm.org/v21.1.2/bin/lld
++  #
++  # The reference itself is correct — major-versioned, as fixup writes a
++  # sibling — so this is a missing declaration and not a broken bottle. It
++  # reached the build environment some other way; what a package links, it
++  # must declare.
++  gnome.org/libxml2: ^2
+ 
+ build:
+   dependencies:
