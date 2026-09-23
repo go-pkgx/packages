@@ -1,0 +1,26 @@
+diff --git a/projects/gnu.org/bash/package.yml b/projects/gnu.org/bash/package.yml
+index da16fcb..7916b34 100644
+--- a/projects/gnu.org/bash/package.yml
++++ b/projects/gnu.org/bash/package.yml
+@@ -17,6 +17,21 @@ interprets:
+   extensions: bash
+   args: [bash, -e]
+ 
++dependencies:
++  # bash links libintl and declares nothing, so it cannot start from an empty
++  # store:
++  #
++  #   dyld: Library not loaded: @rpath/gnu.org/gettext/v1.0.0/lib/libintl.8.dylib
++  #
++  # That reference is FULL-VERSIONED, so this line alone is not enough — it also
++  # needs a rebuild, which is what turns it into the major-versioned sibling
++  # form fixup writes today. Without the declaration the rebuild would still
++  # ship an unsatisfiable closure, so both are required.
++  #
++  # darwin only: linux resolves libintl through glibc and runs today.
++  darwin:
++    gnu.org/gettext: ^1
++
+ build:
+   script:
+     # bash <5 has `u32toutf16 (c, ws)` in lib/sh/unicode.c passing a wchar_t[]
