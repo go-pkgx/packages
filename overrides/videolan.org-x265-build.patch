@@ -1,5 +1,5 @@
 diff --git a/projects/videolan.org/x265/package.yml b/projects/videolan.org/x265/package.yml
-index 4e6d2f8..e4f03ad 100644
+index 4e6d2f8..2f088ce 100644
 --- a/projects/videolan.org/x265/package.yml
 +++ b/projects/videolan.org/x265/package.yml
 @@ -14,6 +14,53 @@ build:
@@ -56,3 +56,23 @@ index 4e6d2f8..e4f03ad 100644
      - run: |
          cmake ../source -DENABLE_HDR10_PLUS=ON $ARGS_DEFAULT $HIGHBITARGS
          make
+@@ -31,7 +78,18 @@ build:
+         make
+         mv libx265.a libx265_main.a
+ 
+-    - run: libtool -static -o $LIB_ARGS
++    # `libtool` here means APPLE's libtool — the cctools archiver that merges
++    # static libraries, whose -static flag GNU libtool does not have. Which one
++    # answers depends on PATH, and in this factory gnu.org/libtool is on it:
++    #
++    #   + libtool -static -o libx265.a libx265_main.a libx265_main10.a ...
++    #   Usage: /Users/runner/.pkgx/gnu.org/libtool/v2.6.2/bin/libtool [OPTION]...
++    #   libtool:   error: unrecognised option: '-static'
++    #
++    # after a build that had already reached 100%. A recipe that means the
++    # system tool has to name it: the day the factory ships a package of the
++    # same name, PATH answers with ours.
++    - run: /usr/bin/libtool -static -o $LIB_ARGS
+       if: darwin
+ 
+     - run: ar crs $LIB_ARGS
