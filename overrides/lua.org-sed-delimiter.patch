@@ -1,0 +1,22 @@
+diff --git a/projects/lua.org/package.yml b/projects/lua.org/package.yml
+index d485eb1..af72609 100644
+--- a/projects/lua.org/package.yml
++++ b/projects/lua.org/package.yml
+@@ -30,7 +30,16 @@ dependencies:
+ 
+ build:
+   script:
+-    - run: sed -i -e "s_\$(MYCFLAGS)_${CFLAGS} -fPIC_" -e "s_\$(MYLDFLAGS)_${LDFLAGS}_" Makefile
++      # The sed delimiter cannot be `_`: on darwin $LDFLAGS carries the rpaths
++      # bk injects, and every one of them contains `@loader_path` — so sed ends
++      # the s command at that underscore and reads the rest as flags:
++      #
++      #   sed -i -e s_$(MYLDFLAGS)_-Wl,-rpath,@loader_path/../../.. … _ Makefile
++      #   sed: -e expression #2, char 36: unknown option to 's'
++      #
++      # `,` is no better ($LDFLAGS is full of -Wl,-rpath,…), so `|`: it appears
++      # in neither the pattern nor the replacement.
++    - run: sed -i -e "s|\$(MYCFLAGS)|${CFLAGS} -fPIC|" -e "s|\$(MYLDFLAGS)|${LDFLAGS}|" Makefile
+       working-directory: src
+     # only `linux` after 5.5
+     - run: export OS="${OS%-readline}"
