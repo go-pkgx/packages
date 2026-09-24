@@ -27,6 +27,24 @@ on:
     workflows: [build, darwin]
     types: [completed]
 
+# One audit at a time, and at most one waiting behind it.
+#
+# It fires on every completed build and darwin run, and the crawl takes hours:
+# measured 2026-09-24, a run created at 13:51 waited until 15:14 for a runner
+# and was still going at 17:16. Two had piled up from publishes three minutes
+# apart, and every repair dispatched that afternoon sat behind them — the pool's
+# seven amd64 runners were all busy, and a darwin run cannot even reach macOS
+# until its `setup` job gets one of them.
+#
+# cancel-in-progress stays FALSE on purpose. The audit is longer than the gap
+# between publishes, so cancelling the running one would mean it never finishes
+# and never reports. False keeps the running audit and collapses everything
+# waiting into a single pending run, which is the state that costs one runner
+# instead of a queue of them.
+concurrency:
+  group: index-audit
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
