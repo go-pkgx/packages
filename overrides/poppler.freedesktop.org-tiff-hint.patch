@@ -1,0 +1,33 @@
+diff --git a/projects/poppler.freedesktop.org/package.yml b/projects/poppler.freedesktop.org/package.yml
+index d1af0eb..d2761d6 100644
+--- a/projects/poppler.freedesktop.org/package.yml
++++ b/projects/poppler.freedesktop.org/package.yml
+@@ -79,6 +79,28 @@ build:
+       - -DCMAKE_INSTALL_PREFIX="{{prefix}}"
+       - -DENABLE_QT5=OFF
+       - -DENABLE_QT6=OFF
++    darwin:
++      # Name the libtiff we declared instead of letting CMake go looking.
++      #
++      # The darwin/aarch64 build stopped at configure:
++      #
++      #   -- Could NOT find TIFF: Found unsuitable version "4.0.9", but required
++      #      is at least "4.5" (found …/simplesystems.org/libtiff/v4.7.2/lib/
++      #      libtiff.dylib, )
++      #
++      # It found OUR library — v4.7.2 — and a version string that belongs to no
++      # part of the closure. libtiff 4.7.2's own tiffvers.h says 4.7.2, its
++      # libtiff-4.pc says 4.7.2, its include is on CPATH and its prefix is on
++      # CMAKE_PREFIX_PATH and PKG_CONFIG_PATH, and no other tiff header exists
++      # anywhere in the closure. Where 4.0.9 came from is NOT established; the
++      # trailing ", )" says the include directory CMake settled on was empty,
++      # so it was reading something outside what the factory installed.
++      #
++      # Naming both halves makes the question moot, and is what a sovereign
++      # build should do anyway: a search path is a guess about the machine.
++      ARGS:
++        - -DTIFF_INCLUDE_DIR={{deps.simplesystems.org/libtiff.prefix}}/include
++        - -DTIFF_LIBRARY={{deps.simplesystems.org/libtiff.prefix}}/lib/libtiff.dylib
+     linux/x86-64:
+       ARGS:
+         - -DCMAKE_C_FLAGS=-fPIC
