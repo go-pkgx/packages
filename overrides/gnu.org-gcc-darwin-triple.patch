@@ -1,0 +1,37 @@
+diff --git a/projects/gnu.org/gcc/package.yml b/projects/gnu.org/gcc/package.yml
+index 16c20d9..ac3be9f 100644
+--- a/projects/gnu.org/gcc/package.yml
++++ b/projects/gnu.org/gcc/package.yml
+@@ -111,6 +111,32 @@ build:
+     - run: export LDFLAGS_FOR_TARGET="$LDFLAGS"
+       if: darwin
+ 
++      # An explicit build triple and a sysroot, which is what Homebrew's gcc
++      # formula gives macOS (Formula/g/gcc.rb):
++      #
++      #   args << "--build=#{cpu}-apple-darwin#{OS.kernel_version.major}"
++      #   args << "--with-sysroot=#{sdk}" if sdk
++      #
++      # Without them gcc's configure machinery asks the compiler for its
++      # multi-os directory, and on darwin that compiler is Apple clang:
++      #
++      #   clang: error: unsupported option '-print-multi-os-directory'
++      #   clang: error: no input files
++      #   make[1]: *** [Makefile:4015: all-fixincludes] Error 2
++      #
++      # measured on darwin/aarch64 for 14.1.0 through 14.4.0, identically.
++      # Note that Homebrew puts --disable-multilib in its LINUX branch only, so
++      # it is not the lever here; this recipe's darwin --disable-multilib is
++      # kept because macOS genuinely has no second ABI, not because it helps.
++    - run: |
++        ARCH="$(uname -m)"
++        test "$ARCH" = arm64 && ARCH=aarch64
++        ARGS=("${ARGS[@]}" --build="$ARCH-apple-darwin$(uname -r | cut -d. -f1)")
++        SDK="$(xcrun --show-sdk-path 2>/dev/null || true)"
++        test -n "$SDK" && ARGS=("${ARGS[@]}" --with-sysroot="$SDK")
++        export ARGS
++      if: darwin
++
+     - ../configure "${ARGS[@]}"
+     - make --jobs {{ hw.concurrency }}
+     - make install
