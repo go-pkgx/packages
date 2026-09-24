@@ -1,37 +1,40 @@
 diff --git a/projects/gnutls.org/package.yml b/projects/gnutls.org/package.yml
-index b03e514..5930481 100644
+index b03e514..05acc56 100644
 --- a/projects/gnutls.org/package.yml
 +++ b/projects/gnutls.org/package.yml
-@@ -37,7 +37,31 @@ build:
+@@ -37,7 +37,34 @@ build:
        - --disable-guile
        - --disable-doc
      darwin:
 -      CFLAGS: $CFLAGS -Wno-implicit-int
-+      # -DCRAU_MAYBE_UNUSED: lib/crau/crau.h picks the attribute itself, and its
-+      # ladder has a hole:
++      # -DCRAU_MAYBE_UNUSED=: lib/crau/crau.h picks the attribute itself and its
++      # ladder has a hole —
 +      #
 +      #   #if defined(__has_c_attribute)
 +      #    #if __has_c_attribute (__maybe_unused__)
 +      #     #define CRAU_MAYBE_UNUSED [[__maybe_unused__]]
 +      #    #endif          <- nothing defined if the inner test is false
-+      #   #elif defined(__GNUC__)        <- unreachable once the outer one matched
-+      #    #define CRAU_MAYBE_UNUSED __attribute__((__unused__))
-+      #   #endif
++      #   #elif defined(__GNUC__)        <- unreachable once the outer matched
 +      #
-+      # so the name survives into the signature and the parse dies on it:
++      # so the bare name survives into the signature and the parse dies:
 +      #
 +      #   crau.h:263:60: error: expected ')'
-+      #   void crau_datav(struct crau_context_stack_st *stack CRAU_MAYBE_UNUSED,
 +      #
-+      # Upstream fixed the ADJACENT case in 3.8.13 ("crau: fix compilation with
-+      # gcc < 11", where __has_c_attribute is undefined and the #if line itself
-+      # errors); this branch is still open.
++      # Everything above is inside `#ifndef CRAU_MAYBE_UNUSED`, so defining it
++      # from outside short-circuits the lot.
 +      #
-+      # Defining it from outside is the escape hatch the header offers —
-+      # everything above is inside `#ifndef CRAU_MAYBE_UNUSED` — and it fixes
-+      # the failure whichever sub-case the runner's compiler falls into, which
-+      # matters because it cannot be reproduced on a different Xcode.
-+      CFLAGS: $CFLAGS -Wno-implicit-int -DCRAU_MAYBE_UNUSED=__attribute__((__unused__))
++      # Defined EMPTY, not to __attribute__((__unused__)): the first attempt
++      # used the attribute and the parentheses did not survive the trip. CFLAGS
++      # goes YAML -> shell -> configure -> make -> libtool -> `sh -c`, and the
++      # innermost shell choked:
++      #
++      #   /bin/sh: -c: line 0: syntax error near unexpected token `('
++      #
++      # Getting the quoting right through five layers is a worse bet than using
++      # a value with no shell-hostile characters. The attribute only suppresses
++      # an unused-parameter warning — the functions it marks are empty stubs in
++      # this branch — and gnutls does not build them with -Werror.
++      CFLAGS: $CFLAGS -Wno-implicit-int -Wno-unused-parameter -DCRAU_MAYBE_UNUSED=
  
  test: gnutls-cli --x509cafile={{deps.curl.se/ca-certs.prefix}}/ssl/cert.pem tea.xyz <<< "GET /"
  
