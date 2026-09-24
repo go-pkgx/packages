@@ -1,0 +1,13 @@
+diff --git a/projects/x.org/xpm/package.yml b/projects/x.org/xpm/package.yml
+index 12242f6..6046305 100644
+--- a/projects/x.org/xpm/package.yml
++++ b/projects/x.org/xpm/package.yml
+@@ -16,7 +16,7 @@ dependencies:
+ build:
+   dependencies:
+     freedesktop.org/pkg-config: ~0.29
+-    gnu.org/gettext: 0.21
++    gnu.org/gettext: ^1
+   script: |
+     ./configure \
+       --prefix="{{prefix}}" \

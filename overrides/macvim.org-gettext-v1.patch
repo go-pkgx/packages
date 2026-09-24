@@ -1,0 +1,13 @@
+diff --git a/projects/macvim.org/package.yml b/projects/macvim.org/package.yml
+index 745f5a0..413814d 100644
+--- a/projects/macvim.org/package.yml
++++ b/projects/macvim.org/package.yml
+@@ -18,7 +18,7 @@ dependencies:
+   python.org: ~3.11
+   ruby-lang.org: "*"
+   libsodium.org: "*"
+-  gnu.org/gettext: 0
++  gnu.org/gettext: ^1
+ 
+ runtime:
+   env:

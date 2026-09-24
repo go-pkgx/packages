@@ -1,0 +1,13 @@
+diff --git a/projects/qalculate.github.io/package.yml b/projects/qalculate.github.io/package.yml
+index da3c0e0..fefbbb6 100644
+--- a/projects/qalculate.github.io/package.yml
++++ b/projects/qalculate.github.io/package.yml
+@@ -20,7 +20,7 @@ dependencies:
+   gnome.org/libxml2: "*"
+   unicode.org: "*"
+   gnu.org/readline: ^8
+-  gnu.org/gettext: ^0
++  gnu.org/gettext: ^1
+   linux:
+     gnu.org/gcc/libstdcxx: 14
+ 

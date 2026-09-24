@@ -1,0 +1,13 @@
+diff --git a/projects/gnome.org/librsvg/package.yml b/projects/gnome.org/librsvg/package.yml
+index 442ebeb..740c773 100644
+--- a/projects/gnome.org/librsvg/package.yml
++++ b/projects/gnome.org/librsvg/package.yml
+@@ -11,7 +11,7 @@ dependencies:
+   gnome.org/pango: 1
+   gnome.org/gdk-pixbuf: 2
+   gnome.org/glib: 2
+-  gnu.org/gettext: ^0.21
++  gnu.org/gettext: ^1
+ 
+ build:
+   dependencies:

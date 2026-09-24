@@ -1,9 +1,13 @@
 diff --git a/projects/apache.org/subversion/package.yml b/projects/apache.org/subversion/package.yml
+index 24e01c2..ff6198c 100644
 --- a/projects/apache.org/subversion/package.yml
 +++ b/projects/apache.org/subversion/package.yml
-@@ -12,7 +12,7 @@
+@@ -10,9 +10,9 @@ versions:
+     - /.tar.bz2/
+ 
  dependencies:
-   gnu.org/gettext: ^0.21
+-  gnu.org/gettext: ^0.21
++  gnu.org/gettext: ^1
    lz4.org: ^1
 -  openssl.org: ^1.1
 +  openssl.org: ^3

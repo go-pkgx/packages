@@ -1,0 +1,13 @@
+diff --git a/projects/freedesktop.org/shared-mime-info/package.yml b/projects/freedesktop.org/shared-mime-info/package.yml
+index 27a6c55..85d132e 100644
+--- a/projects/freedesktop.org/shared-mime-info/package.yml
++++ b/projects/freedesktop.org/shared-mime-info/package.yml
+@@ -7,7 +7,7 @@ versions:
+ 
+ dependencies:
+   gnome.org/glib: 2
+-  gnu.org/gettext: ^0.21
++  gnu.org/gettext: ^1
+ 
+ build:
+   dependencies:

@@ -1,0 +1,13 @@
+diff --git a/projects/po4a.org/package.yml b/projects/po4a.org/package.yml
+index 28c3c7e..9b32579 100644
+--- a/projects/po4a.org/package.yml
++++ b/projects/po4a.org/package.yml
+@@ -6,7 +6,7 @@ versions:
+   github: mquinson/po4a
+ 
+ dependencies:
+-  gnu.org/gettext: ^0.22
++  gnu.org/gettext: ^1
+   perl.org: ^5.22
+   gnome.org/libxslt: ^1.1
+ 

@@ -1,0 +1,13 @@
+diff --git a/projects/gnupg.org/v2.5/package.yml b/projects/gnupg.org/v2.5/package.yml
+index 4e39a99..5dd3b11 100644
+--- a/projects/gnupg.org/v2.5/package.yml
++++ b/projects/gnupg.org/v2.5/package.yml
+@@ -35,7 +35,7 @@ dependencies:
+   gnu.org/readline: ^8
+   sqlite.org: ^3
+   darwin: # nobody added a comment to say why this is Darwin only
+-    gnu.org/gettext: ^0.21
++    gnu.org/gettext: ^1
+ 
+ build:
+   darwin:
