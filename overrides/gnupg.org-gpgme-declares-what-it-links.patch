@@ -1,0 +1,27 @@
+diff --git a/projects/gnupg.org/gpgme/package.yml b/projects/gnupg.org/gpgme/package.yml
+index 5104a63..1ebe604 100644
+--- a/projects/gnupg.org/gpgme/package.yml
++++ b/projects/gnupg.org/gpgme/package.yml
+@@ -40,4 +40,22 @@ build:
+     gnupg.org/libassuan: ^2.0.2
+     gnupg.org/libgpg-error: ^1.11
+ 
++# What gpgme LINKS, as opposed to what its build runs.
++#
++# Everything below was declared under build.dependencies and nowhere else, so a
++# closure that installs gpgme gets none of it. libgpgme.11.dylib names
++# libgpg-error, and a consumer's dyld does not:
++#
++#   dyld: Library not loaded: @rpath/gnupg.org/libgpg-error/v1.61.0/lib/libgpg-error.0.dylib
++#
++# which is what stopped poppler's build on darwin/aarch64 — g-ir-scanner loads
++# libgpgme to generate Poppler-0.18.gir and dies before the compiler is reached.
++#
++# The version in that path is the other half of the defect and a rebuild fixes
++# it: v1.61.0 is a FULL version directory, from before bk reduced a reference to
++# the major line its dependency guarantees.
++dependencies:
++  gnupg.org/libgpg-error: ^1
++  gnupg.org/libassuan: ^2
++
+ test: test "$(gpgme-config --version)" = "{{version}}"
