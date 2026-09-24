@@ -1,0 +1,26 @@
+diff --git a/projects/gnu.org/gettext/package.yml b/projects/gnu.org/gettext/package.yml
+index 079eeac..1cc7bea 100644
+--- a/projects/gnu.org/gettext/package.yml
++++ b/projects/gnu.org/gettext/package.yml
+@@ -3,7 +3,20 @@ distributable:
+   strip-components: 1
+ 
+ dependencies:
+-  gnome.org/libxml2: ~2.13 # 2.14 changes the API
++  # EXPERIMENT, not a merge candidate yet: does gettext 1.0 still need 2.13?
++  #
++  # gettext is in bk's BaseToolchain, so this pin decides which libxml2 EVERY
++  # build installs. Measured 2026-09-24 on a freshly rebuilt open-mpi.org/hwloc:
++  #
++  #   libhwloc.15.dylib -> @rpath/gnome.org/libxml2/v2/lib/libxml2.2.dylib
++  #   consumer closure  -> libxml2 2.15.4, which ships libxml2.16.dylib only
++  #
++  # The rebuild could not repair it, because the builder had 2.13.9 and the
++  # consumer resolves ^2 to 2.15.4. gettext itself is NOT the victim: it links
++  # the unversioned @rpath/gnome.org/libxml2/v2/lib/libxml2.dylib, which both
++  # lines ship. The comment below dates from 0.2x; this asks whether 1.0 still
++  # needs it.
++  gnome.org/libxml2: ^2 # was ~2.13 "2.14 changes the API"
+   #TODO ncurses
+   tukaani.org/xz: 5 # autopoint needs this to unpack archives
+ 
