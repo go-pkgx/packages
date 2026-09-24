@@ -1,0 +1,26 @@
+diff --git a/projects/open-mpi.org/hwloc/package.yml b/projects/open-mpi.org/hwloc/package.yml
+index 0efe684..117b994 100644
+--- a/projects/open-mpi.org/hwloc/package.yml
++++ b/projects/open-mpi.org/hwloc/package.yml
+@@ -6,6 +6,21 @@ versions:
+   github: open-mpi/hwloc/tags
+   strip: /^hwloc-/
+ 
++dependencies:
++  # hwloc links libxml2 and declared nothing at all, so a bottle installed into
++  # an empty store cannot start:
++  #
++  #   dyld: Library not loaded: @rpath/gnome.org/libxml2/v2/lib/libxml2.2.dylib
++  #     Referenced from: .../open-mpi.org/hwloc/v2.15.0/lib/libhwloc.15.dylib
++  #
++  # ^2 rather than `*`: the reference names the MAJOR, and a bare `*` would
++  # drift off it the day libxml2 goes to 3 — the shape that has poppler asking
++  # for libjpeg-turbo/v2 while its closure installs v3 (go-pkgx/packages#207).
++  #
++  # Declaration only, no rebuild: the reference is already major-versioned, so
++  # it resolves as soon as libxml2 is in the closure.
++  gnome.org/libxml2: ^2
++
+ build:
+   dependencies:
+     gnu.org/autoconf: "*"
