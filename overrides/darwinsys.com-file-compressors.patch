@@ -1,0 +1,31 @@
+diff --git a/projects/darwinsys.com/file/package.yml b/projects/darwinsys.com/file/package.yml
+index ad1db0d..2b692d8 100644
+--- a/projects/darwinsys.com/file/package.yml
++++ b/projects/darwinsys.com/file/package.yml
+@@ -11,7 +11,25 @@ versions:
+     - /.tar.gz/
+ 
+ dependencies:
+-  zlib.net: 1 #FIXME this is actually an optional dep
++  zlib.net: 1
++  # file links three compressors and declared one. From an empty store it dies
++  # on whichever is missing, one at a time:
++  #
++  #   dyld: Library not loaded: @rpath/tukaani.org/xz/v5/lib/liblzma.5.dylib
++  #   dyld: Library not loaded: @rpath/sourceware.org/bzip2/v1/lib/libbz2.dylib
++  #
++  # Enumerated rather than met one by one: its Mach-O name four sibling projects
++  # (itself, zlib, xz, bzip2) and the recipe declared zlib alone.
++  #
++  # ^5 and ^1 are the majors the references name, not `*`: xz v5 ships
++  # liblzma.5.dylib and bzip2 v1 ships libbz2.dylib, and a bare `*` drifts off
++  # that the day either moves (go-pkgx/packages#207).
++  #
++  # No rebuild needed — verified by installing the three together:
++  #   $ pkgx +darwinsys.com/file +tukaani.org/xz +sourceware.org/bzip2 -- file --version
++  #   file-5.48
++  tukaani.org/xz: ^5
++  sourceware.org/bzip2: ^1 #FIXME this is actually an optional dep
+ 
+ build:
+   dependencies:
