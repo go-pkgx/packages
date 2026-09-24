@@ -1,0 +1,29 @@
+diff --git a/projects/qt.io/package.yml b/projects/qt.io/package.yml
+index bfed4db..aa9cf34 100644
+--- a/projects/qt.io/package.yml
++++ b/projects/qt.io/package.yml
+@@ -1,5 +1,23 @@
+ distributable:
+-  url: https://download.qt.io/official_releases/qt/{{version.marketing}}/{{version}}/single/qt-everywhere-opensource-src-{{version}}.tar.xz
++  # archive/, not official_releases/. Qt retired the 5.15 series from the
++  # latter — it now holds 6.5, 6.8, 6.9, 6.10 and 6.11 only — and the whole
++  # build failed at the first step:
++  #
++  #   fetch: GET https://download.qt.io/official_releases/qt/5.15/5.15.10/single/…
++  #
++  # Measured rather than assumed, because a blanket 404 can also mean the host
++  # is refusing:
++  #
++  #   download.qt.io/                              200
++  #   .../official_releases/qt/                    200
++  #   .../official_releases/qt/5.15/               404   <- the series is gone
++  #   .../archive/qt/5.15/5.15.10/single/          200
++  #   .../archive/…/qt-everywhere-opensource-src-5.15.10.tar.xz  302 (to a mirror)
++  #
++  # The bottle was published and signed while its source was still fetchable;
++  # nothing noticed when it stopped being so, because nothing tries to fetch a
++  # source again until a rebuild.
++  url: https://download.qt.io/archive/qt/{{version.marketing}}/{{version}}/single/qt-everywhere-opensource-src-{{version}}.tar.xz
+   strip-components: 1
+ versions:
+   - 5.15.10
