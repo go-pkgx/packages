@@ -1,5 +1,5 @@
 diff --git a/projects/gnome.org/glib/package.yml b/projects/gnome.org/glib/package.yml
-index c2cfe62..cc5d290 100644
+index c2cfe62..7ac3d64 100644
 --- a/projects/gnome.org/glib/package.yml
 +++ b/projects/gnome.org/glib/package.yml
 @@ -6,7 +6,20 @@ versions:
@@ -24,29 +24,3 @@ index c2cfe62..cc5d290 100644
    sourceware.org/libffi: 3
    # FIXME: this isn't great, but we need to bump to build new glibs.
    # versioned dependencies would be needed to fix this, which could break
-@@ -94,7 +107,24 @@ build:
-       - --buildtype=release
-       # tests fail to build with `error: target emulation unknown: -m or at least one .o file required`
-       - -Dtests=false
--      - -Dintrospection=enabled
-+      # TEMPORARY, stage 1 of a bootstrap — revert as soon as stage 2 lands.
-+      #
-+      # glib's build runs g-ir-scanner from gnome.org/gobject-introspection,
-+      # whose _giscanner.so links the INSTALLED glib. When the gettext
-+      # generation moved to ^1 the published glib became unloadable (it asks for
-+      # gettext/v0), so:
-+      #
-+      #   glib's build      -> g-ir-scanner -> installed glib -> gettext v0 -> dyld fails
-+      #   gobject-intro's   -> same, it runs its own freshly built scanner
-+      #
-+      # Neither can go first. Disabling introspection for ONE glib build breaks
-+      # the cycle: publish a glib that loads, rebuild gobject-introspection
-+      # against it, then restore this line and rebuild glib with introspection.
-+      #
-+      # Leaving it disabled would silently ship a glib with no .gir files, which
-+      # every introspection consumer needs. It is a bootstrap step, not a
-+      # setting.
-+      - -Dintrospection=disabled
- 
- test:
-   dependencies:
