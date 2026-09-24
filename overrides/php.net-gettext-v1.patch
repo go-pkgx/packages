@@ -1,0 +1,13 @@
+diff --git a/projects/php.net/package.yml b/projects/php.net/package.yml
+index 8d5416d..88d638d 100644
+--- a/projects/php.net/package.yml
++++ b/projects/php.net/package.yml
+@@ -15,7 +15,7 @@ dependencies:
+   gnu.org/autoconf: ^2
+   curl.se: ^8
+   nghttp2.org: "*"
+-  gnu.org/gettext: ^0
++  gnu.org/gettext: ^1
+   gnu.org/gmp: ^6
+   libsodium.org: "<1.0.19" # dylib version changed from 23 > 26
+   libzip.org: ^1.9

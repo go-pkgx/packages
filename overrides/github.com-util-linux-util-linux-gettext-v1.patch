@@ -1,0 +1,13 @@
+diff --git a/projects/github.com/util-linux/util-linux/package.yml b/projects/github.com/util-linux/util-linux/package.yml
+index a73e4fc..3e72e10 100644
+--- a/projects/github.com/util-linux/util-linux/package.yml
++++ b/projects/github.com/util-linux/util-linux/package.yml
+@@ -95,7 +95,7 @@ provides:
+     - bin/whereis
+ 
+ dependencies:
+-  gnu.org/gettext: ^0
++  gnu.org/gettext: ^1
+   sqlite.org: ^3
+ 
+ build:

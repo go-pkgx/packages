@@ -1,0 +1,13 @@
+diff --git a/projects/ruby-lang.org/package.yml b/projects/ruby-lang.org/package.yml
+index 3652195..5b01f08 100644
+--- a/projects/ruby-lang.org/package.yml
++++ b/projects/ruby-lang.org/package.yml
+@@ -14,7 +14,7 @@ dependencies:
+ 
+ build:
+   dependencies:
+-    gnu.org/gettext: ^0.21
++    gnu.org/gettext: ^1
+     gnu.org/patch: "*"
+     gnu.org/bison: ^3
+     gnu.org/autoconf: "*"

@@ -1,0 +1,13 @@
+diff --git a/projects/github.com/nco/nco/package.yml b/projects/github.com/nco/nco/package.yml
+index 64ec57c..ef99e67 100644
+--- a/projects/github.com/nco/nco/package.yml
++++ b/projects/github.com/nco/nco/package.yml
+@@ -29,7 +29,7 @@ dependencies:
+   # NCO's; without this it fails "cannot find -lzstd"
+   facebook.com/zstd: "*"
+   darwin:
+-    gnu.org/gettext: ^0 # looks for our libintl
++    gnu.org/gettext: ^1 # looks for our libintl
+ 
+ build:
+   dependencies:

@@ -1,0 +1,13 @@
+diff --git a/projects/neovim.io/package.yml b/projects/neovim.io/package.yml
+index dedbde7..a269ce8 100644
+--- a/projects/neovim.io/package.yml
++++ b/projects/neovim.io/package.yml
+@@ -9,7 +9,7 @@ versions:
+ # ourselves
+ 
+ dependencies:
+-  gnu.org/gettext: ^0
++  gnu.org/gettext: ^1
+   linux:
+     gnu.org/libiconv: ^1.1
+ 

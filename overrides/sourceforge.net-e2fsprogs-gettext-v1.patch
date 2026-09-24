@@ -1,0 +1,13 @@
+diff --git a/projects/sourceforge.net/e2fsprogs/package.yml b/projects/sourceforge.net/e2fsprogs/package.yml
+index c3c0be0..046d63a 100644
+--- a/projects/sourceforge.net/e2fsprogs/package.yml
++++ b/projects/sourceforge.net/e2fsprogs/package.yml
+@@ -11,7 +11,7 @@ versions:
+ 
+ dependencies:
+   darwin:
+-    gnu.org/gettext: ^0.22
++    gnu.org/gettext: ^1
+   linux:
+     github.com/util-linux/util-linux: ^2.39
+ 

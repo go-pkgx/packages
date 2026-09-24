@@ -1,0 +1,13 @@
+diff --git a/projects/freedesktop.org/poppler-qt5/package.yml b/projects/freedesktop.org/poppler-qt5/package.yml
+index 66fbb65..83d4e5d 100644
+--- a/projects/freedesktop.org/poppler-qt5/package.yml
++++ b/projects/freedesktop.org/poppler-qt5/package.yml
+@@ -13,7 +13,7 @@ dependencies:
+   cairographics.org: ^1
+   freedesktop.org/fontconfig: ^2
+   freetype.org: ^2
+-  gnu.org/gettext: ^0
++  gnu.org/gettext: ^1
+   gnome.org/libxml2: ~2.13 # since 25.4.0, 2.14 changed the API version
+   gnome.org/libxslt: ~1.1.44 # 1.1.45 bumps the libxml2 version requirement
+   gnome.org/glib: ^2
