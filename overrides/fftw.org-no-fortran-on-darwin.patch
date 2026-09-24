@@ -1,0 +1,69 @@
+diff --git a/projects/fftw.org/package.yml b/projects/fftw.org/package.yml
+index 7a1abcf..32b75a6 100644
+--- a/projects/fftw.org/package.yml
++++ b/projects/fftw.org/package.yml
+@@ -14,17 +14,30 @@ dependencies:
+ 
+ build:
+   dependencies:
+-    # for FORTRAN
+-    gnu.org/gcc: 14
+-    gnu.org/binutils: ~2.44
++    # for FORTRAN — linux only. gnu.org/gcc has NO darwin bottle at any version
++    # (14.4.0 is published for linux/amd64 and linux/arm64 alone), and it cannot
++    # be built for darwin/aarch64 either: gcc/config.gcc in 14.4.0 has
++    # x86_64-*-darwin* cases and no aarch64*-*-darwin* case at all, so its
++    # configure refuses the target outright —
++    #
++    #   *** Configuration aarch64-apple-darwin20.0.0 not supported
++    #
++    # With the dependency declared for every platform, the darwin/aarch64 build
++    # never starts:
++    #
++    #   resolve deps: no version of gnu.org/gcc satisfies "14"
++    #   AND is published for darwin/aarch64
++    linux:
++      gnu.org/gcc: 14
++      gnu.org/binutils: ~2.44
+   script:
+-    - ./configure --enable-single $ARGS || (cat config.log && false)
++    - ./configure --enable-single $ARGS ${EXTRA_ARGS:-} || (cat config.log && false)
+     - make --jobs {{hw.concurrency}} install
+     - make clean
+-    - ./configure $ARGS
++    - ./configure $ARGS ${EXTRA_ARGS:-}
+     - make --jobs {{hw.concurrency}} install
+     - make clean
+-    - ./configure --enable-long-double $ARGS
++    - ./configure --enable-long-double $ARGS ${EXTRA_ARGS:-}
+     - make --jobs {{hw.concurrency}} install
+   env:
+     ARGS:
+@@ -33,9 +46,27 @@ build:
+       - --prefix={{prefix}}
+       - --enable-threads
+       - --disable-dependency-tracking
++    linux:
++      EXTRA_ARGS: ""
+     darwin:
+       CC: clang
+       LDFLAGS: $LDFLAGS -Wl,-headerpad_max_install_names
++      # Explicit, not left to configure's own detection.
++      #
++      # fftw's configure disables Fortran by itself when AC_PROG_F77 finds no
++      # compiler, so dropping the gcc dependency alone would appear to work.
++      # It would work by accident: GitHub's macOS images carry Homebrew's gcc,
++      # so configure would find ITS gfortran and the bottle would link a
++      # runtime the factory never declared and does not publish.
++      #
++      # The cost is real and stated: the darwin bottle loses the Fortran
++      # wrappers (94 dfftw_* symbols in the current one). That one is a MIRROR
++      # of upstream's — its only rpath is /Users/runner/.pkgx, where a bottle we
++      # built carries the @loader_path ladder — and it is dead on arrival, killed
++      # at the first page fault by a code signature that no longer matches its
++      # bytes. A C-only bottle that runs is worth more than a Fortran-capable
++      # one that cannot start.
++      EXTRA_ARGS: --disable-fortran
+ 
+ provides:
+   - bin/fftw-wisdom
