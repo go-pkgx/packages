@@ -1,0 +1,26 @@
+diff --git a/projects/gnome.org/glib/package.yml b/projects/gnome.org/glib/package.yml
+index c2cfe62..7ac3d64 100644
+--- a/projects/gnome.org/glib/package.yml
++++ b/projects/gnome.org/glib/package.yml
+@@ -6,7 +6,20 @@ versions:
+   gitlab: gitlab.gnome.org:GNOME/glib
+ 
+ dependencies:
+-  gnu.org/gettext: ^0.21
++  # ^0.21 pinned gettext's major 0 while python.org, freedesktop.org/fontconfig
++  # and others in the same closures pin ^1. Both cannot hold, and until
++  # go-pkgx/bottle#76 the resolver silently kept whichever constraint it reached
++  # first — non-deterministically, so the same closure resolved 0.26 eight times
++  # and 1.0.0 four times out of twelve. glib lost about a third of the time and
++  # then could not load:
++  #
++  #   dyld: Library not loaded: @rpath/gnu.org/gettext/v0/lib/libintl.dylib
++  #
++  # Moving forward rather than pinning everyone back, because the two majors
++  # ship the SAME library: 0.26 and 1.0.0 both install libintl.8.dylib at
++  # compatibility version 13.0.0. GNU's 0.26 -> 1.0 is its own numbering, not an
++  # ABI boundary, so this is a declaration change and a rebuild, not a port.
++  gnu.org/gettext: ^1
+   sourceware.org/libffi: 3
+   # FIXME: this isn't great, but we need to bump to build new glibs.
+   # versioned dependencies would be needed to fix this, which could break
