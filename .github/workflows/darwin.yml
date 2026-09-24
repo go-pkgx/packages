@@ -49,17 +49,26 @@ env:
 
 jobs:
   setup:
-    # Our own GARM/Incus pool: 32 cores, ephemeral container per job, tagged
-    # [self-hosted, incus, amd64]. Linux work runs here rather than on GitHub's
-    # minutes. If the pool is down, jobs queue — swap this line back to
-    # `ubuntu-latest` to get moving again.
-    runs-on: [self-hosted, incus, amd64]
+    # NOT the GARM/Incus pool, although the rest of our linux work runs there.
+    #
+    # This job only generates a matrix, and it GATES every macOS job behind it.
+    # The pool is shared across the organisation, so a saturated pool holds up
+    # macOS runners that were free the whole time. Measured 2026-09-24: three
+    # darwin repairs dispatched between 14:19 and 14:46 had still not reached a
+    # macOS runner at 17:24, because `setup` was queued for one of the pool's
+    # seven amd64 runners and all seven were busy with other repositories.
+    #
+    # It is also faster here. On the pool this job took 1m20s to 3m, nearly all
+    # of it apt-installing jq into a bare Debian cloud image; ubuntu-latest
+    # ships jq and a git that checkout can use. The GitHub minutes are free for
+    # a public repository, and the build jobs themselves stay where they are.
+    runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.gen.outputs.matrix }}
     steps:
-      # The Incus runner image is a plain Debian cloud image: no jq, no git, no
-      # go. setup-go brings its own, checkout falls back to the API tarball, and
-      # jq is one apt line. A no-op wherever it is already there.
+      # ubuntu-latest ships jq, so this is a no-op here. It is kept because the
+      # job ran on the Incus pool's plain Debian cloud image until 2026-09-24
+      # and would need it again if it ever moves back.
       - name: jq
         run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
       - uses: actions/checkout@v7
