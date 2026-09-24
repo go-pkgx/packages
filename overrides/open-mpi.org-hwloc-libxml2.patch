@@ -2,7 +2,7 @@ diff --git a/projects/open-mpi.org/hwloc/package.yml b/projects/open-mpi.org/hwl
 index 0efe684..117b994 100644
 --- a/projects/open-mpi.org/hwloc/package.yml
 +++ b/projects/open-mpi.org/hwloc/package.yml
-@@ -6,6 +6,21 @@ versions:
+@@ -6,6 +6,42 @@ versions:
    github: open-mpi/hwloc/tags
    strip: /^hwloc-/
  
@@ -19,7 +19,28 @@ index 0efe684..117b994 100644
 +  #
 +  # Declaration only, no rebuild: the reference is already major-versioned, so
 +  # it resolves as soon as libxml2 is in the closure.
-+  gnome.org/libxml2: ^2
++  #
++  # 2026-09-24: ^2 is not tight enough, and the difference is not academic.
++  # libxml2's soname is CURRENT - AGE = MAJOR + LIBXML_MINOR_COMPAT, and
++  # upstream sets MINOR_COMPAT=14 from 2.14 on:
++  #
++  #   2.13.9   version-info (2+13):9:13 -> 15 - 13 = 2  -> libxml2.2.dylib
++  #   >=2.14   CURRENT=MAJOR+MINOR, AGE=MINOR-14 -> 16  -> libxml2.16.dylib
++  #
++  # Both answer ^2. hwloc rebuilt against 2.15.4 records libxml2.16.dylib and
++  # runs alone - and dies in any environment that also holds poppler, whose
++  # gettext pins ~2.13:
++  #
++  #   dyld: Library not loaded: @rpath/gnome.org/libxml2/v2/lib/libxml2.16.dylib
++  #   (the store ships libxml2.2.dylib)
++  #
++  # Every constraint there is satisfied. >=2.14 makes that combination REFUSE,
++  # naming both demands, instead of installing a binary that cannot start.
++  #
++  # It is still not the right thing to be able to say: the key is the SONAME and
++  # the constraint language has no word for it, so this names the first version
++  # whose soname is 16 and cannot say "until it changes again".
++  gnome.org/libxml2: '>=2.14'
 +
  build:
    dependencies:
