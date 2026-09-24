@@ -1,0 +1,27 @@
+diff --git a/projects/mozilla.org/nss/package.yml b/projects/mozilla.org/nss/package.yml
+index d791208..7488513 100644
+--- a/projects/mozilla.org/nss/package.yml
++++ b/projects/mozilla.org/nss/package.yml
+@@ -26,7 +26,21 @@ build:
+       llvm.org: "*"
+   script:
+     - run:
+-        - sed -i 's|-install_name @executable_path|-install_name {{prefix}}/lib|g' coreconf/Darwin.mk
++        # Also link a RELATIVE rpath in. coreconf/Darwin.mk's DSO_LDOPTS
++        # carries an -install_name and no -rpath at all, so nine of nss's
++        # dylibs ship an @rpath reference with nothing to resolve it:
++        #
++        #   fix-up: @rpath reference with no LC_RPATH:
++        #     .../nss/v3.119/lib/libfreebl3.dylib references
++        #     @rpath/mozilla.org/nspr/v4.38.2/lib/libnspr4.dylib
++        #
++        # (The other 62 files carry LC_RPATH /Users/runner/.pkgx — the builder's
++        # own path, which resolves on no other machine. A relative rpath fixes
++        # both shapes at once.)
++        #
++        # Four levels: <pkgxdir>/mozilla.org/nss/v3.119/lib -> <pkgxdir>.
++        # DSO_LDOPTS is passed to $(CC), so -Wl, is the right spelling.
++        - sed -i 's|-install_name @executable_path|-Wl,-rpath,@loader_path/../../../.. -install_name {{prefix}}/lib|g' coreconf/Darwin.mk
+         - sed -i 's|@executable_path|{{prefix}}/lib|g' lib/freebl/config.mk
+         - make all $ARGS
+       working-directory: nss
