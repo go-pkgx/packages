@@ -1,0 +1,29 @@
+diff --git a/projects/ffmpeg.org/package.yml b/projects/ffmpeg.org/package.yml
+index 5aa6a68..76a7c90 100644
+--- a/projects/ffmpeg.org/package.yml
++++ b/projects/ffmpeg.org/package.yml
+@@ -43,6 +43,24 @@ build:
+   env:
+     ARGS:
+       - --prefix="{{prefix}}"
++      # ffmpeg builds its texinfo manuals whenever configure finds a makeinfo,
++      # and doc/Makefile:57 discards that command's stderr:
++      #
++      #   $(M)$(MAKEINFO) --force --no-headers -o $@ $< 2>/dev/null
++      #
++      # so a makeinfo stricter than the one ffmpeg was written against fails the
++      # whole build with nothing said. Measured on darwin/aarch64 9.0:
++      #
++      #   TXT doc/fate.txt
++      #   make: *** [doc/Makefile:57: doc/fate.txt] Error 1
++      #
++      # Earlier bottles built, so this is the toolchain's makeinfo moving, not
++      # ffmpeg's source — a strictness we borrow and do not control.
++      #
++      # Nothing here consumes those manuals: `provides` is bin/ffmpeg and
++      # bin/ffprobe. Disabling doc drops the man pages with them, which is the
++      # cost; the alternative on the table is no bottle at all.
++      - --disable-doc
+       - --enable-libfreetype
+       - --enable-libmp3lame
+       - --enable-shared
