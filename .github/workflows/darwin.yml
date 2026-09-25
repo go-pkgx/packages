@@ -105,10 +105,16 @@ jobs:
     steps:
       - name: base tools
         # macOS runners ship git, curl, xz, jq and the Xcode command-line tools
-        # already; only gettext (msgfmt, for recipes with po/) is missing.
+        # already. gettext is NOT taken from Homebrew: the base toolchain
+        # carries gnu.org/gettext and bk puts it on the build PATH, measured on
+        # a real build log —
+        #
+        #   PATH  20 entries under ~/.pkgx, 0 under /opt/homebrew or /usr/local
+        #
+        # so msgfmt comes from a bottle like every other tool. `brew install
+        # gettext && brew link --force gettext` used to run here and was the
+        # factory inviting the host in through the front door.
         run: |
-          brew install gettext >/dev/null 2>&1 || true
-          brew link --force gettext >/dev/null 2>&1 || true
           command -v python >/dev/null || ln -sf "$(command -v python3)" /usr/local/bin/python || true
 
       - uses: actions/checkout@v7
@@ -138,6 +144,42 @@ jobs:
 
       - name: clone pantry
         run: git clone --depth 1 https://github.com/pkgxdev/pantry
+
+      - name: hide the host's libraries from the build
+        # bk already strips Homebrew from PATH, CPATH, LIBRARY_PATH,
+        # PKG_CONFIG_PATH, CMAKE_PREFIX_PATH and LD_LIBRARY_PATH — measured, 0
+        # entries in all six. It is not enough, and twice in one afternoon a
+        # bottle was refused because of it:
+        #
+        #   openjpeg  bin/opj_compress -> /opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib
+        #   gawk      bin/gawk         -> /usr/local/opt/mpfr/lib/libmpfr.6.dylib
+        #
+        # No environment variable governs that. CMake and the macOS linker
+        # search /usr/local and /opt/homebrew because those prefixes are built
+        # INTO them, and an autoconf probe that finds a header there simply
+        # succeeds. The gawk one is the warning: had it linked mpfr statically,
+        # the two architectures would have shipped different features with no
+        # signal at all — our guard only catches a leak that leaves a path.
+        #
+        # The linux lane has never had this class, and not by luck: it builds
+        # inside the FROM-scratch rootfs that builder/toolchain.txt names, so
+        # the host's libc and compiler take no part. There is no FROM-scratch
+        # macOS: the frameworks, the system libraries and the linker are
+        # Apple's and live on the host. Nix reaches the same wall and turns its
+        # sandbox OFF on macOS by default; Homebrew, on this exact ground,
+        # answers by stripping the environment — which is the half we already
+        # do.
+        #
+        # So: move the search surface aside for the length of the build. Only
+        # lib/ and include/ — bin/ stays, so the runner's own tools keep
+        # working — and only on a runner that is thrown away afterwards.
+        run: |
+          for p in /opt/homebrew /usr/local; do
+            for d in lib include; do
+              [ -d "$p/$d" ] || continue
+              sudo mv "$p/$d" "$p/$d.hidden-for-build" && echo "hidden: $p/$d"
+            done
+          done
 
       - name: build + publish this chunk
         env:
@@ -203,6 +245,19 @@ jobs:
             ${MAX_VERSIONS:+--max-versions "$MAX_VERSIONS"} \
             ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"} \
             ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
+
+      - name: put the host's libraries back
+        # Always, so a failed build does not leave the runner half-dismantled
+        # for the steps that upload its evidence — the failure list is the part
+        # that matters most when a build goes wrong.
+        if: always()
+        run: |
+          for p in /opt/homebrew /usr/local; do
+            for d in lib include; do
+              [ -d "$p/$d.hidden-for-build" ] || continue
+              sudo mv "$p/$d.hidden-for-build" "$p/$d" && echo "restored: $p/$d"
+            done
+          done
 
       - name: upload dist tree
         if: always()
