@@ -112,6 +112,46 @@ pantry, then runs `bk factory` — one pure-Go command (no bash, no curl/jq, no 
 Per-recipe failures are logged (`failures.txt`) but never fail the run. `recipes.txt`
 holds 1900 candidate projects, **1576 of them published**; the front is the other 324.
 
+## IBM Z, and why its runner is ours to build
+
+`build.yml` carries a third linux lane, `linux/s390x`, tagged
+`[self-hosted, linux, s390x]` and pointed at a LinuxONE VM. It is **opt-in**:
+absent from the blank matrix, built only when a dispatch names
+`arch: s390x`. Adding an architecture with no bottles to every nightly buys a
+matrix of failures nobody reads.
+
+The runner is ours to build because `actions/runner` does not build for s390x
+out of the box — it is .NET, and `linux-s390x` is a community-supported target
+with no Microsoft binaries. [`IBM/action-runner-image-pz`][gaplib] carries the
+dotnet environment and the IBM Z patches; its `run.sh` is interactive and
+covers Ubuntu 22.04/24.04 and CentOS 9. The lane assumes an Ubuntu image,
+because the job's `base tools` step uses `apt-get`.
+
+    git clone https://github.com/IBM/action-runner-image-pz
+    cd action-runner-image-pz && bash run.sh     # VM, Ubuntu, then register
+
+IBM also offers **hosted** s390x runners free to open-source projects through
+its Open Source Program Office. That is the better end state — native, and no
+agent to rebuild whenever `actions/runner` moves — and it is an email rather
+than a command.
+
+### Bootstrapping an architecture that has no bottles
+
+The sovereign rootfs needs `gnu.org/glibc`, `llvm.org` and
+`kernel.org/linux-headers` as s390x bottles, and there are none. The way out is
+already an input: `sovereign: "0"` falls back to the runner's distribution, so
+the first pass builds the toolchain on the VM's own Ubuntu and the second
+switches to the rootfs those bottles now make possible.
+
+### What this lane is actually for
+
+s390x is our **first big-endian target** — x86-64, aarch64 and both darwin
+arches are little-endian, so every recipe carrying a byte-order bug has been
+invisible. Expect the failures to be upstream's rather than ours, and expect
+them to be where the time goes; the matrix entry is the cheap part.
+
+[gaplib]: https://github.com/IBM/action-runner-image-pz
+
 ## Working the front
 
 What is left is not one problem. `bk depgaps` separates the two, ranks each by how

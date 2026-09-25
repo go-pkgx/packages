@@ -27,7 +27,7 @@ on:
         required: false
         default: ""
       arch:
-        description: "restrict the matrix to one arch: blank = both, `x86-64`, `aarch64`. A manual dispatch forces a rebuild, so healing one arch's gaps without this reruns the other arch for nothing."
+        description: "restrict the matrix to one arch: blank = x86-64 AND aarch64, or name one of `x86-64`, `aarch64`, `s390x`. A manual dispatch forces a rebuild, so healing one arch's gaps without this reruns the others for nothing. s390x is OPT-IN — it is absent from the blank set until its toolchain is published, because adding an architecture with no bottles to every nightly buys a matrix of failures nobody reads."
         required: false
         default: ""
       sovereign:
@@ -103,6 +103,21 @@ jobs:
           SELFARM='{"runner":["self-hosted","incus","arm64"],"platform":"linux/aarch64","slug":"linux-aarch64","container":"","jobs":"4","qemu_va":"0x400000000"}'
           GH64='{"runner":"ubuntu-latest","platform":"linux/x86-64","slug":"linux-x86-64","container":"debian:stable-slim"}'
           GHARM='{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","container":"debian:stable-slim"}'
+          # IBM Z. A LinuxONE VM with a self-hosted runner built by
+          # IBM/action-runner-image-pz — actions/runner does not build for
+          # s390x out of the box (it is .NET, and linux-s390x is community
+          # supported with no Microsoft binaries), which is why the label set
+          # is ours rather than a GitHub-hosted one.
+          #
+          # container "" like SELF: the VM IS the environment. gaplib's images
+          # are Ubuntu 22.04/24.04 or CentOS 9, and the `base tools` step below
+          # uses apt-get, so an Ubuntu image is the assumption.
+          #
+          # This is the FIRST big-endian target. x86-64, aarch64 and both
+          # darwin arches are little-endian, so every recipe with a byte-order
+          # bug has been invisible until now. That is the point of the lane and
+          # also where its cost will be — not in this matrix entry.
+          SELFZ='{"runner":["self-hosted","linux","s390x"],"platform":"linux/s390x","slug":"linux-s390x","container":"","jobs":"4"}'
           X64=$SELF; ARM=$SELFARM
           if [ "${{ github.event.inputs.runner }}" = github ]; then X64=$GH64; ARM=$GHARM; fi
           # `arch` drops one half of the pair. jq gets it as a string and
@@ -110,15 +125,19 @@ jobs:
           # rather than silently building everything.
           ONLY="${{ github.event.inputs.arch }}"
           if [ -n "${{ github.event.inputs.recipes }}" ]; then
-            m=$(jq -cn --argjson a "$X64" --argjson b "$ARM" --arg only "$ONLY" \
-              '{include: [($a, $b) + {chunk:"manual"} | select($only == "" or (.slug | endswith($only)))]}')
+            m=$(jq -cn --argjson a "$X64" --argjson b "$ARM" --argjson z "$SELFZ" --arg only "$ONLY" \
+              '{include: [($a, $b, $z) + {chunk:"manual"}
+                          | select(if $only == "" then (.slug | endswith("s390x") | not)
+                                   else (.slug | endswith($only)) end)]}')
           else
             total=$(grep -vcE '^[[:space:]]*(#|$)' recipes.txt)
             n=$(( (total + CHUNK - 1) / CHUNK ))
-            m=$(jq -cn --argjson n "$n" --argjson a "$X64" --argjson b "$ARM" --arg only "$ONLY" \
-              '{include: [range(0;$n) as $c | ($a, $b) + {chunk:($c|tostring)} | select($only == "" or (.slug | endswith($only)))]}')
+            m=$(jq -cn --argjson n "$n" --argjson a "$X64" --argjson b "$ARM" --argjson z "$SELFZ" --arg only "$ONLY" \
+              '{include: [range(0;$n) as $c | ($a, $b, $z) + {chunk:($c|tostring)}
+                          | select(if $only == "" then (.slug | endswith("s390x") | not)
+                                   else (.slug | endswith($only)) end)]}')
           fi
-          [ "$(echo "$m" | jq '.include | length')" -gt 0 ] || { echo "arch=$ONLY matched no platform (expected blank, x86-64 or aarch64)" >&2; exit 1; }
+          [ "$(echo "$m" | jq '.include | length')" -gt 0 ] || { echo "arch=$ONLY matched no platform (expected blank, x86-64, aarch64 or s390x)" >&2; exit 1; }
           echo "matrix=$m" >> "$GITHUB_OUTPUT"
           echo "$m" | jq '.include | length | "\(.) build jobs"'
 
