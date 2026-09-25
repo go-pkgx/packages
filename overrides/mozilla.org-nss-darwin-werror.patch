@@ -1,14 +1,14 @@
 diff --git a/projects/mozilla.org/nss/package.yml b/projects/mozilla.org/nss/package.yml
-index d791208..fe94c8f 100644
+index 7488513..083f0a7 100644
 --- a/projects/mozilla.org/nss/package.yml
 +++ b/projects/mozilla.org/nss/package.yml
-@@ -49,6 +49,25 @@ build:
-       # `uname -p` returns `i386` on Intel Macs, which makes coreconf/Darwin.mk
-       # build with `-arch i386` — macOS dropped that arch.
-       CPU_ARCH: x86_64
+@@ -59,6 +59,25 @@ build:
+       CC: "{{deps.gnu.org/gcc.prefix}}/bin/gcc"
+     darwin/aarch64:
+       CC: "{{deps.llvm.org.prefix}}/bin/clang"
 +    darwin:
 +      # NSS builds its command-line tools with -Werror, and clang grew
-+      # -Wunused-but-set-global, which fires on dead locals in NSS's own test
++      # -Wunused-but-set-global, which fires on dead globals in NSS's own test
 +      # HTTP server:
 +      #
 +      #   cmd/httpserv/httpserv.c:58:25: error: variable 'lm' set but not used
@@ -17,14 +17,14 @@ index d791208..fe94c8f 100644
 +      # That is `cmd/`, not `lib/` — a test utility, not the library this bottle
 +      # exists for — and it is upstream's code in an upstream release tarball,
 +      # which we do not patch. NSS_ENABLE_WERROR is NSS's own documented switch
-+      # for this (coreconf/Werror.mk turns it off itself on Android, and again
-+      # whenever it cannot identify the compiler).
++      # for this: coreconf/Werror.mk turns it off itself on Android, and again
++      # whenever it cannot identify the compiler.
 +      #
 +      # Kept to darwin on purpose: linux builds with gcc, does not hit this, and
 +      # should keep the warnings-as-errors signal. A platform sub-map APPENDS to
 +      # a list-valued env key, so the shared ARGS below still apply.
 +      ARGS:
 +        - NSS_ENABLE_WERROR=0
-     ARGS:
-       - BUILD_OPT=1
-       - NSS_ALLOW_SSLKEYLOGFILE=1
+     darwin/x86-64:
+       # `uname -p` returns `i386` on Intel Macs, which makes coreconf/Darwin.mk
+       # build with `-arch i386` — macOS dropped that arch.

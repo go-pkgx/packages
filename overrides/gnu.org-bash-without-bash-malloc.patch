@@ -1,8 +1,8 @@
 diff --git a/projects/gnu.org/bash/package.yml b/projects/gnu.org/bash/package.yml
-index da16fcb..8251327 100644
+index 7916b34..507c6c4 100644
 --- a/projects/gnu.org/bash/package.yml
 +++ b/projects/gnu.org/bash/package.yml
-@@ -32,6 +32,21 @@ build:
+@@ -47,6 +47,21 @@ build:
      - run: ARGS="$ARGS $LEGACY_ARGS"
        if: <5
  
