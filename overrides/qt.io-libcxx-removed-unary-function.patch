@@ -1,0 +1,25 @@
+diff --git a/projects/qt.io/package.yml b/projects/qt.io/package.yml
+--- a/projects/qt.io/package.yml
++++ b/projects/qt.io/package.yml
+@@ -103,6 +103,21 @@
+       ARGS:
+         - -no-rpath
+         - QMAKE_LFLAGS=-Wl,-rpath,{{pkgx.prefix}}
++        # Qt 5.15 builds with -std=c++1z, and libc++ removed std::unary_function
++        # in C++17. qtmultimedia's AVFoundation plugin still uses it, so the
++        # build stops there:
++        #
++        #   avfcamerautility.mm:104:35: error: no template named 'unary_function'
++        #     in namespace 'std'; did you mean '__unary_function'?
++        #
++        # The macro is libc++'s own escape hatch, read from the SDK header
++        # rather than recalled:
++        #
++        #   #if _LIBCPP_STD_VER <= 14 || defined(_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
++        #
++        # += rather than =, because replacing QMAKE_CXXFLAGS would drop every
++        # flag the mkspec set.
++        - QMAKE_CXXFLAGS+=-D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION
+     darwin/aarch64:
+       ARGS:
+         - -no-assimp
