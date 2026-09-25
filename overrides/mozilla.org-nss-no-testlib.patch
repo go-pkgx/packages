@@ -1,0 +1,32 @@
+diff --git a/projects/mozilla.org/nss/package.yml b/projects/mozilla.org/nss/package.yml
+index 083f0a7..e505683 100644
+--- a/projects/mozilla.org/nss/package.yml
++++ b/projects/mozilla.org/nss/package.yml
+@@ -51,7 +51,26 @@ build:
+     - cat <<< "$CONFIG_FILE" > ./dist/nss-config
+     - install ./dist/nss-config {{prefix}}/bin/
+     - install ./dist/$(uname)*/bin/* {{prefix}}/bin/
+-    - install ./dist/$(uname)*/lib/* {{prefix}}/lib/
++    # Everything but the test library.
++    #
++    # NSS builds libnssckbi-testlib, a variant of the builtin-roots module that
++    # loads TEST certificates, and `install …/lib/*` shipped it in the bottle.
++    # It is the one file in there that is not a library a consumer links, and it
++    # is the one bk's fixup refuses:
++    #
++    #   fixup: @rpath reference with no LC_RPATH:
++    #     …/nss/v3.119/lib/libnssckbi-testlib.dylib
++    #     references @rpath/mozilla.org/nspr/v4.38.2/lib/libplc4.dylib
++    #
++    # It is built by a rule the -Wl,-rpath sed above does not reach, so it names
++    # a dependency it cannot resolve. Teaching that rule the flag would keep a
++    # test fixture in a distribution bottle; not installing it is smaller and
++    # right on its own terms.
++    - run: |
++        for f in ./dist/$(uname)*/lib/*; do
++          case "${f##*/}" in *-testlib.*) continue;; esac
++          install "$f" {{prefix}}/lib/
++        done
+     - install ./dist/public/dbm/* {{prefix}}/include/dbm/
+     - install ./dist/public/nss/* {{prefix}}/include/nss/
+   env:
