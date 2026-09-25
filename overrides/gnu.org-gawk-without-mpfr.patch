@@ -1,0 +1,35 @@
+diff --git a/projects/gnu.org/gawk/package.yml b/projects/gnu.org/gawk/package.yml
+--- a/projects/gnu.org/gawk/package.yml
++++ b/projects/gnu.org/gawk/package.yml
+@@ -35,7 +35,30 @@
+ 
+ build:
+   script: |
+-    ./configure --prefix={{ prefix }}
++    # --without-mpfr, because the probe is ON BY DEFAULT and finds whatever
++    # the MACHINE has. On the Intel runner that is Homebrew, and bk refuses
++    # the result rather than publishing it:
++    #
++    #   fixup: absolute reference to a path outside the system:
++    #     bin/gawk references /usr/local/opt/mpfr/lib/libmpfr.6.dylib
++    #
++    # The leak is ARCHITECTURE-dependent: /usr/local/opt is Homebrew on the
++    # Intel image and /opt/homebrew on the arm one, and the two images do not
++    # carry the same formulae. That is why gawk 5.3.2 published for
++    # darwin-aarch64 on 2026-09-23 while darwin-x86-64 could not be built at
++    # all — which left the WHOLE x86-64 lane unable to assemble a tool
++    # environment, since the base toolchain pins gawk ~5.3. Two days, silent.
++    #
++    # No feature is lost. The published aarch64 bottle has no MPFR either,
++    # measured rather than assumed:
++    #
++    #   $ gawk -M 'BEGIN{print 2^100}'
++    #   gawk: warning: -M ignored: MPFR/GMP support not compiled in
++    #
++    # so this makes the two architectures identical AND independent of what
++    # the runner happens to have, which is the point of a sovereign build.
++    # configure reads it as _do_mpfr=no and skips the probe entirely.
++    ./configure --prefix={{ prefix }} --without-mpfr
+     make --jobs {{ hw.concurrency }} install
+   test: make test
+ 
