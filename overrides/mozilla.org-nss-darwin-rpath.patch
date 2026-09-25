@@ -2,7 +2,7 @@ diff --git a/projects/mozilla.org/nss/package.yml b/projects/mozilla.org/nss/pac
 index d791208..7488513 100644
 --- a/projects/mozilla.org/nss/package.yml
 +++ b/projects/mozilla.org/nss/package.yml
-@@ -26,7 +26,21 @@ build:
+@@ -26,7 +26,39 @@ build:
        llvm.org: "*"
    script:
      - run:
@@ -22,6 +22,24 @@ index d791208..7488513 100644
 +        # Four levels: <pkgxdir>/mozilla.org/nss/v3.119/lib -> <pkgxdir>.
 +        # DSO_LDOPTS is passed to $(CC), so -Wl, is the right spelling.
 +        - sed -i 's|-install_name @executable_path|-Wl,-rpath,@loader_path/../../../.. -install_name {{prefix}}/lib|g' coreconf/Darwin.mk
++        # And the builtins module, which does not use that variable at all.
++        #
++        # coreconf/Darwin.mk sets DSO_LDOPTS for every shared object; the root
++        # certificate module REPLACES it, because it is a loadable bundle
++        # rather than a dylib:
++        #
++        #   lib/ckfw/builtins/Makefile:20:  DSO_LDOPTS = -bundle
++        #
++        # So libnssckbi.dylib links with no install_name and no rpath, and
++        # names nspr with nothing to resolve it:
++        #
++        #   fixup: @rpath reference with no LC_RPATH:
++        #     .../nss/v3.119/lib/libnssckbi.dylib
++        #     references @rpath/mozilla.org/nspr/v4.38.2/lib/libplc4.dylib
++        #
++        # It is the ONLY Makefile in nss 3.119 that overrides DSO_LDOPTS.
++        - grep -q '^DSO_LDOPTS = -bundle$' lib/ckfw/builtins/Makefile
++        - sed -i 's|^DSO_LDOPTS = -bundle$|DSO_LDOPTS = -bundle -Wl,-rpath,@loader_path/../../../..|' lib/ckfw/builtins/Makefile
          - sed -i 's|@executable_path|{{prefix}}/lib|g' lib/freebl/config.mk
          - make all $ARGS
        working-directory: nss

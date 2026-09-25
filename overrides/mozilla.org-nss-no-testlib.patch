@@ -2,7 +2,7 @@ diff --git a/projects/mozilla.org/nss/package.yml b/projects/mozilla.org/nss/pac
 index 083f0a7..e505683 100644
 --- a/projects/mozilla.org/nss/package.yml
 +++ b/projects/mozilla.org/nss/package.yml
-@@ -51,7 +51,26 @@ build:
+@@ -69,7 +69,26 @@ build:
      - cat <<< "$CONFIG_FILE" > ./dist/nss-config
      - install ./dist/nss-config {{prefix}}/bin/
      - install ./dist/$(uname)*/bin/* {{prefix}}/bin/
