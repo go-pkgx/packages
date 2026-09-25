@@ -1,0 +1,23 @@
+diff --git a/projects/boost.org/package.yml b/projects/boost.org/package.yml
+--- a/projects/boost.org/package.yml
++++ b/projects/boost.org/package.yml
+@@ -11,6 +11,19 @@
+ 
+ dependencies:
+   facebook.com/zstd: ^1
++  # What boost LINKS, as opposed to what its build runs.
++  #
++  # libboost_iostreams.dylib names bzip2 and nothing declared it:
++  #
++  #   libboost_iostreams.dylib -> @rpath/sourceware.org/bzip2/v1/lib/libbz2.dylib
++  #
++  # so a closure that installs boost and not bzip2 cannot load it. ^1 is the
++  # major that reference records, not a guess.
++  #
++  # Found by `bk undeclared`. It was invisible until the rebuild for
++  # go-pkgx/packages#235 cleared the 12 bare @rpath references that had been
++  # failing first.
++  sourceware.org/bzip2: ^1
+ 
+ build:
+   script:

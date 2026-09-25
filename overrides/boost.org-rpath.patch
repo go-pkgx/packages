@@ -2,7 +2,7 @@ diff --git a/projects/boost.org/package.yml b/projects/boost.org/package.yml
 index f96b20a..7baa0cf 100644
 --- a/projects/boost.org/package.yml
 +++ b/projects/boost.org/package.yml
-@@ -19,9 +19,28 @@ build:
+@@ -32,9 +32,28 @@ build:
  
      # boost.org has libs that end up with name @rpath/libboost_atomic.dylib (offset 24)
      # so we need to add @loader_path to the rpath
