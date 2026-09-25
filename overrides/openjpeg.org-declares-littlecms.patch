@@ -1,0 +1,48 @@
+diff --git a/projects/openjpeg.org/package.yml b/projects/openjpeg.org/package.yml
+--- a/projects/openjpeg.org/package.yml
++++ b/projects/openjpeg.org/package.yml
+@@ -6,6 +6,19 @@
+   github: uclouvain/openjpeg/tags
+ 
+ dependencies:
++  # What openjpeg LINKS, as opposed to what its build runs.
++  #
++  # opj_compress links little-cms and nothing declared it. CMake found one
++  # on the RUNNER, and the bottle was refused rather than published:
++  #
++  #   fixup: absolute reference to a path outside the system:
++  #     bin/opj_compress references
++  #     /opt/homebrew/opt/little-cms2/lib/liblcms2.2.dylib
++  #
++  # which is correct: that bottle works on a machine with Homebrew and
++  # nowhere else. ^2 is the major every other consumer in the pantry names
++  # (poppler, mpv, libraw).
++  littlecms.com: ^2
+   libpng.org: ^1
+   simplesystems.org/libtiff: ^4
+ 
+@@ -13,8 +26,23 @@
+   dependencies:
+     cmake.org: ^3
+   working-directory: build
++  env:
++    LCMS_ARGS: ""
++    darwin:
++      # Name the little-cms we declared instead of letting CMake go looking.
++      # openjpeg's FindLCMS2.cmake calls find_library with no PATHS at all,
++      # so it searches the machine's default prefixes — and on a runner that
++      # has Homebrew, the machine wins. A search path is a guess about the
++      # machine; a sovereign build should not make one.
++      #
++      # darwin only, because that is where the defect was measured. The linux
++      # bottle builds and publishes today, and changing a half that works to
++      # match one that does not is how a repair becomes a regression.
++      LCMS_ARGS:
++        - -DLCMS2_INCLUDE_DIR={{deps.littlecms.com.prefix}}/include
++        - -DLCMS2_LIBRARY={{deps.littlecms.com.prefix}}/lib/liblcms2.dylib
+   script: |
+-    cmake .. -DCMAKE_INSTALL_PREFIX={{prefix}} -DCMAKE_BUILD_TYPE=Release
++    cmake .. -DCMAKE_INSTALL_PREFIX={{prefix}} -DCMAKE_BUILD_TYPE=Release $LCMS_ARGS
+     make --jobs {{ hw.concurrency }} install
+ 
+ provides:
