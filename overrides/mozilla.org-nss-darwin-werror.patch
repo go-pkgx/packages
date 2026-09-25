@@ -2,7 +2,7 @@ diff --git a/projects/mozilla.org/nss/package.yml b/projects/mozilla.org/nss/pac
 index 7488513..083f0a7 100644
 --- a/projects/mozilla.org/nss/package.yml
 +++ b/projects/mozilla.org/nss/package.yml
-@@ -59,6 +59,25 @@ build:
+@@ -77,6 +77,25 @@ build:
        CC: "{{deps.gnu.org/gcc.prefix}}/bin/gcc"
      darwin/aarch64:
        CC: "{{deps.llvm.org.prefix}}/bin/clang"
