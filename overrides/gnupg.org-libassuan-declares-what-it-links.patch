@@ -1,0 +1,26 @@
+diff --git a/projects/gnupg.org/libassuan/package.yml b/projects/gnupg.org/libassuan/package.yml
+index d001bfb..69af07b 100644
+--- a/projects/gnupg.org/libassuan/package.yml
++++ b/projects/gnupg.org/libassuan/package.yml
+@@ -28,4 +28,21 @@ build:
+       CFLAGS: $CFLAGS -std=gnu89
+       CXXFLAGS: "$CXXFLAGS -stdlib=libstdc++ -std=c++03"
+ 
++# What libassuan LINKS, as opposed to what its build runs.
++#
++# libgpg-error was declared under build.dependencies and nowhere else, so a
++# closure that installs libassuan gets none of it, and libassuan.0.dylib names
++# it:
++#
++#   @rpath/gnupg.org/libgpg-error/v1.61.0/lib/libgpg-error.0.dylib
++#
++# Same shape as gnupg.org/gpgme, one layer down, and the same consequence: it
++# stopped poppler's darwin/aarch64 build in g-ir-scanner, which loads the chain
++# to generate Poppler-0.18.gir.
++#
++# The full-version v1.61.0 is the other half and a rebuild fixes it — that path
++# predates bk reducing a reference to the major line its dependency guarantees.
++dependencies:
++  gnupg.org/libgpg-error: ^1
++
+ test: test "$(libassuan-config --version)" = "{{version}}"
