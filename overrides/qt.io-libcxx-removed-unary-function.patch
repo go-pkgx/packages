@@ -1,25 +1,37 @@
 diff --git a/projects/qt.io/package.yml b/projects/qt.io/package.yml
 --- a/projects/qt.io/package.yml
 +++ b/projects/qt.io/package.yml
-@@ -103,6 +103,21 @@
+@@ -103,6 +103,33 @@
        ARGS:
          - -no-rpath
          - QMAKE_LFLAGS=-Wl,-rpath,{{pkgx.prefix}}
-+        # Qt 5.15 builds with -std=c++1z, and libc++ removed std::unary_function
-+        # in C++17. qtmultimedia's AVFoundation plugin still uses it, so the
-+        # build stops there:
++        # Two things Qt 5.15 needs against a 2026 SDK, kept together because
++        # they are one concern: a C++ dialect that moved under a frozen tree.
 +        #
-+        #   avfcamerautility.mm:104:35: error: no template named 'unary_function'
-+        #     in namespace 'std'; did you mean '__unary_function'?
++        # 1. libc++ removed std::unary_function in C++17, and Qt builds with
++        #    -std=c++1z. qtmultimedia's AVFoundation plugin still uses it:
 +        #
-+        # The macro is libc++'s own escape hatch, read from the SDK header
-+        # rather than recalled:
++        #      avfcamerautility.mm:104:35: error: no template named
++        #        'unary_function' in namespace 'std'
 +        #
-+        #   #if _LIBCPP_STD_VER <= 14 || defined(_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
++        #    The macro is libc++'s own escape hatch, read from the SDK header:
++        #      #if _LIBCPP_STD_VER <= 14 || defined(_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION)
++        #
++        # 2. Clang promoted -Wenum-constexpr-conversion to an error, and
++        #    qtlocation vendors boost 1.65.1, which trips it:
++        #
++        #      deps/boost/1.65.1/include/boost/mpl/aux_/integral_wrapper.hpp:73:31:
++        #        error: integer value -1 is outside the valid range of values
++        #        [0, 3] for this enumeration type
++        #
++        #    Demoted rather than silenced: -Wno-error keeps the diagnostic
++        #    visible in the log, so the day the vendored copy is replaced it
++        #    is still saying so.
 +        #
 +        # += rather than =, because replacing QMAKE_CXXFLAGS would drop every
 +        # flag the mkspec set.
 +        - QMAKE_CXXFLAGS+=-D_LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION
++        - QMAKE_CXXFLAGS+=-Wno-error=enum-constexpr-conversion
      darwin/aarch64:
        ARGS:
          - -no-assimp
