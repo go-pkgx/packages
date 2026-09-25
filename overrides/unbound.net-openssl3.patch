@@ -1,12 +1,27 @@
 diff --git a/projects/unbound.net/package.yml b/projects/unbound.net/package.yml
 --- a/projects/unbound.net/package.yml
 +++ b/projects/unbound.net/package.yml
-@@ -7,7 +7,7 @@
+@@ -7,7 +7,22 @@
    strip: /^release-/
  
  dependencies:
 -  openssl.org: ^1
 +  openssl.org: ^3
++  # unbound-anchor links libexpat to parse the DNSSEC root anchor, and expat
++  # was declared under build.dependencies and nowhere else, so a closure that
++  # installs unbound gets none of it:
++  #
++  #   unbound-anchor -> @rpath/libexpat.github.io/v2/lib/libexpat.1.12.3.dylib
++  #
++  # ^2 is the major that reference records. The PATCH-level leaf in it is a
++  # separate defect only a rebuild fixes: bk now reduces a reference to the
++  # soname its major line guarantees, so a rebuilt unbound names
++  # libexpat.1.dylib and survives the next expat release.
++  #
++  # Folded in here rather than added as a second override: two patches on
++  # adjacent lines of one block collide whichever order they apply in, and the
++  # loser is skipped in silence.
++  libexpat.github.io: ^2
  
  build:
    dependencies:

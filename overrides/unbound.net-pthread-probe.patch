@@ -2,7 +2,7 @@ diff --git a/projects/unbound.net/package.yml b/projects/unbound.net/package.yml
 index 0d1c279..569f10f 100644
 --- a/projects/unbound.net/package.yml
 +++ b/projects/unbound.net/package.yml
-@@ -23,6 +23,13 @@ build:
+@@ -38,6 +38,13 @@ build:
      sed -i.bak -e "s|$PKGX_DIR/|\$PKGX_DIR/|g" unbound-control-setup
      rm unbound-control-setup.bak
    env:

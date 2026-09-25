@@ -1,0 +1,26 @@
+diff --git a/projects/gnu.org/nettle/package.yml b/projects/gnu.org/nettle/package.yml
+index 5b88318..033087f 100644
+--- a/projects/gnu.org/nettle/package.yml
++++ b/projects/gnu.org/nettle/package.yml
+@@ -9,6 +9,21 @@ versions:
+     - /^nettle-/
+     - /\.tar\.gz$/
+ 
++# What nettle LINKS, as opposed to what its build runs.
++#
++# gnu.org/gmp was declared under build.dependencies and nowhere else, so a
++# closure that installs nettle gets no gmp — and libhogweed names it:
++#
++#   libhogweed.7.0.dylib -> @rpath/gnu.org/gmp/v6/lib/libgmp.10.dylib
++#
++# ^6 is the major that reference records, not a guess: gmp's soname on that
++# line is libgmp.10, and v6 is what the bottle resolves through.
++#
++# Found by `bk undeclared`, which compares what every Mach-O in a closure LOADS
++# against the declarations reachable from its own project.
++dependencies:
++  gnu.org/gmp: ^6
++
+ build:
+   dependencies:
+     gnu.org/gmp: "*"
