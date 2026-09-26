@@ -38,6 +38,14 @@ on:
         description: "keep every source archive this run downloads in this registry, addressed by its sha256. Blank = keep nothing. 57% of the pantry builds from tarballs GitHub GENERATES on request rather than stores, so for those it is the first stored artefact they have ever had."
         required: false
         default: "oci://ghcr.io/go-pkgx"
+      seed_dist:
+        description: "read AND publish to this registry instead of ghcr, e.g. oci://127.0.0.1:5000/seed. For BOOTSTRAPPING an architecture nothing publishes: bottles made against a host distribution must not reach the real registry, so they go to a throwaway one on the runner and never leave it. Blank = ghcr, as always."
+        required: false
+        default: ""
+      bootstrap:
+        description: "`1` builds WITHOUT bk's base toolchain in the environment, taking those tools from the host. The base toolchain is a cycle with no entry point — every build is handed all fifteen of its members as bottles — so on an architecture with no bottles at all, nothing can be built first. Use it ONLY with seed_dist, and only for the first generation: rebuild everything inside the sovereign rootfs afterwards."
+        required: false
+        default: ""
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — republished signed + attested (used for the glibc sweep)."
         required: false
@@ -236,6 +244,8 @@ jobs:
           fi
 
       - name: point at the pull-through cache if it answers
+        env:
+          SEED_DIST: ${{ github.event.inputs.seed_dist }}
         run: |
           # The cache accelerates BLOB pulls only. It must not become PKGX_DIST:
           # zot cannot serve the tag listing of a repository it has not synced
@@ -244,6 +254,14 @@ jobs:
           # use — `gnu.org/bash` is published as `5.3`, not `5.3.0`:
           #   install gnu.org/bash 5.3.0: …/gnu.org/bash:5.3.0: not found
           # Listing stays on ghcr; PKGX_CACHE is consulted for the bottle itself.
+          if [ -n "$SEED_DIST" ]; then
+            # A bootstrap pass reads and writes ONE registry, and it is not
+            # ghcr. No cache either: the cache fronts ghcr, and mixing the two
+            # would let a real bottle answer a seed's question.
+            echo "seeding into $SEED_DIST — ghcr is not consulted and not written"
+            echo "PKGX_DIST=$SEED_DIST" >> "$GITHUB_ENV"
+            exit 0
+          fi
           echo "PKGX_DIST=oci://ghcr.io/go-pkgx/packages" >> "$GITHUB_ENV"
           if curl -fsS -m 3 http://10.46.81.1:5111/v2/ >/dev/null 2>&1; then
             echo "pull-through cache answers — bottles will be pulled through it"
@@ -300,6 +318,7 @@ jobs:
           # where every other correction WAS applied.
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
           VERSIONS: ${{ github.event.inputs.versions }}
+          BOOTSTRAP: ${{ github.event.inputs.bootstrap }}
           JOBS: ${{ matrix.jobs }}
           QEMU_RESERVED_VA: ${{ matrix.qemu_va }}
         run: |
@@ -360,11 +379,16 @@ jobs:
               cp "$RUNNER_TEMP/rootfs/$f" "$f" 2>/dev/null || true
             done
           else
+            # --to follows PKGX_DIST rather than naming ghcr again: the two
+            # must not be able to disagree, and a seed pass that READ a
+            # throwaway registry while PUBLISHING to the real one is exactly
+            # the accident this lane exists to make impossible.
             bk factory \
               --pantry pantry \
               --overrides overrides \
-              --to oci://ghcr.io/go-pkgx/packages \
+              --to "$PKGX_DIST" \
               --bottles dist \
+              ${BOOTSTRAP:+--bootstrap} \
               ${GLIBC:+--glibc "$GLIBC"} \
               ${VERSIONS:+--versions "$VERSIONS"} \
               ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"} \
