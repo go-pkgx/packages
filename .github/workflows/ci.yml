@@ -15,13 +15,22 @@ on:
 permissions: { contents: read }
 
 jobs:
+  # A workflow that triggers on `pull_request` must NOT run on a self-hosted
+  # runner. For that event GitHub runs the workflow file from the PR's HEAD, so
+  # a fork can add a job naming any label it likes and execute its code on our
+  # machines. The label is not a boundary.
+  #
+  # This used to say [self-hosted, incus, amd64] — 32 cores, an ephemeral
+  # container per job — and the speed was real. It is not worth the exposure:
+  # `go vet`, gofmt and `go test` on this tree fit a hosted runner, and the
+  # pool stays for build.yml, which is workflow_dispatch and schedule only.
+  #
+  # The default fork-PR policy on a public repository is "require approval for
+  # first-time contributors", which does NOT close this: a contributor whose
+  # first PR was merged then runs without approval. Moving off self-hosted
+  # removes the intersection instead of gating it.
   test:
-    # Our own GARM/Incus pool: 32 cores, ephemeral container per job, tagged
-    # [self-hosted, incus, amd64]. A nine-job fan-out once filled the VM's 20 GB
-    # root with ENOSPC; runners now get their disks from a 1 TB volume, so the
-    # fan-out fits. If the pool is down, jobs queue — swap this line back to
-    # `ubuntu-latest` to get moving again.
-    runs-on: [self-hosted, incus, amd64]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -50,13 +59,11 @@ jobs:
             exit 1
           fi
 
+  # Same reason as `test` above: this workflow triggers on pull_request, so a
+  # fork's own copy of this file decides where its code runs. A cross-compile
+  # matrix is cheap; the pool is not worth the exposure.
   build:
-    # Our own GARM/Incus pool: 32 cores, ephemeral container per job, tagged
-    # [self-hosted, incus, amd64]. A nine-job fan-out once filled the VM's 20 GB
-    # root with ENOSPC; runners now get their disks from a 1 TB volume, so the
-    # fan-out fits. If the pool is down, jobs queue — swap this line back to
-    # `ubuntu-latest` to get moving again.
-    runs-on: [self-hosted, incus, amd64]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -79,3 +86,31 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: go build ./...
+
+  # The rule above, enforced. A guard that lives only in a comment is a guard
+  # that is gone the next time somebody wants the 32 cores back.
+  no-self-hosted-on-fork-triggers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: no workflow may combine pull_request with a self-hosted runner
+        run: |
+          set -euo pipefail
+          bad=0
+          for f in .github/workflows/*.yml .github/workflows/*.yaml; do
+            [ -e "$f" ] || continue
+            # `pull_request` and `pull_request_target` both run fork-authored
+            # code; the second is worse, since it gets repository secrets.
+            grep -qE '^[[:space:]]*pull_request(_target)?:' "$f" || continue
+            # Anchored on a real `runs-on:` key, not the substring: an
+            # unanchored pattern matches this guard's own source and the check
+            # fails on itself. Found by running it, not by reading it.
+            grep -E '^[[:space:]]*runs-on:' "$f" | grep -q 'self-hosted' || continue
+            echo "::error file=$f::$f triggers on pull_request AND runs on a self-hosted runner."
+            echo "  For that event GitHub runs the workflow from the PR HEAD, so a fork"
+            echo "  can name any label and execute on our machines. Use a hosted runner,"
+            echo "  or move the job to a workflow_dispatch/schedule trigger."
+            bad=1
+          done
+          [ "$bad" = 0 ] && echo "no workflow exposes a self-hosted runner to fork pull requests"
+          exit "$bad"
