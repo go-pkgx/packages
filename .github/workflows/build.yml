@@ -395,6 +395,61 @@ jobs:
             ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
           fi
 
+      # What a SEED generation was made of.
+      #
+      # Nix keeps its bootstrap-tools as a committed, versioned artefact, so
+      # anyone can say what the first generation on a platform was built from.
+      # Ours is deliberately ephemeral — it lives in a throwaway loopback
+      # registry and is thrown away once the sovereign rebuild replaces it —
+      # which is defensible, and leaves the second generation unable to name
+      # its parent.
+      #
+      # So record the parent instead of keeping it: the host tools that stood
+      # in for bottles, and the state of the seed registry when the run ended.
+      # Without this the only trace of WHICH gcc compiled the first s390x
+      # toolchain is a runner that will be reimaged.
+      - name: record what the seed was built from
+        if: always() && github.event.inputs.bootstrap == '1'
+        env:
+          SEED_DIST: ${{ github.event.inputs.seed_dist }}
+        run: |
+          : > seed-provenance.txt
+          {
+            echo "seed provenance — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "platform:  ${PLATFORM:-?}"
+            echo "runner:    $(uname -srm)"
+            echo "distro:    $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || echo unknown)"
+            echo
+            echo "== host tools that stood in for bottles =="
+            # Each of these can be what --bootstrap fell back to. Recording the
+            # whole set rather than the ones this chunk happened to use: the
+            # seed is one generation, not one chunk.
+            for t in gcc g++ cc ld ar make m4 perl curl awk sed grep bison flex pkg-config autoconf automake libtool python3; do
+              p=$(command -v "$t" 2>/dev/null) || { printf '%-12s absent\n' "$t"; continue; }
+              v=$("$t" --version 2>/dev/null | head -1)
+              printf '%-12s %s  %s\n' "$t" "$p" "${v:-(no --version)}"
+            done
+            echo
+            echo "== seed registry contents =="
+            if [ -n "$SEED_DIST" ]; then
+              base=${SEED_DIST#oci://}
+              host=${base%%/*}
+              curl -fsS -m 20 "http://$host/v2/_catalog" 2>/dev/null || echo "(catalog unreadable)"
+            else
+              echo "(no seed_dist)"
+            fi
+            echo
+          } >> seed-provenance.txt
+          cat seed-provenance.txt
+
+      - name: upload seed provenance
+        if: always() && github.event.inputs.bootstrap == '1'
+        uses: actions/upload-artifact@v7
+        with:
+          name: seed-provenance-${{ matrix.slug }}-${{ matrix.chunk }}
+          path: seed-provenance.txt
+          if-no-files-found: ignore
+
       # The pkgx dist tree `bk factory --bottles dist` writes — unioned into
       # the GitHub Pages mirror by pages.yml. Named per arch+chunk so pages.yml
       # discovers every slice (it globs dist-*).
