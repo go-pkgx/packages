@@ -10,8 +10,9 @@
 # is .NET, and linux-s390x is a community-supported target with no Microsoft
 # builds (actions/runner#2263). IBM/action-runner-image-pz carries the dotnet
 # environment and the IBM Z patches. That is several steps with an interactive
-# menu in the middle, and a step nobody should improvise: the registration
-# token.
+# menu in the middle, a step nobody should improvise (the registration token),
+# and three facts about the result that are not written down anywhere — see
+# "What the built runner does not tell you" below.
 #
 # # The token never reaches a command line
 #
@@ -43,20 +44,52 @@
 # Another repository in the fleet reaches the same VM a different way: an
 # ubuntu-latest job that SSHes in with a key from a repo secret. That is right
 # for what it does — `go vet && go test` is one self-contained command on a
-# public repo — and wrong here. `bk factory`
-# checks out a workspace, runs inside a container, uploads artefacts and PUSHES
-# TO GHCR with a token; reproducing that over SSH means rewriting the lane and
-# shipping a registry credential to the VM. The job body is built to run where
-# the work happens, so the runner goes where the work happens.
+# public repo — and wrong here. `bk factory` checks out a workspace, runs
+# inside a container, uploads artefacts and PUSHES TO GHCR with a token;
+# reproducing that over SSH means rewriting the lane and shipping a registry
+# credential to the VM. The job body is built to run where the work happens, so
+# the runner goes where the work happens.
 #
-# It has not been run by its author: a script written for a machine one cannot
-# reach is a proposal until somebody executes it. Read it before you do.
+# # What the built runner does not tell you
+#
+# All three of these were found by hitting them, on a runner that had
+# registered and gone online and still could not run a job.
+#
+# 1. THE PREBUILT TARBALL IS TOO OLD. gaplib publishes a runner package built
+#    in 2024 (3.314.1). `actions/checkout@v7` declares `using: node24`, and
+#    that runner answers
+#
+#        Unsupported runtime 'node24' ... supported: node16, node20
+#
+#    The accepted list is COMPILED INTO the binary. Unpacking a node24 into
+#    `externals/` changes nothing — this was tried, and it did not help. The
+#    runner has to be rebuilt from a recent actions/runner tag, which is what
+#    RUNNER_REF below does.
+#
+# 2. runsvc.sh DEFAULTS TO node16, which the rebuilt package no longer ships:
+#
+#        ./externals/node16/bin/node: No such file or directory   (status=127)
+#
+#    It honours GITHUB_ACTIONS_RUNNER_FORCED_NODE_VERSION. Setting that in
+#    `.env` does NOT work: the systemd unit svc.sh installs has no
+#    EnvironmentFile, so nothing in `.env` reaches runsvc.sh.
+#
+# 3. THE PACKAGE IS FRAMEWORK-DEPENDENT. There is no self-contained s390x
+#    dotnet runtime to bundle, so the runner uses the system one gaplib's
+#    setup installs, and needs DOTNET_ROOT to find it.
+#
+# (2) and (3) are both environment for a service, so both go in a systemd
+# drop-in rather than in files the next `svc.sh install` would rewrite.
 set -euo pipefail
 
 REPO="${REPO:-https://github.com/go-pkgx/packages}"
 LABELS="${LABELS:-self-hosted,linux,s390x}"
-NAME="${NAME:-linuxone-$(hostname -s)}"
+NAME="${NAME:-linuxone-s390x}"  # what is registered today; build.yml selects on the LABELS, not this
 WORKDIR="${WORKDIR:-$HOME/actions-runner}"
+# Pinned rather than a moving main: a runner you rebuild from a branch is a
+# runner whose behaviour changes without a commit here saying so.
+RUNNER_REF="${RUNNER_REF:-v2.337.0}"
+GAPLIB_REF="${GAPLIB_REF:-main}"
 
 echo "== arch check"
 arch="$(uname -m)"
@@ -67,21 +100,31 @@ sudo apt-get update -qq
 sudo apt-get install -y --no-install-recommends \
   git curl ca-certificates jq build-essential
 
-echo "== build the runner for s390x (IBM/action-runner-image-pz)"
-# The upstream that exists BECAUSE GitHub does not ship this binary. Pinned to
-# a tag rather than a moving main: a runner you rebuild from a branch is a
-# runner whose behaviour changes without a commit here saying so.
-GAPLIB_REF="${GAPLIB_REF:-main}"
-rm -rf "$HOME/action-runner-image-pz"
+echo "== gaplib: the dotnet environment and the IBM Z patches"
+# run.sh is INTERACTIVE. Choose: environment = VM, OS = your Ubuntu version,
+# setup = Complete. It installs a dotnet SDK for s390x and leaves the runner
+# patch in patches/. Its own prebuilt runner tarball is too old to use — see
+# (1) above — so this script rebuilds from RUNNER_REF instead.
+rm -rf "$HOME/gaplib"
 git clone --depth 1 --branch "$GAPLIB_REF" \
-  https://github.com/IBM/action-runner-image-pz "$HOME/action-runner-image-pz"
-cd "$HOME/action-runner-image-pz"
-echo
-echo "run.sh is INTERACTIVE. Choose: environment = VM, OS = your Ubuntu"
-echo "version, setup = Complete. It builds actions/runner for s390x and"
-echo "leaves a tarball; note where it puts it."
-echo
-bash run.sh
+  https://github.com/IBM/action-runner-image-pz "$HOME/gaplib"
+( cd "$HOME/gaplib" && bash run.sh )
+
+echo "== build actions/runner $RUNNER_REF for s390x"
+rm -rf "$HOME/runner-src"
+git clone --depth 1 --branch "$RUNNER_REF" \
+  https://github.com/actions/runner "$HOME/runner-src"
+cd "$HOME/runner-src"
+git apply "$HOME/gaplib/patches/runner-sdk8-s390x.patch"
+# The tree pins an SDK version gaplib does not install; take the one that is
+# there. Tests are skipped: gaplib documents them as failing on s390x, and
+# `dev.sh package` does not run them.
+sed -i 's/"version": "[^"]*"/"version": "8.0.100"/' src/global.json
+cd src
+./dev.sh layout Release
+./dev.sh package Release
+pkg="$(ls -1 ../_package/actions-runner-linux-s390x-*.tar.gz | tail -1)"
+echo "built $pkg"
 
 echo "== register"
 # --token is deliberately ABSENT: config.sh prompts, and a prompt keeps the
@@ -89,15 +132,27 @@ echo "== register"
 # the token as a flag.
 mkdir -p "$WORKDIR"
 cd "$WORKDIR"
-echo "unpack the tarball run.sh produced into $WORKDIR, then:"
-echo
-echo "    ./config.sh --url $REPO --labels $LABELS --name $NAME"
-echo
-echo "It will ask for the registration token. Paste it; do not pass it as an"
-echo "argument."
-echo
-echo "== then run it as a service"
-echo "    sudo ./svc.sh install && sudo ./svc.sh start"
+tar xzf "$pkg"
+./config.sh --url "$REPO" --labels "$LABELS" --name "$NAME"
+
+echo "== install the service, then give it the two things it cannot find"
+sudo ./svc.sh install
+unit="actions.runner.$(echo "$REPO" | sed 's#.*/\([^/]*\)/\([^/]*\)$#\1-\2#').$NAME.service"
+sudo mkdir -p "/etc/systemd/system/$unit.d"
+sudo tee "/etc/systemd/system/$unit.d/override.conf" >/dev/null <<CONF
+# See "What the built runner does not tell you", points (2) and (3), in
+# .github/runners/linuxone-s390x.sh. A drop-in rather than .env or a patched
+# runsvc.sh: the unit reads no EnvironmentFile, and svc.sh rewrites its own
+# files on the next install.
+[Service]
+Environment=GITHUB_ACTIONS_RUNNER_FORCED_NODE_VERSION=node20
+Environment=DOTNET_ROOT=/usr/lib/dotnet
+CONF
+sudo systemctl daemon-reload
+sudo ./svc.sh start
+sleep 5
+systemctl is-active "$unit"
+
 echo
 echo "== verify, from anywhere"
 echo "    gh api repos/go-pkgx/packages/actions/runners -q '.runners[].name'"
