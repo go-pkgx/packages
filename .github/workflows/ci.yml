@@ -73,6 +73,30 @@ jobs:
           GOPROXY=direct go run github.com/go-pkgx/bk/cmd/bk@main overrides \
             --dir overrides --pantry "$RUNNER_TEMP/pantry"
 
+      # The step above leaves a pantry with every override applied — which is
+      # the recipe the FACTORY builds. The overlay is the recipe a CONSUMER
+      # resolves from, and for the 183 projects in both, the overlay wins
+      # entirely. So the two can part, and 25 of them have.
+      #
+      # This gates only the half a consumer reads — `dependencies`, `provides`,
+      # `versions`, `distributable`. The other 23 are our own override patches
+      # showing through, and nothing reads a build section out of the overlay;
+      # failing on those would mean mirroring every patch into a second tree
+      # forever.
+      #
+      # It exists because one consumer-side difference was live and served:
+      # tcl-lang.org enumerated versions from a page listing only what upstream
+      # currently recommends, while its own distributable downloaded from
+      # SourceForge — the inconsistency upstream's pantry had been corrected
+      # for. It had been reported for as long as the tool existed, as
+      # `..build.script: 15 items became 14`, because the comparison returned
+      # the first difference in sorted key order and `build` sorts first.
+      - name: the half a consumer resolves from agrees
+        run: |
+          rm -rf "$RUNNER_TEMP/overlay"
+          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay "$RUNNER_TEMP/overlay"
+          go run ./overlaycheck --pantry "$RUNNER_TEMP/pantry" --overlay "$RUNNER_TEMP/overlay"
+
       - name: test + 100% coverage gate
         run: |
           go test ./... -covermode=atomic -coverprofile=cov.out
