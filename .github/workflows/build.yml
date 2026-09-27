@@ -91,6 +91,27 @@ jobs:
       # generator in shell.
       - name: jq
         run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
+      # Contradictory inputs, refused BEFORE a runner is taken. `bootstrap`
+      # means "there is no base toolchain on this architecture yet, take the
+      # tools from the host"; the sovereign rootfs is staged by RESOLVING that
+      # same toolchain from a dist. Asking for both is asking for a toolchain
+      # that does not exist, and what came back was
+      #
+      #   builder: resolve closure: GET https://dist.pkgx.dev/gnu.org/glibc/linux/s390x/versions.txt: Not Found
+      #
+      # ninety seconds into a job on the s390x runner — an error naming glibc,
+      # which had done nothing wrong, for a contradiction stated in the inputs.
+      # `sovereign` is not flipped silently: an input that quietly means
+      # something else is worse than one that is refused.
+      - name: bootstrap and the sovereign rootfs are mutually exclusive
+        env:
+          BOOTSTRAP: ${{ github.event.inputs.bootstrap }}
+          SOVEREIGN: ${{ github.event.inputs.sovereign }}
+        run: |
+          [ -z "$BOOTSTRAP" ] || [ "$SOVEREIGN" = 0 ] || {
+            echo "::error::bootstrap=$BOOTSTRAP stages no toolchain, so the sovereign rootfs cannot be built from one. Pass sovereign=0 with it."
+            exit 1
+          }
       - uses: actions/checkout@v7
       - id: gen
         run: |
