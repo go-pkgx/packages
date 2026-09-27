@@ -30,7 +30,7 @@ func TestListTagsFollowsPagination(t *testing.T) {
 			return resp(200, `{"tags":["5.0","sha256-abc","latest"]}`, nil), nil
 		}
 	}}
-	got, err := testClient(d).listTags("x", "t")
+	got, _, err := testClient(d).listTags("x", "t")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestListTagsStopsWithoutALink(t *testing.T) {
 		calls++
 		return resp(200, `{"tags":["1.0"]}`, nil), nil
 	}}
-	if _, err := testClient(d).listTags("x", "t"); err != nil {
+	if _, _, err := testClient(d).listTags("x", "t"); err != nil {
 		t.Fatal(err)
 	}
 	if calls != 1 {
@@ -66,7 +66,7 @@ func TestListTagsCannotSpinForever(t *testing.T) {
 		h.Set("Link", `</v2/next>; rel="next"`)
 		return resp(200, `{"tags":["1.0"]}`, h), nil
 	}}
-	if _, err := testClient(d).listTags("x", "t"); err != nil {
+	if _, _, err := testClient(d).listTags("x", "t"); err != nil {
 		t.Fatal(err)
 	}
 	if calls != maxTagPages {
@@ -111,7 +111,7 @@ func TestListTagsPaginationErrors(t *testing.T) {
 				}
 				return resp(tc.code, tc.body, nil), nil
 			}}
-			if _, err := testClient(d).listTags("x", "t"); err == nil {
+			if _, _, err := testClient(d).listTags("x", "t"); err == nil {
 				t.Fatal("a failed page must fail the listing, not truncate it")
 			}
 		})
@@ -128,7 +128,7 @@ func TestListTagsPaginationErrors(t *testing.T) {
 		}
 		return resp(404, "", nil), nil
 	}}
-	got, err := testClient(d).listTags("x", "t")
+	got, _, err := testClient(d).listTags("x", "t")
 	if err != nil || got != nil {
 		t.Fatalf("got %v, %v; want nothing and no error", got, err)
 	}

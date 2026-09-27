@@ -140,3 +140,96 @@ func TestSortGapsIsStableAndOrdered(t *testing.T) {
 		}
 	}
 }
+
+// A LOST entry says upstream has the platform and our index does not. It says
+// NOTHING about whether we hold the bottle: the interior hole that made it a
+// defect proves we built that platform for the project at OTHER versions.
+//
+// The per-platform manifest tag is what tells the two apart, and they want
+// opposite work — a minute of index recompose, or an hour of build.
+func TestSplitByPlatformTag(t *testing.T) {
+	lost := []gap{
+		{"python.org", "3.14.7", "linux/aarch64"},
+		{"python.org", "3.14.8", "darwin/x86-64"},
+		{"curl.se", "8.12.0", "linux/x86-64"},
+		{"never.listed", "1.0.0", "linux/x86-64"},
+	}
+	have := map[string]map[string]bool{
+		"python.org": {
+			manifestKey("3.14.7", "linux/aarch64"): true,
+			// 3.14.8 darwin/x86-64 is NOT here: that bottle was never pushed.
+		},
+		"curl.se": {manifestKey("8.12.0", "linux/x86-64"): true},
+		// never.listed has no entry at all — its tags could not be read.
+	}
+	reindexable, rebuild := splitByPlatformTag(lost, have)
+	if len(reindexable) != 2 || reindexable[0].project != "python.org" || reindexable[1].project != "curl.se" {
+		t.Errorf("reindexable = %v", reindexable)
+	}
+	if len(rebuild) != 2 {
+		t.Fatalf("rebuild = %v", rebuild)
+	}
+	// A package whose tags could not be listed lands in `rebuild`, and that is
+	// the SAFE direction: a build republishes the index too, so a reindexable
+	// entry treated as a rebuild costs time, while the reverse would recompose
+	// an index around a manifest that is not there.
+	if rebuild[1].project != "never.listed" {
+		t.Errorf("an unlisted package must not be called reindexable: %v", rebuild)
+	}
+}
+
+func TestManifestTag(t *testing.T) {
+	for _, c := range []struct {
+		g    gap
+		want string
+	}{
+		{gap{"python.org", "3.14.7", "linux/aarch64"}, "3.14.7--linux-aarch64"},
+		{gap{"curl.se", "8.12.0", "linux/x86-64"}, "8.12.0--linux-x86-64"},
+		{gap{"getzola.org", "0.23.2", "darwin/x86-64"}, "0.23.2--darwin-x86-64"},
+	} {
+		if got := manifestTag(c.g); got != c.want {
+			t.Errorf("manifestTag(%v) = %q, want %q", c.g, got, c.want)
+		}
+	}
+}
+
+// indexOmitsAManifest is the gate, and what makes it a gate rather than a
+// guess is that it compares two things that are both facts: the manifest is in
+// the registry under its own tag, and the index either lists that platform or
+// does not.
+func TestIndexOmitsAManifest(t *testing.T) {
+	rows := []row{
+		{"foo", "linux", "x86-64", "1.0"},
+		{"foo", "linux", "aarch64", "1.0"},
+		{"foo", "linux", "x86-64", "1.1"}, // 1.1's index lost aarch64
+		{"bar", "darwin", "aarch64", "2.0"},
+	}
+	have := map[string]map[string]bool{
+		"foo": {
+			manifestKey("1.0", "linux/x86-64"):  true,
+			manifestKey("1.0", "linux/aarch64"): true,
+			manifestKey("1.1", "linux/x86-64"):  true,
+			manifestKey("1.1", "linux/aarch64"): true, // pushed, not listed
+		},
+		"bar": {manifestKey("2.0", "darwin/aarch64"): true},
+	}
+	got := indexOmitsAManifest(rows, have)
+	if len(got) != 1 {
+		t.Fatalf("got %v, want exactly the one omission", got)
+	}
+	if got[0] != (gap{"foo", "1.1", "linux/aarch64"}) {
+		t.Errorf("got %v", got[0])
+	}
+	// A registry with no platform tags at all yields nothing — the check is
+	// BLIND there, not passing. The count of manifests examined is what tells
+	// a reader which of the two they are looking at.
+	if got := indexOmitsAManifest(rows, nil); len(got) != 0 {
+		t.Errorf("nothing to compare must yield nothing, got %v", got)
+	}
+	// And a manifest the index DOES list is not an omission, which is the
+	// common case and the one a false positive would drown it in.
+	only := map[string]map[string]bool{"foo": {manifestKey("1.0", "linux/x86-64"): true}}
+	if got := indexOmitsAManifest(rows, only); len(got) != 0 {
+		t.Errorf("a listed manifest is not an omission: %v", got)
+	}
+}

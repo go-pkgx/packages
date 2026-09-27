@@ -13,6 +13,27 @@ name: index-audit
 # 137 such entries accumulated unnoticed, found by tripping over one of them in
 # a build. They are at 0 now. This is what keeps them there.
 #
+# What it gates on is DIRECT EVIDENCE: since go-pkgx/bottle#37 each platform's
+# manifest carries an uncontended tag of its own, so a manifest that is in the
+# registry and absent from its version's index is the race, visible, with no
+# inference. It cannot have a false positive.
+#
+# It replaced an inference that could. The old gate called a version carrying
+# fewer platforms than its neighbours a lost write, and was red on 221 of those
+# for at least two days — every one of them a build policy rather than a defect.
+# python.org carries linux at the newest patch of each minor line and nowhere
+# else; libexpat carries darwin at three versions out of 32; libgit2 has linux
+# in eras. Not one of the 221 had a manifest to recompose from. That list is
+# still printed, because it is the only thing that could see a loss from before
+# the platform tags existed — as a list to read, not a lane to go red.
+#
+# The blind spot is named in the output: the count of omitted manifests is
+# printed with the number EXAMINED, because a publisher that stops writing the
+# platform tag would take the gate to zero and say nothing. Measured
+# 2026-09-27, openssl.org carries 62 linux platform tags while zlib.net and
+# curl.se carry only darwin ones and gnu.org/gperf none at all — closing that
+# is a change to the publishers, not to this lane.
+#
 # Not on pull_request: the crawl walks the whole catalogue over the network for
 # several minutes, and a PR cannot change what is already published.
 
