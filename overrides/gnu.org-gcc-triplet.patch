@@ -1,6 +1,6 @@
---- a/projects/gnu.org/gcc/package.yml	2026-09-27 15:19:42
-+++ b/projects/gnu.org/gcc/package.yml	2026-09-27 15:19:42
-@@ -185,7 +185,12 @@
+--- a/projects/gnu.org/gcc/package.yml	2026-09-27 15:37:17
++++ b/projects/gnu.org/gcc/package.yml	2026-09-27 15:37:17
+@@ -191,7 +191,12 @@
      # See pkgxdev/pantry#8423.
      - run:
          - for tool in gcc g++ cpp c++ ar nm ranlib; do
@@ -14,7 +14,7 @@
          - done
        if: linux
        working-directory: ${{prefix}}/bin
-@@ -265,6 +270,12 @@
+@@ -283,6 +288,12 @@
        TRIPLET: x86_64-linux-gnu
      aarch64:
        TRIPLET: aarch64-linux-gnu
