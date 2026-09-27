@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,12 +84,94 @@ func TestProjectOf(t *testing.T) {
 	}
 }
 
+// The two halves are in different FORMATS — the overlay is HCL, the build
+// patch stays YAML because it applies to an upstream clone — so drift is a
+// question about what each says, not about the bytes.
 func TestSameRecipe(t *testing.T) {
-	if !sameRecipe([]byte("a: 1\n"), []byte("a: 1")) {
-		t.Error("a missing final newline is not drift")
+	yaml := []byte("dependencies:\n  openssl.org: ^3\nprovides:\n  - bin/x\n")
+	hcl := []byte("dependencies = { \"openssl.org\" = \"^3\" }\nprovides = [\"bin/x\"]\n")
+	if same, err := sameRecipe(hcl, "package.hcl", yaml); err != nil || !same {
+		t.Errorf("the same recipe in two formats is not drift: %v, %v", same, err)
 	}
-	if sameRecipe([]byte("a: 1\n"), []byte("a: 2\n")) {
-		t.Error("different content is drift")
+	// And a real disagreement still is.
+	other := []byte("dependencies = { \"openssl.org\" = \"^1\" }\nprovides = [\"bin/x\"]\n")
+	if same, err := sameRecipe(other, "package.hcl", yaml); err != nil || same {
+		t.Errorf("a different constraint is drift: %v, %v", same, err)
+	}
+	// Formatting is not drift — which the byte comparison this replaces could
+	// not say.
+	spaced := []byte("provides = [\"bin/x\"]\n\ndependencies = {\n  \"openssl.org\" = \"^3\"\n}\n")
+	if same, err := sameRecipe(spaced, "package.hcl", yaml); err != nil || !same {
+		t.Errorf("reordering and whitespace are not drift: %v, %v", same, err)
+	}
+	// A YAML overlay still works, for a project the flip has not reached.
+	if same, err := sameRecipe(yaml, "package.yml", yaml); err != nil || !same {
+		t.Errorf("yaml against yaml: %v, %v", same, err)
+	}
+	// A half that cannot be read is NOT "no drift": saying so would pass a
+	// project whose recipe no consumer can parse.
+	if _, err := sameRecipe([]byte("build { script = \n"), "package.hcl", yaml); err == nil {
+		t.Error("an unreadable overlay half must be an error")
+	}
+	if _, err := sameRecipe(hcl, "package.hcl", []byte("\tnot yaml\n")); err == nil {
+		t.Error("an unreadable patch half must be an error")
+	}
+}
+
+// The overlay is asked for BOTH names, in the order a consumer tries them.
+// Asking for package.yml alone reported all eight of this tool's projects
+// "absent from the overlay" the day those recipes became package.hcl — every
+// one of them was there.
+func TestFetchOverlayRecipeTriesBothNames(t *testing.T) {
+	saved := httpGet
+	t.Cleanup(func() { httpGet = saved })
+
+	var asked []string
+	httpGet = func(url string) (int, []byte, error) {
+		asked = append(asked, url)
+		if strings.Contains(url, "package.hcl") {
+			return 200, []byte("x = 1\n"), nil
+		}
+		return 404, nil, nil
+	}
+	name, status, _, err := fetchOverlayRecipe("openucx.org")
+	if err != nil || status != 200 || name != "package.hcl" {
+		t.Errorf("hcl first: %q %d %v", name, status, err)
+	}
+	if len(asked) != 1 {
+		t.Errorf("the yaml must not be asked for once the hcl answered: %v", asked)
+	}
+
+	// Only YAML: the fall-through still works for a project the flip has not
+	// reached.
+	asked = nil
+	httpGet = func(url string) (int, []byte, error) {
+		asked = append(asked, url)
+		if strings.Contains(url, "package.yml") {
+			return 200, []byte("a: 1\n"), nil
+		}
+		return 404, nil, nil
+	}
+	if name, status, _, _ := fetchOverlayRecipe("x.org"); status != 200 || name != "package.yml" {
+		t.Errorf("fall through to yaml: %q %d", name, status)
+	}
+	if len(asked) != 2 {
+		t.Errorf("both names must be tried: %v", asked)
+	}
+
+	// Neither: a 404 only after both, and it names the last one tried.
+	httpGet = func(string) (int, []byte, error) { return 404, nil, nil }
+	if _, status, _, _ := fetchOverlayRecipe("nowhere.org"); status != 404 {
+		t.Errorf("status = %d, want 404", status)
+	}
+
+	// A transport failure stops the walk: trying the second name would turn a
+	// network fault into "absent from the overlay", which is a different
+	// report and a wrong one.
+	wantErr := errors.New("no route")
+	httpGet = func(string) (int, []byte, error) { return 0, nil, wantErr }
+	if _, _, _, err := fetchOverlayRecipe("x.org"); !errors.Is(err, wantErr) {
+		t.Errorf("err = %v, want the transport error", err)
 	}
 }
 
@@ -96,11 +179,14 @@ func TestRunAgreement(t *testing.T) {
 	dir := writePatches(t, map[string]string{"acme-new.patch": newPatch})
 	old := httpGet
 	defer func() { httpGet = old }()
+	// The overlay answers in HCL and the patch half is YAML, which is the
+	// arrangement in production: the two agree as DOCUMENTS and share barely a
+	// byte.
 	httpGet = func(url string) (int, []byte, error) {
-		if !strings.Contains(url, "/projects/acme.org/tool/package.yml") {
+		if !strings.Contains(url, "/projects/acme.org/tool/package.hcl") {
 			t.Errorf("unexpected url %q", url)
 		}
-		return 200, []byte("distributable:\n  url: https://acme.org/tool-{{version}}.tar.gz\ndisplay-name: tool\n"), nil
+		return 200, []byte("distributable {\n  url = \"https://acme.org/tool-{{version}}.tar.gz\"\n}\ndisplay-name = \"tool\"\n"), nil
 	}
 	var out bytes.Buffer
 	if code := run(dir, &out); code != 0 {
@@ -127,8 +213,12 @@ func TestRunDisagreements(t *testing.T) {
 			"overlay answered 500"},
 		{"transport", func(string) (int, []byte, error) { return 0, nil, errors.New("boom") },
 			"cannot read the overlay: boom"},
-		{"drifted", func(string) (int, []byte, error) { return 200, []byte("something else\n"), nil },
+		{"drifted", func(string) (int, []byte, error) { return 200, []byte("display-name = \"something else\"\n"), nil },
 			"halves have drifted"},
+		// A half that cannot be READ is not "no drift": passing it would let
+		// through a recipe no consumer can parse.
+		{"unreadable", func(string) (int, []byte, error) { return 200, []byte("build { script = \n"), nil },
+			"cannot compare the halves"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			httpGet = tc.get
@@ -195,7 +285,7 @@ func TestMainRuns(t *testing.T) {
 	osExit = func(c int) { exited = c }
 
 	httpGet = func(string) (int, []byte, error) {
-		return 200, []byte("distributable:\n  url: https://acme.org/tool-{{version}}.tar.gz\ndisplay-name: tool\n"), nil
+		return 200, []byte("distributable {\n  url = \"https://acme.org/tool-{{version}}.tar.gz\"\n}\ndisplay-name = \"tool\"\n"), nil
 	}
 	os.Args = []string{"overlaycheck", dir}
 	main()
@@ -230,5 +320,29 @@ func TestMainRuns(t *testing.T) {
 	main()
 	if exited != -1 {
 		t.Errorf("an empty overrides dir is not a failure, got %d", exited)
+	}
+}
+
+// And the SUCCESS path of the real seam, which the closed-port cases above
+// cannot reach: a response that arrives has a body to read and a status to
+// return, and nothing else in this tool exercises those three lines.
+func TestHTTPGetReadsAResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The contents API is asked for the file itself, not its
+		// base64-in-JSON envelope, and CI's token must travel.
+		if got := r.Header.Get("Accept"); got != "application/vnd.github.raw" {
+			t.Errorf("Accept = %q", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer tok" {
+			t.Errorf("Authorization = %q", got)
+		}
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte("body"))
+	}))
+	defer srv.Close()
+	t.Setenv("GITHUB_TOKEN", "tok")
+	status, body, err := httpGet(srv.URL)
+	if err != nil || status != http.StatusTeapot || string(body) != "body" {
+		t.Errorf("got %d, %q, %v", status, body, err)
 	}
 }

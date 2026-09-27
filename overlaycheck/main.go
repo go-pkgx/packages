@@ -5,9 +5,15 @@
 //
 //   - overrides/<name>-new.patch, applied to a fresh pkgxdev/pantry clone, is
 //     what `bk` BUILDS from;
-//   - go-pkgx/pantry-overlay/projects/<project>/package.yml is what a consumer
+//   - go-pkgx/pantry-overlay/projects/<project>/package.hcl is what a consumer
 //     RESOLVES over HTTP (bottle's fetchRecipe tries the overlay, then upstream,
 //     and nothing else).
+//
+// The two halves are in DIFFERENT FORMATS and that is deliberate: the patch
+// applies to a fresh upstream clone, which is YAML, while the overlay is HCL.
+// So they are compared as documents, through the same conversion the client
+// runs — not as bytes, which is what they were until the overlay changed
+// format and this check called all eight of its projects missing.
 //
 // For a project that upstream does not carry — openucx.org, rdma-core,
 // cuda-cudart, ROCr — the overlay is the ONLY place a consumer can learn the
@@ -28,9 +34,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/go-pkgx/bottle"
 )
 
 // overlayBase names the overlay's recipes through the GitHub contents API
@@ -113,7 +122,7 @@ func run(dir string, out io.Writer) int {
 
 	bad := 0
 	for _, project := range names {
-		status, body, err := httpGet(overlayBase + "/" + project + "/package.yml?ref=main")
+		name, status, body, err := fetchOverlayRecipe(project)
 		switch {
 		case err != nil:
 			fmt.Fprintf(out, "✗ %s: cannot read the overlay: %v\n", project, err)
@@ -124,11 +133,18 @@ func run(dir string, out io.Writer) int {
 		case status != http.StatusOK:
 			fmt.Fprintf(out, "✗ %s: overlay answered %d\n", project, status)
 			bad++
-		case !sameRecipe(body, added[project]):
-			fmt.Fprintf(out, "✗ %s: the two halves have drifted\n", project)
-			bad++
 		default:
-			fmt.Fprintf(out, "✓ %s\n", project)
+			same, err := sameRecipe(body, name, added[project])
+			switch {
+			case err != nil:
+				fmt.Fprintf(out, "✗ %s: cannot compare the halves: %v\n", project, err)
+				bad++
+			case !same:
+				fmt.Fprintf(out, "✗ %s: the two halves have drifted\n", project)
+				bad++
+			default:
+				fmt.Fprintf(out, "✓ %s\n", project)
+			}
 		}
 	}
 	if bad > 0 {
@@ -139,11 +155,60 @@ func run(dir string, out io.Writer) int {
 	return 0
 }
 
-// sameRecipe compares two recipes ignoring trailing whitespace and a missing
-// final newline — differences a copy between repositories can introduce and
-// that change nothing about what either half reads.
-func sameRecipe(a, b []byte) bool {
-	return strings.TrimRight(string(a), "\n \t") == strings.TrimRight(string(b), "\n \t")
+// recipeNames are the two spellings a consumer looks for, in the order
+// bottle's fetchRecipe tries them. The overlay is HCL now and upstream is YAML,
+// so asking for only one of them is how a check goes blind: on 2026-09-27 this
+// tool asked for package.yml alone and reported all eight of its projects
+// "absent from the overlay" the day those recipes became package.hcl. Every
+// one of them was there.
+var recipeNames = []string{"package.hcl", "package.yml"}
+
+// fetchOverlayRecipe returns the first recipe file the overlay answers for, and
+// which one it was. A 404 is only reported once BOTH names have been tried.
+func fetchOverlayRecipe(project string) (name string, status int, body []byte, err error) {
+	for _, n := range recipeNames {
+		status, body, err = httpGet(overlayBase + "/" + project + "/" + n + "?ref=main")
+		if err != nil || status != http.StatusNotFound {
+			return n, status, body, err
+		}
+	}
+	return recipeNames[len(recipeNames)-1], http.StatusNotFound, nil, nil
+}
+
+// sameRecipe reports whether the two halves say the same thing, whatever
+// format each is written in.
+//
+// It used to be a byte comparison, which worked while both halves were YAML.
+// The overlay is HCL now: the build half patches an upstream clone and stays
+// YAML, so there is nothing left for a byte comparison to mean. Comparing
+// DOCUMENTS is also strictly better — a reformatting is no longer a drift.
+//
+// Both sides go through the conversion the CLIENT runs, so this agrees with
+// what a consumer will actually resolve rather than with a second reading of
+// the same files. A hand-rolled HCL reader here would be exactly the kind of
+// second opinion that goes stale without anyone noticing.
+func sameRecipe(overlay []byte, overlayName string, patch []byte) (bool, error) {
+	a, err := recipeDoc(overlay, overlayName)
+	if err != nil {
+		return false, fmt.Errorf("the overlay's %s: %w", overlayName, err)
+	}
+	b, err := recipeDoc(patch, "package.yml")
+	if err != nil {
+		return false, fmt.Errorf("the patch's package.yml: %w", err)
+	}
+	return reflect.DeepEqual(a, b), nil
+}
+
+// recipeDoc reads either format into one document shape.
+func recipeDoc(src []byte, name string) (map[string]any, error) {
+	if strings.HasSuffix(name, ".yml") {
+		converted, err := bottle.YAMLToHCL(src, name)
+		if err != nil {
+			return nil, err
+		}
+		src, name = converted, name+".hcl"
+	}
+	return bottle.HCLToMap(src, name)
 }
 
 // addedProjects reads every patch in dir and returns, per project, the content
