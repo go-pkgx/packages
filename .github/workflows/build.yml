@@ -252,6 +252,19 @@ jobs:
       - name: clone pantry
         run: git clone --depth 1 https://github.com/pkgxdev/pantry
 
+      # The overlay is the half a CONSUMER resolves from, and it declares edges
+      # upstream does not: perl.org NEEDs libcrypt.so.1, our overlay names the
+      # provider, upstream's recipe says nothing. Until go-pkgx/bk#224 the
+      # factory's closure walk read the pantry alone, so such a provider was
+      # never built while every consumer asked the registry for it — and the
+      # s390x seed only worked because its order had been computed by hand with
+      # `bk closure --build --overlay` and pasted in.
+      #
+      # It does NOT change what is compiled: `bk factory` still builds the
+      # pantry's recipe with the overrides applied. It widens the closure.
+      - name: clone the pantry overlay
+        run: git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+
       # The sovereign path: a rootfs assembled from OUR bottles, entered with
       # chroot. The host then contributes three static Go binaries and a mount
       # namespace, and nothing it links against reaches the build. See
@@ -432,6 +445,7 @@ jobs:
             # the result, and a recipe that genuinely does not build must not
             # paint the whole lot red. The proof job keeps the strict posture.
             export SOVEREIGN_STRICT=0
+            SOVEREIGN_OVERLAY="$PWD/overlay" \
             builder/sovereign-build.sh \
               "$RUNNER_TEMP/rootfs" "$PWD/pantry" "$PWD/overrides" \
               ${GLIBC:+--glibc "$GLIBC"} \
@@ -454,6 +468,7 @@ jobs:
             bk factory \
               --pantry pantry \
               --overrides overrides \
+              --overlay overlay \
               --to "$PKGX_DIST" \
               --bottles dist \
               ${BOOTSTRAP:+--bootstrap} \
