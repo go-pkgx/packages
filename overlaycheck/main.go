@@ -179,7 +179,8 @@ func runAgainstPantry(pantryDir, overlayHint string, out io.Writer) int {
 		return 2
 	}
 
-	bad, checked := 0, 0
+	bad, checked, broken := 0, 0, 0
+	var unexplained []string
 	for _, project := range projects {
 		built, err := os.ReadFile(filepath.Join(pantryDir, "projects", filepath.FromSlash(project), "package.yml"))
 		if err != nil {
@@ -202,6 +203,7 @@ func runAgainstPantry(pantryDir, overlayHint string, out io.Writer) int {
 		if err != nil {
 			fmt.Fprintf(out, "✗ %s: cannot read the overlay: %v\n", project, err)
 			bad++
+			broken++
 			continue
 		}
 		d, err := recipeDiff(body, name, built)
@@ -209,23 +211,77 @@ func runAgainstPantry(pantryDir, overlayHint string, out io.Writer) int {
 		case err != nil:
 			fmt.Fprintf(out, "✗ %s: cannot compare the halves: %v\n", project, err)
 			bad++
+			broken++
 		case d != "":
 			fmt.Fprintf(out, "✗ %-30s %s\n", project, elide(d))
 			bad++
+			if c, ok := strings.CutPrefix(d, consumerMark); ok && !deliberate[project] {
+				unexplained = append(unexplained, project+": "+elide(c))
+			}
 		}
 	}
 	fmt.Fprintf(out, "\n%d of %d overlay project(s) are in both halves, %d disagree.\n",
 		checked, len(projects), bad)
+	// A build-side difference is reported and does NOT fail: nothing reads a
+	// build section out of the overlay — the factory compiles the pantry's
+	// recipe with the overrides applied. 23 of the 25 disagreements are that,
+	// they are our own override patches, and failing on them would mean
+	// mirroring every patch into a second tree forever.
+	//
+	// A CONSUMER-side difference is another matter. It is what resolution
+	// actually uses, the overlay WINS there, and a stale one is served. So
+	// those fail, minus the handful this overlay exists to make.
+	// A comparison that could not be PERFORMED always fails, whichever half it
+	// would have been about. Only a difference the tool actually measured can
+	// be waved through as build-side, and an unreadable or unparsable recipe
+	// is not a measurement — it is the absence of one. Written the other way
+	// first, and caught by a test rather than by reading it.
+	if broken > 0 {
+		fmt.Fprintf(out, "%d recipe(s) could not be compared at all\n", broken)
+		return 1
+	}
+	if len(unexplained) > 0 {
+		fmt.Fprintln(out, "\nthese are the half a CONSUMER resolves from, where the overlay WINS:")
+		for _, u := range unexplained {
+			fmt.Fprintln(out, "  ✗", u)
+		}
+		fmt.Fprintln(out, "either the overlay declares this deliberately — add it to `deliberate` in overlaycheck,")
+		fmt.Fprintln(out, "with the reason — or it has fallen behind the pantry and should be brought back in line.")
+		return 1
+	}
 	// Nothing in both halves, with an overlay that carries recipes, is not
 	// agreement either — it means the two trees do not line up at all.
 	if checked == 0 {
 		fmt.Fprintln(out, "overlaycheck: not one overlay project was found in the pantry — are these the right trees?")
 		return 2
 	}
-	if bad > 0 {
-		return 1
-	}
 	return 0
+}
+
+// consumerMark prefixes a difference in the half a consumer resolves from.
+const consumerMark = "CONSUMER "
+
+// deliberate names the projects whose CONSUMER half is meant to disagree with
+// upstream's. Each one is this overlay doing the job it exists for: declaring
+// a runtime edge the upstream recipe omits and the closure needs.
+//
+// It is a list of projects rather than of project+key, because the point is
+// "this project's dependencies are ours"; pinning the exact key would turn
+// every legitimate addition into a second edit here.
+//
+// Adding to it is a decision, not a formality. The one defect this gate was
+// built after — tcl-lang.org enumerating versions from a page that lists only
+// what upstream recommends, while its own distributable downloads from
+// SourceForge — would have belonged nowhere near this list.
+var deliberate = map[string]bool{
+	// go-pkgx/pantry-overlay#30: the published bottle links gettext on darwin
+	// and upstream's recipe names it only as a build dependency.
+	"gnu.org/libiconv": true,
+	// The published perl bottle NEEDs libcrypt.so.1; glibc dropped it, and
+	// upstream's perl.org says nothing about the provider.
+	"perl.org": true,
+	// Links openssl 3; upstream's recipe declares no runtime dependency at all.
+	"rpm.org/rpm-sequoia": true,
 }
 
 // overlayRecipeFile reads a project's recipe out of an overlay checkout, in the
@@ -445,7 +501,7 @@ func recipeDiff(overlay []byte, overlayName string, patch []byte) (string, error
 	// was an artefact of the alphabet, not a measurement. Asking the question
 	// that matters first is the only way the answer cannot be masked.
 	if d := consumerDiff(a, b); d != "" {
-		return "CONSUMER " + d, nil
+		return consumerMark + d, nil
 	}
 	return bottle.DocDiff(a, b), nil
 }

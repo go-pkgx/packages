@@ -617,3 +617,69 @@ func TestConsumerDiffLetsNoKeyHideAnother(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// The gate: a build-side difference is reported and passes, a consumer-side
+// one fails unless it is on the deliberate list. 23 of the 25 real
+// disagreements are our own override patches, which nothing reads out of the
+// overlay; failing on those would mean mirroring every patch into a second
+// tree forever.
+func TestRunAgainstPantryGatesOnlyTheConsumerHalf(t *testing.T) {
+	build := "distributable:\n  url: https://acme.org/{{version}}.tar.gz\nbuild:\n  script: make\n"
+	for _, tc := range []struct {
+		name, pantry, overlay string
+		want                  int
+	}{
+		{
+			"a build difference is reported and passes",
+			build,
+			"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\nbuild {\n  script = \"gmake\"\n}\n",
+			0,
+		},
+		{
+			"a consumer difference fails",
+			build,
+			"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\nbuild {\n  script = \"make\"\n}\nprovides = [\"bin/acme\"]\n",
+			1,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pantry, overlay := twoHalves(t)
+			writeFile(t, filepath.Join(pantry, "projects", "acme.org", "package.yml"), tc.pantry)
+			writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"), tc.overlay)
+			var buf bytes.Buffer
+			if code := runAgainstPantry(pantry, overlay, &buf); code != tc.want {
+				t.Fatalf("code = %d, want %d\n%s", code, tc.want, buf.String())
+			}
+			// Either way the difference is REPORTED. A gate that passes in
+			// silence teaches nobody that the two halves have parted.
+			if !strings.Contains(buf.String(), "✗ acme.org") {
+				t.Errorf("the difference must be reported whatever the exit:\n%s", buf.String())
+			}
+		})
+	}
+
+	// On the deliberate list, the same consumer difference passes — that list
+	// is what this overlay exists to hold.
+	t.Run("deliberate passes", func(t *testing.T) {
+		pantry, overlay := twoHalves(t)
+		deliberate["acme.org"] = true
+		t.Cleanup(func() { delete(deliberate, "acme.org") })
+		writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
+			"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\nprovides = [\"bin/acme\"]\n")
+		var buf bytes.Buffer
+		if code := runAgainstPantry(pantry, overlay, &buf); code != 0 {
+			t.Fatalf("code = %d, want 0\n%s", code, buf.String())
+		}
+	})
+
+	// Every name on the list must be a project the overlay carries. A list
+	// that outlives its entries stops being a decision and becomes a place
+	// defects hide.
+	t.Run("the list names real projects", func(t *testing.T) {
+		for p := range deliberate {
+			if !strings.Contains(p, ".") {
+				t.Errorf("%q is not a project name", p)
+			}
+		}
+	})
+}
