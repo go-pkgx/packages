@@ -1,0 +1,29 @@
+--- a/projects/gnu.org/gcc/package.yml	2026-09-27 15:19:42
++++ b/projects/gnu.org/gcc/package.yml	2026-09-27 15:19:42
+@@ -185,7 +185,12 @@
+     # See pkgxdev/pantry#8423.
+     - run:
+         - for tool in gcc g++ cpp c++ ar nm ranlib; do
+-        - if test -e "$tool"; then ln -sf "$tool" "$TRIPLET-$tool"; fi
++        # An architecture the `env:` block below does not name leaves
++        # TRIPLET EMPTY, and `ln -sf gcc -gcc` is read as options:
++        #     ln: invalid option -- 'g'
++        # That is how the first gnu.org/gcc build on linux/s390x died,
++        # after twenty-one minutes of compiling. No triplet, no link.
++        - if test -n "$TRIPLET" && test -e "$tool"; then ln -sf "$tool" "$TRIPLET-$tool"; fi
+         - done
+       if: linux
+       working-directory: ${{prefix}}/bin
+@@ -265,6 +270,12 @@
+       TRIPLET: x86_64-linux-gnu
+     aarch64:
+       TRIPLET: aarch64-linux-gnu
++    # Measured on the machine rather than guessed: `gcc -dumpmachine`
++    # answers s390x-linux-gnu there, which is the Debian multi-arch
++    # spelling toolchains probe for. `config.guess` says
++    # s390x-ibm-linux-gnu, which is a different question.
++    s390x:
++      TRIPLET: s390x-linux-gnu
+ 
+ test:
+   - gcc --version | grep -q "pkgx GCC {{version}}"
