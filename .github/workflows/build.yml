@@ -338,6 +338,15 @@ jobs:
           echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects${FORCE:+ (FORCE rebuild)}"
           # RECIPES / FORCE / MAX_VERSIONS / PLATFORM are read from the env by
           # `bk factory` itself; the rest is passed explicitly.
+          # Disk, before and after, because a full one does not announce
+          # itself — it arrives as somebody else's error. The s390x seed hit
+          # it on the fifty-seventh project and reported
+          #   kernel.org/linux-headers: fetch: write …: no space left on device
+          # naming a project that had done nothing wrong. bk now removes a
+          # published build tree (go-pkgx/bk#217); what a run INHERITS from
+          # earlier ones it cannot remove, and only a number shows that.
+          echo "disk before:"; df -h "$HOME" | tail -1
+          du -sh "$HOME/.local/share/brewkit" 2>/dev/null || echo "  (no build root yet)"
           MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
           NO_CLOSURE="${{ github.event.inputs.no_closure }}"
           PIN_TO_DEPENDENTS="${{ github.event.inputs.pin_to_dependents }}"
@@ -399,6 +408,24 @@ jobs:
               ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"} \
             ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
           fi
+
+      # AFTER, and `always()`, because the number matters most on the run
+      # that just failed. A step that only reports on success reports the
+      # disk of every run except the one that filled it.
+      - name: disk after
+        if: always()
+        run: |
+          df -h "$HOME" | tail -1
+          du -sh "$HOME/.local/share/brewkit" 2>/dev/null || echo "  (no build root)"
+          # The ten biggest directories left behind, at ANY depth. bk
+          # removes a tree once its bottle is PUBLISHED (go-pkgx/bk#217),
+          # so what remains is what FAILED — kept on purpose, and worth
+          # seeing the size of.
+          #
+          # No glob: a project name carries a variable number of slashes
+          # (zlib.net against x.org/protocol/xcb), so a fixed `*/*/*`
+          # would compare a project directory against a version one.
+          du -h "$HOME/.local/share/brewkit" 2>/dev/null | sort -rh | head -10 || true
 
       # What a SEED generation was made of.
       #
