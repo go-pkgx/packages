@@ -130,13 +130,13 @@ func TestRunAuditUnrequestableUpstreamURL(t *testing.T) {
 	}}
 	env := map[string]string{"AUDIT": "1"}
 	var out, errb strings.Builder
-	// No LOST entry, so the audit passes: a gap upstream cannot confirm is not a
+	// Nothing omitted, so the audit passes: a gap upstream cannot confirm is not a
 	// defect anyone can act on.
 	if err := run(&out, &errb, func(k string) string { return env[k] }, d, fakeFiles(files)); err != nil {
 		t.Fatalf("an unconfirmable gap must not fail the audit: %v", err)
 	}
-	if !strings.Contains(errb.String(), "0 lost index entr") {
-		t.Errorf("want no lost entries, got %q", errb.String())
+	if !strings.Contains(errb.String(), "0 omitted manifest(s) of 0 examined") {
+		t.Errorf("want nothing omitted, got %q", errb.String())
 	}
 	if !strings.Contains(out.String(), "foo 1.1: no linux/a") {
 		t.Errorf("the gap is not reported as an absence:\n%q", out.String())

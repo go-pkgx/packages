@@ -311,7 +311,7 @@ func TestListTags(t *testing.T) {
 	// 200: sha256-* + non-semver junk dropped, remaining sorted.
 	body := `{"name":"acme/packages/x","tags":["1.1","1.0","sha256-x","latest","v2.0"]}`
 	c := testClient(route(when("/tags/list", resp(200, body, nil))))
-	tags, err := c.listTags("x", "tok")
+	tags, _, err := c.listTags("x", "tok")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,24 +320,24 @@ func TestListTags(t *testing.T) {
 	}
 	// 404 -> no tags, no error (not published / empty).
 	c = testClient(route(when("/tags/list", resp(404, `{}`, nil))))
-	if tags, err := c.listTags("x", "tok"); err != nil || tags != nil {
+	if tags, _, err := c.listTags("x", "tok"); err != nil || tags != nil {
 		t.Fatalf("404: tags=%v err=%v, want nil,nil", tags, err)
 	}
 	// Other non-2xx -> error.
 	c = testClient(route(when("/tags/list", resp(500, "boom", nil))))
-	if _, err := c.listTags("x", "tok"); err == nil {
+	if _, _, err := c.listTags("x", "tok"); err == nil {
 		t.Fatal("expected 500 error")
 	}
 	// 200 malformed -> decode error.
 	c = testClient(route(when("/tags/list", resp(200, `bad`, nil))))
-	if _, err := c.listTags("x", "tok"); err == nil {
+	if _, _, err := c.listTags("x", "tok"); err == nil {
 		t.Fatal("expected decode error")
 	}
 	// Transport error.
 	c = testClient(mockDoer{fn: func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("net down")
 	}})
-	if _, err := c.listTags("x", "tok"); err == nil {
+	if _, _, err := c.listTags("x", "tok"); err == nil {
 		t.Fatal("expected transport error")
 	}
 }
@@ -372,12 +372,12 @@ func TestPlatforms(t *testing.T) {
 func TestPackageRows(t *testing.T) {
 	// token error (non-2xx that is not 403/404) -> logged + skipped.
 	c := testClient(route(when("/token?", resp(500, "x", nil))))
-	if rows := c.packageRows("foo"); rows != nil {
+	if rows, _ := c.packageRows("foo"); rows != nil {
 		t.Fatalf("token error: want nil, got %v", rows)
 	}
 	// not published (403) -> empty bearer -> skipped silently.
 	c = testClient(route(when("/token?", resp(403, "denied", nil))))
-	if rows := c.packageRows("foo"); rows != nil {
+	if rows, _ := c.packageRows("foo"); rows != nil {
 		t.Fatalf("not published: want nil, got %v", rows)
 	}
 	// tags error -> skipped.
@@ -385,7 +385,7 @@ func TestPackageRows(t *testing.T) {
 		when("/token?", resp(200, `{"token":"t"}`, nil)),
 		when("/tags/list", resp(500, "x", nil)),
 	))
-	if rows := c.packageRows("foo"); rows != nil {
+	if rows, _ := c.packageRows("foo"); rows != nil {
 		t.Fatalf("tags error: want nil, got %v", rows)
 	}
 	// one tag's manifest errors -> that tag skipped, the other yields a row.
@@ -395,7 +395,7 @@ func TestPackageRows(t *testing.T) {
 		when("/manifests/2.0", resp(200, `{"manifests":[{"platform":{"os":"linux","architecture":"amd64"}}]}`, nil)),
 		when("/manifests/1.0", resp(500, "bad", nil)),
 	))
-	rows := c.packageRows("foo")
+	rows, _ := c.packageRows("foo")
 	if len(rows) != 1 || rows[0].Version != "2.0" || rows[0].OS != "linux" || rows[0].Arch != "x86-64" {
 		t.Fatalf("got %+v", rows)
 	}
@@ -519,19 +519,23 @@ func TestRunAuditMode(t *testing.T) {
 	one := `{"manifests":[
 	 {"platform":{"os":"linux","architecture":"amd64"},"digest":"sha256:c"}]}`
 
+	// `1.1--linux-aarch64` is the manifest the index write dropped: pushed,
+	// valid, tagged under a name no publisher contends for — and absent from
+	// 1.1's index. That is the defect, and the evidence of it.
+	tagList := `{"name":"acme/packages/foo","tags":["1.0","1.1","1.2","1.1--linux-aarch64"]}`
 	d := mockDoer{fn: func(r *http.Request) (*http.Response, error) {
 		u := r.URL.String()
 		switch {
 		case strings.Contains(u, "/token?"):
 			return resp(200, `{"token":"t"}`, nil), nil
 		case strings.Contains(u, "/packages/foo/tags/list"):
-			return resp(200, `{"name":"acme/packages/foo","tags":["1.0","1.1","1.2"]}`, nil), nil
+			return resp(200, tagList, nil), nil
 		case strings.Contains(u, "/packages/foo/manifests/1.1"):
 			return resp(200, one, nil), nil
 		case strings.Contains(u, "/packages/foo/manifests/"):
 			return resp(200, both, nil), nil
 		// The upstream dist carries every foo version for both arches, so a gap
-		// in OUR index is a LOST entry rather than a version that never existed.
+		// in OUR index is uneven rather than a version that never existed.
 		case strings.Contains(u, "dist.pkgx.dev/foo/linux/"):
 			return resp(200, "1.0\n1.1\n1.2\n", nil), nil
 		}
@@ -545,30 +549,33 @@ func TestRunAuditMode(t *testing.T) {
 	getenv := func(k string) string { return env[k] }
 
 	var out, errb strings.Builder
-	// A lost entry is a DEFECT, so the audit fails: that is what makes a
+	// An OMITTED manifest is a DEFECT, so the audit fails: that is what makes a
 	// scheduled run a gate instead of a report.
 	if err := run(&out, &errb, getenv, d, fakeFiles(files)); err == nil {
-		t.Fatal("a lost index entry must fail the audit")
+		t.Fatal("a manifest the index omits must fail the audit")
 	}
 	if !strings.Contains(out.String(), "foo 1.1") || !strings.Contains(out.String(), "linux/aarch64") {
 		t.Errorf("the gap is not reported:\n%s", out.String())
 	}
+	if !strings.Contains(out.String(), "manifest is at 1.1--linux-aarch64") {
+		t.Errorf("the report must name the manifest to recompose from:\n%s", out.String())
+	}
 	if strings.Contains(out.String(), "different platform sets") {
 		t.Errorf("AUDIT alone must not print the full listing:\n%s", out.String())
 	}
-	// Upstream carries foo 1.1 for linux/aarch64, so this gap is a LOST index
-	// entry — the half a re-dispatch can put back.
-	if !strings.Contains(errb.String(), "1 lost index entr") {
-		t.Errorf("not classified as lost: %q", errb.String())
+	if !strings.Contains(errb.String(), "1 omitted manifest(s) of 1 examined in 1 package(s)") {
+		t.Errorf("not counted as omitted: %q", errb.String())
 	}
-	if !strings.Contains(out.String(), "--- LOST") || !strings.Contains(out.String(), "--- ABSENT") {
-		t.Errorf("the two buckets are not both shown:\n%s", out.String())
+	for _, want := range []string{"--- OMITTED", "--- UNEVEN / with a manifest", "--- ABSENT"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("%s bucket missing:\n%s", want, out.String())
+		}
 	}
 
 	env["AUDIT_ALL"] = "1"
 	var out2, errb2 strings.Builder
 	if err := run(&out2, &errb2, getenv, d, fakeFiles(files)); err == nil {
-		t.Fatal("a lost index entry must fail the audit")
+		t.Fatal("a manifest the index omits must fail the audit")
 	}
 	if !strings.Contains(out2.String(), "different platform sets") {
 		t.Errorf("AUDIT_ALL must add the full listing:\n%s", out2.String())
@@ -625,7 +632,7 @@ func TestRunAuditReportsAnAbsence(t *testing.T) {
 	if !strings.Contains(out.String(), "no linux/aarch64 anywhere") {
 		t.Errorf("the absence is not stated:\n%s", out.String())
 	}
-	if !strings.Contains(errb.String(), "0 lost index entr(ies), 1 genuine absence(s)") {
+	if !strings.Contains(errb.String(), "0 omitted manifest(s) of 0 examined") {
 		t.Errorf("wrong classification: %q", errb.String())
 	}
 }
@@ -672,7 +679,75 @@ func TestRunAuditPassesWhenOnlyAbsencesRemain(t *testing.T) {
 	if err := run(&out, &errb, func(k string) string { return env[k] }, d, fakeFiles(files)); err != nil {
 		t.Fatalf("absences must not fail the gate: %v", err)
 	}
-	if !strings.Contains(errb.String(), "0 lost index entr(ies), 1 genuine absence(s)") {
+	if !strings.Contains(errb.String(), "0 omitted manifest(s) of 0 examined") {
 		t.Errorf("wrong counts: %q", errb.String())
+	}
+}
+
+// TestRunAuditDoesNotGateOnAnUnevenHistory.
+//
+// The same shape as TestRunAuditMode with the platform tag removed: foo 1.1
+// carries one arch where 1.0 and 1.2 carry two, and upstream has all of them.
+// The old gate called that a lost index entry and went red. It was red on 221
+// of them, and not one was a defect — python.org carries linux at the newest
+// patch of each minor line and nowhere else, libexpat carries darwin at three
+// versions out of 32, libgit2 has linux in eras. The premise that a version
+// between two carrying a platform should have carried it is simply not true of
+// a factory that builds selectively.
+//
+// So it is REPORTED and does not fail. A lane that is permanently red on a
+// standing list is one everyone learns to ignore, which is the same as having
+// no lane — and the loss this audit exists to catch would arrive into that.
+func TestRunAuditDoesNotGateOnAnUnevenHistory(t *testing.T) {
+	files := map[string]string{
+		"recipes.txt":               "foo\n",
+		"windows/go-projects.txt":   "",
+		"windows/rust-projects.txt": "",
+	}
+	both := `{"manifests":[
+	 {"platform":{"os":"linux","architecture":"amd64"},"digest":"sha256:a"},
+	 {"platform":{"os":"linux","architecture":"arm64"},"digest":"sha256:b"}]}`
+	one := `{"manifests":[
+	 {"platform":{"os":"linux","architecture":"amd64"},"digest":"sha256:c"}]}`
+
+	d := mockDoer{fn: func(r *http.Request) (*http.Response, error) {
+		u := r.URL.String()
+		switch {
+		case strings.Contains(u, "/token?"):
+			return resp(200, `{"token":"t"}`, nil), nil
+		case strings.Contains(u, "/packages/foo/tags/list"):
+			// No `1.1--linux-aarch64`: nothing was ever pushed for it.
+			return resp(200, `{"name":"acme/packages/foo","tags":["1.0","1.1","1.2"]}`, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/1.1"):
+			return resp(200, one, nil), nil
+		case strings.Contains(u, "/packages/foo/manifests/"):
+			return resp(200, both, nil), nil
+		case strings.Contains(u, "dist.pkgx.dev/foo/linux/"):
+			return resp(200, "1.0\n1.1\n1.2\n", nil), nil
+		}
+		return resp(404, "nope", nil), nil
+	}}
+	getenv := func(k string) string {
+		return map[string]string{
+			"GITHUB_REPOSITORY_OWNER": "acme",
+			"GHCR_URL":                "https://ghcr.test",
+			"AUDIT":                   "1",
+		}[k]
+	}
+
+	var out, errb strings.Builder
+	if err := run(&out, &errb, getenv, d, fakeFiles(files)); err != nil {
+		t.Fatalf("an uneven history must not fail the audit: %v", err)
+	}
+	// Still reported, and in the bucket that says there is nothing to
+	// recompose from.
+	if !strings.Contains(errb.String(), "0 omitted manifest(s)") {
+		t.Errorf("nothing is omitted here: %q", errb.String())
+	}
+	if !strings.Contains(errb.String(), "1 uneven entr(ies) (0 with a manifest, 1 without)") {
+		t.Errorf("the uneven entry must still be counted: %q", errb.String())
+	}
+	if !strings.Contains(out.String(), "foo 1.1: missing linux/aarch64") {
+		t.Errorf("the entry must still be listed:\n%s", out.String())
 	}
 }

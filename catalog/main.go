@@ -85,7 +85,7 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 	if n, err := strconv.Atoi(getenv("CATALOG_CONCURRENCY")); err == nil && n > 0 {
 		workers = n
 	}
-	rows := c.collect(names, workers)
+	rows, platformTags := c.collect(names, workers)
 
 	sort.Slice(rows, func(i, j int) bool {
 		a, b := rows[i], rows[j]
@@ -116,9 +116,37 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 			}
 			return c.doer.Do(req)
 		})
+		// THE GATE: a platform manifest that is in the registry under its own
+		// tag and missing from its version's index. That is the defect stated
+		// by its mechanism, with the evidence in hand, and it cannot be wrong.
+		omitted := indexOmitsAManifest(rows, platformTags)
+		fmt.Fprintf(stdout, "--- OMITTED: the manifest is in the registry under its own tag and the index does not list it ---\n")
+		for _, g := range omitted {
+			fmt.Fprintf(stdout, "%s %s: index omits %s (manifest is at %s)\n", g.project, g.version, g.platform, manifestTag(g))
+		}
+
+		// REPORTED, NOT GATED: a version carrying fewer platforms than versions
+		// on either side of it, which upstream does carry.
+		//
+		// This used to be the gate and it was red on 221 entries that are not
+		// defects. Its premise is that a version between two carrying platform
+		// P should have had P — true of a factory that builds every version for
+		// every platform, and this one does not. python.org carries linux at
+		// the newest patch of each minor line and nowhere else; libexpat
+		// carries linux throughout and darwin at three versions; libgit2 has
+		// linux in eras. The "holes" are those policies, and not one of the 221
+		// had a platform manifest to recompose from.
+		//
+		// Kept because it is the only thing that can see a loss from before the
+		// platform tags existed — as a list to read, not a lane to go red.
 		lost, absent := classifyGaps(collectPlatformGaps(rows), up)
-		fmt.Fprintf(stdout, "--- LOST: upstream has these, our index does not — a re-dispatch puts them back ---\n")
-		for _, g := range lost {
+		reindexable, rebuild := splitByPlatformTag(lost, platformTags)
+		fmt.Fprintf(stdout, "\n--- UNEVEN / with a manifest: upstream has these, our index does not, and the manifest is here ---\n")
+		for _, g := range reindexable {
+			fmt.Fprintf(stdout, "%s %s: missing %s (have %s)\n", g.project, g.version, g.platform, manifestTag(g))
+		}
+		fmt.Fprintf(stdout, "\n--- UNEVEN / no manifest: upstream has these and we have neither the index entry nor a manifest — a build, or a version this factory never built for that platform ---\n")
+		for _, g := range rebuild {
 			fmt.Fprintf(stdout, "%s %s: missing %s\n", g.project, g.version, g.platform)
 		}
 		fmt.Fprintf(stdout, "\n--- ABSENT: upstream has no such bottle either — nothing to heal ---\n")
@@ -132,24 +160,35 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 		for _, g := range behind {
 			fmt.Fprintf(stdout, "%s %s: no %s\n", g.project, g.version, g.platform)
 		}
-		fmt.Fprintf(stderr, "catalog: %d lost index entr(ies), %d genuine absence(s), %d newest-version gap(s)\n",
-			len(lost), len(absent), len(behind))
+		// The DENOMINATOR is printed beside the gate's count, because "0
+		// omitted" out of nothing examined reads exactly like "0 omitted" out
+		// of every manifest in the registry, and only one of those is a pass.
+		// A publisher that stops writing the platform tag would take this to
+		// zero and say nothing.
+		examined := 0
+		for _, tags := range platformTags {
+			examined += len(tags)
+		}
+		fmt.Fprintf(stderr, "catalog: %d omitted manifest(s) of %d examined in %d package(s); %d uneven entr(ies) (%d with a manifest, %d without), %d genuine absence(s), %d newest-version gap(s)\n",
+			len(omitted), examined, len(platformTags), len(lost), len(reindexable), len(rebuild), len(absent), len(behind))
 		if getenv("AUDIT_ALL") != "" {
 			fmt.Fprintln(stdout, "\n--- every project whose versions disagree (mostly history: a project gaining a platform) ---")
 			n := auditSplitIndexes(rows, stdout)
 			fmt.Fprintf(stderr, "catalog: %d project(s) whose versions disagree on platforms\n", n)
 		}
-		// A LOST entry is a defect: the bottle is in the registry and the index
-		// does not list it, so every install for that platform fails on a package
-		// that looks published. Fail, so a scheduled run is a GATE rather than a
-		// report nobody reads — the count went from 137 to 0 by hand, and the race
-		// that produced them is narrowed, not closed.
+		// An OMITTED manifest is a defect: the bottle is in the registry and the
+		// index does not list it, so every install for that platform fails on a
+		// package that looks published. Fail, so a scheduled run is a GATE
+		// rather than a report nobody reads — the count went from 137 to 0 by
+		// hand, and the race that produced them is narrowed, not closed.
 		//
-		// Absences do not fail: upstream never published those bottles either,
-		// there is nothing to do about them, and gating on them would mean a
-		// permanently red lane that everyone learns to ignore.
-		if len(lost) > 0 {
-			return fmt.Errorf("%d index entr(ies) lost a platform the upstream dist still carries — re-dispatch those projects (see the LOST list above)", len(lost))
+		// Nothing else fails. Absences: upstream never published those bottles
+		// either. Uneven entries: measured 2026-09-27, all 221 of them were a
+		// build policy rather than a defect, and a lane that is red on a
+		// permanent list is one everyone learns to ignore — which is the same
+		// as having no lane.
+		if len(omitted) > 0 {
+			return fmt.Errorf("%d platform manifest(s) are in the registry and absent from their version's index — recompose those indexes (see the OMITTED list above)", len(omitted))
 		}
 		return nil
 	}
@@ -234,21 +273,33 @@ func candidateNames(readFile func(string) ([]byte, error)) ([]string, error) {
 
 // collect fans the candidate names out across a bounded worker pool, tolerating a
 // per-package failure (logged to stderr) so one bad package never aborts the run.
-func (c *client) collect(names []string, workers int) []row {
+// collect returns the catalogue rows and, beside them, the per-platform
+// manifest tags each package carries — the evidence that tells a lost index
+// write from a bottle that was never pushed.
+func (c *client) collect(names []string, workers int) ([]row, map[string]map[string]bool) {
 	in := make(chan string)
 	var (
-		mu  sync.Mutex
-		out []row
-		wg  sync.WaitGroup
+		mu    sync.Mutex
+		out   []row
+		plats = map[string]map[string]bool{}
+		wg    sync.WaitGroup
 	)
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for name := range in {
-				rs := c.packageRows(name)
+				rs, pts := c.packageRows(name)
 				mu.Lock()
 				out = append(out, rs...)
+				if len(pts) > 0 {
+					if plats[name] == nil {
+						plats[name] = map[string]bool{}
+					}
+					for _, t := range pts {
+						plats[name][t] = true
+					}
+				}
 				mu.Unlock()
 			}
 		}()
@@ -258,25 +309,26 @@ func (c *client) collect(names []string, workers int) []row {
 	}
 	close(in)
 	wg.Wait()
-	return out
+	return out, plats
 }
 
-// packageRows resolves every (os, arch, version) row for one candidate. A 403 at
+// packageRows resolves every (os, arch, version) row for one candidate, and
+// the per-platform manifest tags it carries. A 403 at
 // the token endpoint means "not published" and yields no rows silently; any real
 // error is logged to stderr and skipped rather than propagated.
-func (c *client) packageRows(name string) []row {
+func (c *client) packageRows(name string) ([]row, []string) {
 	bearer, err := c.ghcrToken(name)
 	if err != nil {
 		fmt.Fprintf(c.stderr, "catalog: skip %s token: %v\n", name, err)
-		return nil
+		return nil, nil
 	}
 	if bearer == "" {
-		return nil // candidate not published (token denied)
+		return nil, nil // candidate not published (token denied)
 	}
-	tags, err := c.listTags(name, bearer)
+	tags, platformTags, err := c.listTags(name, bearer)
 	if err != nil {
 		fmt.Fprintf(c.stderr, "catalog: skip %s tags: %v\n", name, err)
-		return nil
+		return nil, nil
 	}
 	var rows []row
 	for _, tag := range tags {
@@ -294,7 +346,7 @@ func (c *client) packageRows(name string) []row {
 			})
 		}
 	}
-	return rows
+	return rows, platformTags
 }
 
 // ghcrToken fetches an anonymous pull token for a public package's OCI repo. A
@@ -343,9 +395,19 @@ func (c *client) ghcrToken(name string) (string, error) {
 	return tok.Token, nil
 }
 
-// listTags returns a package's semantic version tags (sha256-* digests and any
-// non-semver junk dropped). A 404 (no such repo / empty) yields no tags.
-func (c *client) listTags(name, bearer string) ([]string, error) {
+// listTags returns a package's semantic version tags and, separately, the
+// `<ver>--<os>-<arch>` tags naming one platform's manifest. A 404 (no such
+// repo / empty) yields neither.
+//
+// The platform tags are RETURNED rather than dropped because they answer the
+// question the audit could not. An index missing a platform is either a lost
+// index WRITE, with the manifest still sitting under its own uncontended tag,
+// or a bottle that was never pushed at all. The first needs an index
+// recomposed; the second needs a build, and telling 221 entries to
+// "re-dispatch" spends a build on every one of them either way.
+//
+// The listing already carries the answer and this crawl already reads it.
+func (c *client) listTags(name, bearer string) (versions, platforms []string, err error) {
 	// The listing is PAGINATED and says so in a Link header. Reading only the
 	// first page cost 5513 platform builds — a fifth of the catalogue —
 	// invisibly: astral.sh/ruff returned 100 of its 207 tags, akuity.io/kargo
@@ -361,16 +423,16 @@ func (c *client) listTags(name, bearer string) ([]string, error) {
 	for page := 0; next != "" && page < maxTagPages; page++ {
 		resp, code, err := c.rawGet(next, "", bearer)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if code == http.StatusNotFound {
 			resp.Body.Close()
-			return nil, nil
+			return nil, nil, nil
 		}
 		if code < 200 || code >= 300 {
 			b, _ := io.ReadAll(resp.Body)
 			resp.Body.Close()
-			return nil, fmt.Errorf("GET %s: %s: %s", next, resp.Status, strings.TrimSpace(string(b)))
+			return nil, nil, fmt.Errorf("GET %s: %s: %s", next, resp.Status, strings.TrimSpace(string(b)))
 		}
 		var tl struct {
 			Tags []string `json:"tags"`
@@ -379,17 +441,24 @@ func (c *client) listTags(name, bearer string) ([]string, error) {
 		link := resp.Header.Get("Link")
 		resp.Body.Close()
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		for _, t := range tl.Tags {
 			if semverTag(t) {
 				tags = append(tags, t)
+				continue
+			}
+			// Parsed HERE and nowhere else, so what the audit compares cannot
+			// disagree with what the listing read.
+			if ver, plat, ok := splitPlatformTag(t); ok {
+				platforms = append(platforms, manifestKey(ver, plat))
 			}
 		}
 		next = c.nextPage(link)
 	}
 	sort.Strings(tags)
-	return tags, nil
+	sort.Strings(platforms)
+	return tags, platforms, nil
 }
 
 // maxTagPages bounds the walk. At n=1000 a project would need a million tags to
