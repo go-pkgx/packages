@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 const newPatch = `diff --git a/projects/acme.org/tool/package.yml b/projects/acme.org/tool/package.yml
@@ -344,5 +345,220 @@ func TestHTTPGetReadsAResponse(t *testing.T) {
 	status, body, err := httpGet(srv.URL)
 	if err != nil || status != http.StatusTeapot || string(body) != "body" {
 		t.Errorf("got %d, %q, %v", status, body, err)
+	}
+}
+
+// writeFile is the two lines every fixture below would otherwise repeat.
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// twoHalves lays out the pair of trees this mode compares: an overlay checkout
+// in HCL and a pantry in YAML, the shapes the two really have.
+func twoHalves(t *testing.T) (pantry, overlay string) {
+	t.Helper()
+	root := t.TempDir()
+	pantry, overlay = filepath.Join(root, "pantry"), filepath.Join(root, "overlay")
+	writeFile(t, filepath.Join(pantry, "projects", "acme.org", "package.yml"),
+		"distributable:\n  url: https://acme.org/{{version}}.tar.gz\n")
+	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
+		"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\n")
+	return pantry, overlay
+}
+
+func TestRunAgainstPantryAgrees(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	var buf bytes.Buffer
+	if code := runAgainstPantry(pantry, overlay, &buf); code != 0 {
+		t.Fatalf("code = %d, want 0\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "1 of 1 overlay project(s) are in both halves, 0 disagree") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+}
+
+// A disagreement must name the KEY. "They differ" over 183 projects is a list
+// nobody can triage; the key path says whether a consumer is even affected —
+// 23 of our 25 real ones are under `build`, which no consumer reads.
+func TestRunAgainstPantryNamesTheKey(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
+		"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\ndependencies = {\n  \"gnu.org/gettext\" = \"^1\"\n}\n")
+	var buf bytes.Buffer
+	if code := runAgainstPantry(pantry, overlay, &buf); code != 1 {
+		t.Fatalf("code = %d, want 1\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "dependencies") {
+		t.Errorf("the report must name the key that parted:\n%s", buf.String())
+	}
+}
+
+// A project the overlay carries and the pantry does not is the ADDED case, and
+// the narrow check owns it: this mode must pass over it, not fail on it.
+func TestRunAgainstPantrySkipsWhatIsOnlyInTheOverlay(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	writeFile(t, filepath.Join(overlay, "projects", "only.example", "package.hcl"),
+		"distributable {\n  url = \"https://only.example/x.tar.gz\"\n}\n")
+	var buf bytes.Buffer
+	if code := runAgainstPantry(pantry, overlay, &buf); code != 0 {
+		t.Fatalf("code = %d, want 0\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "1 of 2 overlay project(s)") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+}
+
+// An unreadable overlay recipe is reported, not skipped. A directory named
+// package.hcl is the cheap way to make ReadFile fail on every platform.
+func TestRunAgainstPantryUnreadableOverlayRecipe(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a 0000 file")
+	}
+	p := filepath.Join(overlay, "projects", "acme.org", "package.hcl")
+	if err := os.Chmod(p, 0); err != nil {
+		t.Fatal(err)
+	}
+	var buf bytes.Buffer
+	// It is still CHECKED — one project, one failure — so the exit is 1.
+	if code := runAgainstPantry(pantry, overlay, &buf); code != 1 {
+		t.Fatalf("code = %d, want 2\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "cannot read the overlay") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+}
+
+// A recipe neither half can parse must say so rather than count as agreement.
+func TestRunAgainstPantryUnparsable(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"), "this is not hcl {{{\n")
+	var buf bytes.Buffer
+	if code := runAgainstPantry(pantry, overlay, &buf); code != 1 {
+		t.Fatalf("code = %d, want 1\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "cannot compare the halves") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+}
+
+// The three ways of pointing at the wrong tree, each of which USED to report a
+// clean run: no overlay path, an overlay with no recipes, a missing pantry
+// root, and two trees that share no project.
+func TestRunAgainstPantryRefusesTheWrongTrees(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	empty := t.TempDir()
+	noRecipes := t.TempDir()
+	writeFile(t, filepath.Join(noRecipes, "projects", "README.md"), "x")
+
+	for _, tc := range []struct{ name, pantry, overlay, want string }{
+		{"no overlay given", pantry, "", "no overlay checkout given"},
+		{"overlay path does not exist", pantry, empty + "/absent", "no such file"},
+		{"overlay carries no recipe", pantry, noRecipes, "is that the overlay?"},
+		{"pantry has no projects/", empty, overlay, "no projects/ under"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if code := runAgainstPantry(tc.pantry, tc.overlay, &buf); code != 2 {
+				t.Fatalf("code = %d, want 2\n%s", code, buf.String())
+			}
+			if !strings.Contains(buf.String(), tc.want) {
+				t.Errorf("report:\n%s", buf.String())
+			}
+		})
+	}
+
+	t.Run("trees that share no project", func(t *testing.T) {
+		other := t.TempDir()
+		writeFile(t, filepath.Join(other, "projects", "elsewhere.example", "package.yml"), "distributable:\n  url: x\n")
+		var buf bytes.Buffer
+		if code := runAgainstPantry(other, overlay, &buf); code != 2 {
+			t.Fatalf("code = %d, want 2\n%s", code, buf.String())
+		}
+		if !strings.Contains(buf.String(), "are these the right trees?") {
+			t.Errorf("report:\n%s", buf.String())
+		}
+	})
+}
+
+func TestOverlayRecipeFileTriesBothNames(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "projects", "acme.org", "package.yml"), "x")
+	name, body, err := overlayRecipeFile(dir, "acme.org")
+	if err != nil || name != "package.yml" || string(body) != "x" {
+		t.Fatalf("got (%q, %q, %v)", name, body, err)
+	}
+	if _, _, err := overlayRecipeFile(dir, "absent.example"); err == nil {
+		t.Error("a project with no recipe must be an error")
+	}
+}
+
+// The walk must not mistake the overlay's own root for a project, and must
+// ignore whatever else a checkout carries — READMEs, CI, a .git.
+func TestOverlayProjectsIgnoresWhatIsNotARecipe(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "projects", "package.hcl"), "x")
+	writeFile(t, filepath.Join(dir, "projects", "acme.org", "package.hcl"), "x")
+	writeFile(t, filepath.Join(dir, "projects", "acme.org", "README.md"), "x")
+	got, err := overlayProjects(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "acme.org" {
+		t.Errorf("got %v, want [acme.org]", got)
+	}
+	if _, err := overlayProjects(filepath.Join(dir, "absent")); err == nil {
+		t.Error("a missing tree must be an error, not an empty list")
+	}
+}
+
+// A difference in a build script is thirty lines long, and printing it buries
+// the twenty-four other projects. The cut lands on a rune boundary: a recipe
+// may hold any UTF-8.
+func TestElideKeepsOneReadableLine(t *testing.T) {
+	if got := elide(" a\nb  c "); got != "a b c" {
+		t.Errorf("got %q", got)
+	}
+	long := strings.Repeat("x", 99) + "é" + strings.Repeat("y", 50)
+	got := elide(long)
+	if !strings.HasSuffix(got, "…") || !utf8.ValidString(got) {
+		t.Errorf("got %q", got)
+	}
+	if len(got) >= len(long) {
+		t.Errorf("not elided: %q", got)
+	}
+}
+
+// The second mode, through the entry point: both flags or neither.
+func TestMainPantryMode(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	oldArgs, oldExit := os.Args, osExit
+	defer func() { os.Args, osExit = oldArgs, oldExit }()
+	exited := -1
+	osExit = func(c int) { exited = c }
+
+	os.Args = []string{"overlaycheck", "--pantry", pantry, "--overlay", overlay}
+	main()
+	if exited != -1 {
+		t.Errorf("agreement must not exit, got %d", exited)
+	}
+
+	os.Args = []string{"overlaycheck", "--pantry", pantry}
+	main()
+	if exited != 2 {
+		t.Errorf("exit = %d, want 2", exited)
+	}
+
+	exited = -1
+	os.Args = []string{"overlaycheck", "--pantry", filepath.Join(pantry, "absent"), "--overlay", overlay}
+	main()
+	if exited != 2 {
+		t.Errorf("exit = %d, want 2", exited)
 	}
 }

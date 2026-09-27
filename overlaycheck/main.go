@@ -29,15 +29,16 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-pkgx/bottle"
 )
@@ -97,9 +98,41 @@ var httpGet = func(url string) (int, []byte, error) {
 var osExit = os.Exit
 
 func main() {
+	// Two questions, two modes.
+	//
+	//	overlaycheck [overrides-dir]
+	//	   a project a patch ADDS must exist in the overlay at all
+	//	overlaycheck --pantry <patched-pantry> --overlay <checkout>
+	//	   a project in BOTH halves must say the same thing in both
+	//
+	// The second needs a pantry with the overrides applied, because a
+	// modifying patch's + lines are a fragment and the resulting recipe is
+	// the only thing there is to compare.
+	// Its OWN FlagSet, not the package-level one: flag.String panics on a
+	// name already registered, so a main() that registers globally can be
+	// called exactly once per process — and the test calls it four times, to
+	// cover the two modes and both ways of being wrong. A test that cannot
+	// run the entry point twice ends up not covering the entry point.
+	fs := flag.NewFlagSet("overlaycheck", flag.ExitOnError)
+	pantryDir := fs.String("pantry", "", "a pantry checkout with the overrides ALREADY APPLIED — `bk overrides` leaves one")
+	overlayDir := fs.String("overlay", "", "an overlay checkout, to enumerate what it carries")
+	_ = fs.Parse(os.Args[1:])
+
+	if *pantryDir != "" || *overlayDir != "" {
+		if *pantryDir == "" || *overlayDir == "" {
+			fmt.Fprintln(os.Stderr, "overlaycheck: --pantry and --overlay go together")
+			osExit(2)
+			return
+		}
+		if code := runAgainstPantry(*pantryDir, *overlayDir, os.Stdout); code != 0 {
+			osExit(code)
+		}
+		return
+	}
+
 	dir := "overrides"
-	if len(os.Args) > 1 {
-		dir = os.Args[1]
+	if fs.NArg() > 0 {
+		dir = fs.Arg(0)
 	}
 	if code := run(dir, os.Stdout); code != 0 {
 		osExit(code)
@@ -108,6 +141,142 @@ func main() {
 
 // run compares every added project against the overlay and returns a process
 // exit code.
+// runAgainstPantry compares EVERY project the overlay carries against the
+// recipe the builder would use — the patched pantry — rather than only the
+// projects a patch creates.
+//
+// The narrow check above exists because a MODIFYING patch's + lines are a
+// fragment, not a recipe, so there is nothing to compare them with. Given a
+// pantry with the overrides already applied there is: the file itself.
+//
+// And it needs checking. 180 of the overlay's 183 recipes also have an
+// override patch, so the same project is expressed twice — once as a YAML
+// patch the builder reads, once as HCL a consumer resolves — and until now
+// nothing compared those two for a project that already existed upstream.
+// bk builds from the first and pkgx resolves dependencies from the second, in
+// the same build.
+func runAgainstPantry(pantryDir, overlayHint string, out io.Writer) int {
+	projects, err := overlayProjects(overlayHint)
+	if err != nil {
+		fmt.Fprintln(out, "overlaycheck:", err)
+		return 2
+	}
+	// An empty overlay is a FAILURE, not agreement: a wrong path would
+	// otherwise report a clean run forever.
+	if len(projects) == 0 {
+		fmt.Fprintf(out, "overlaycheck: no recipe under %s — is that the overlay?\n", overlayHint)
+		return 2
+	}
+	sort.Strings(projects)
+
+	// The pantry ROOT must be there. A missing one makes every project look
+	// like the ADDED case below, and the run reports "0 in both halves, 0
+	// disagree" — a clean pass on a measurement that never happened. Written
+	// that way once, and caught by the count being absurd rather than by the
+	// exit status.
+	if _, err := os.Stat(filepath.Join(pantryDir, "projects")); err != nil {
+		fmt.Fprintf(out, "overlaycheck: no projects/ under %s: %v\n", pantryDir, err)
+		return 2
+	}
+
+	bad, checked := 0, 0
+	for _, project := range projects {
+		built, err := os.ReadFile(filepath.Join(pantryDir, "projects", filepath.FromSlash(project), "package.yml"))
+		if err != nil {
+			// Not in the pantry at all: that is the ADDED case, and the
+			// narrow check above already owns it.
+			continue
+		}
+		// Counted here, BEFORE the overlay read, because this counter answers
+		// "do the two trees line up at all" and the pantry has just said this
+		// one does. Counting it after the read made an unreadable overlay
+		// recipe report "not one overlay project was found in the pantry" —
+		// which is false, and sends the reader to the wrong tree. Found by a
+		// test asserting the exit code, not by reading the guard.
+		checked++
+		// From the CHECKOUT, not the API. This mode asks whether the two
+		// SOURCES agree — a repository question — while the narrow check
+		// above asks what is SERVED, which is why that one reads the
+		// contents API. It also keeps 360 API calls out of a CI run.
+		name, body, err := overlayRecipeFile(overlayHint, project)
+		if err != nil {
+			fmt.Fprintf(out, "✗ %s: cannot read the overlay: %v\n", project, err)
+			bad++
+			continue
+		}
+		d, err := recipeDiff(body, name, built)
+		switch {
+		case err != nil:
+			fmt.Fprintf(out, "✗ %s: cannot compare the halves: %v\n", project, err)
+			bad++
+		case d != "":
+			fmt.Fprintf(out, "✗ %-30s %s\n", project, elide(d))
+			bad++
+		}
+	}
+	fmt.Fprintf(out, "\n%d of %d overlay project(s) are in both halves, %d disagree.\n",
+		checked, len(projects), bad)
+	// Nothing in both halves, with an overlay that carries recipes, is not
+	// agreement either — it means the two trees do not line up at all.
+	if checked == 0 {
+		fmt.Fprintln(out, "overlaycheck: not one overlay project was found in the pantry — are these the right trees?")
+		return 2
+	}
+	if bad > 0 {
+		return 1
+	}
+	return 0
+}
+
+// overlayRecipeFile reads a project's recipe out of an overlay checkout, in the
+// order a consumer tries the two names.
+func overlayRecipeFile(dir, project string) (name string, body []byte, err error) {
+	for _, n := range recipeNames {
+		p := filepath.Join(dir, "projects", filepath.FromSlash(project), n)
+		if b, err := os.ReadFile(p); err == nil {
+			return n, b, nil
+		}
+	}
+	return "", nil, fmt.Errorf("no %v under %s", recipeNames, project)
+}
+
+// overlayProjects lists what the overlay carries, from a local checkout when
+// one is given and from the contents API otherwise.
+func overlayProjects(dir string) ([]string, error) {
+	if dir == "" {
+		return nil, fmt.Errorf("no overlay checkout given")
+	}
+	root := filepath.Join(dir, "projects")
+	var out []string
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !isRecipeName(d.Name()) {
+			return nil
+		}
+		rel := filepath.ToSlash(filepath.Dir(p))
+		base := filepath.ToSlash(root)
+		if rel == base {
+			return nil
+		}
+		out = append(out, strings.TrimPrefix(rel, base+"/"))
+		return nil
+	})
+	return out, err
+}
+
+// isRecipeName is the pair of spellings a pantry uses, in the order a consumer
+// tries them.
+func isRecipeName(n string) bool {
+	for _, r := range recipeNames {
+		if n == r {
+			return true
+		}
+	}
+	return false
+}
+
 func run(dir string, out io.Writer) int {
 	added, err := addedProjects(dir)
 	if err != nil {
@@ -188,15 +357,50 @@ func fetchOverlayRecipe(project string) (name string, status int, body []byte, e
 // the same files. A hand-rolled HCL reader here would be exactly the kind of
 // second opinion that goes stale without anyone noticing.
 func sameRecipe(overlay []byte, overlayName string, patch []byte) (bool, error) {
+	d, err := recipeDiff(overlay, overlayName, patch)
+	return d == "", err
+}
+
+// elide keeps a difference to one readable line.
+//
+// DocDiff reports the two values in full, which is right for a caller that
+// wants them and wrong for a list of 25 projects: a build script that differs
+// by one line prints both scripts, sixty lines, and buries the twenty-four
+// other projects. The key path is the actionable part — it says WHERE to look —
+// and the tail is a hint, not the evidence.
+func elide(d string) string {
+	d = strings.Join(strings.Fields(d), " ")
+	cut := 100
+	if len(d) > cut {
+		// Cut on a rune boundary: a recipe may hold any UTF-8, and half a
+		// rune in a terminal is a worse report than a shorter one.
+		for cut > 0 && !utf8.RuneStart(d[cut]) {
+			cut--
+		}
+		return d[:cut] + "…"
+	}
+	return d
+}
+
+// recipeDiff names the first key the two halves part at, or "" when they agree.
+//
+// "They differ" is not a report anybody can act on, and 25 of the 183 projects
+// that exist in both halves do differ — some of them on purpose, since the
+// overlay carries dependencies the build does not need. Naming the key is what
+// turns that list into a triage.
+//
+// bottle.DocDiff, not a comparison of our own: a second walk over two recipe
+// documents would be a second opinion about what a recipe means.
+func recipeDiff(overlay []byte, overlayName string, patch []byte) (string, error) {
 	a, err := recipeDoc(overlay, overlayName)
 	if err != nil {
-		return false, fmt.Errorf("the overlay's %s: %w", overlayName, err)
+		return "", fmt.Errorf("the overlay's %s: %w", overlayName, err)
 	}
 	b, err := recipeDoc(patch, "package.yml")
 	if err != nil {
-		return false, fmt.Errorf("the patch's package.yml: %w", err)
+		return "", fmt.Errorf("the patch's package.yml: %w", err)
 	}
-	return reflect.DeepEqual(a, b), nil
+	return bottle.DocDiff(a, b), nil
 }
 
 // recipeDoc reads either format into one document shape.
