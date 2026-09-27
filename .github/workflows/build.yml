@@ -430,11 +430,33 @@ jobs:
               printf '%-12s %s  %s\n' "$t" "$p" "${v:-(no --version)}"
             done
             echo
+            # Repositories AND the versions in them.
+            #
+            # The catalog alone answers "is x.org/x11 in the seed", and the
+            # question that actually comes up is "which x11". tcl-lang.org
+            # declares `x.org/x11: =1.8.11` as a LINK dependency, the seed has
+            # 1.8.13, and a listing of repository names cannot tell you that —
+            # I read this file looking for exactly that and it was not here.
+            #
+            # A registry with no tags for a repository still prints the
+            # repository, because "present with no version" is a state worth
+            # seeing rather than a row to drop.
             echo "== seed registry contents =="
             if [ -n "$SEED_DIST" ]; then
               base=${SEED_DIST#oci://}
               host=${base%%/*}
-              curl -fsS -m 20 "http://$host/v2/_catalog" 2>/dev/null || echo "(catalog unreadable)"
+              if repos=$(curl -fsS -m 20 "http://$host/v2/_catalog" 2>/dev/null); then
+                echo "$repos" | tr ',' '\n' | sed -n 's/.*"\([^"]*\)".*/\1/p' | grep -vx repositories | sort -u |
+                while read -r r; do
+                  [ -n "$r" ] || continue
+                  tags=$(curl -fsS -m 20 "http://$host/v2/$r/tags/list" 2>/dev/null |
+                         tr ',' '\n' | sed -n 's/.*"\([0-9][^"]*\)".*/\1/p' |
+                         grep -v -- '--' | sort -Vu | tr '\n' ' ')
+                  printf '%-44s %s\n' "$r" "${tags:-(no version tag)}"
+                done
+              else
+                echo "(catalog unreadable)"
+              fi
             else
               echo "(no seed_dist)"
             fi
