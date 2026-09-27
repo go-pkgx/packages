@@ -562,3 +562,58 @@ func TestMainPantryMode(t *testing.T) {
 		t.Errorf("exit = %d, want 2", exited)
 	}
 }
+
+// The masking that hid a real defect: DocDiff returns the FIRST difference in
+// sorted key order, `build` sorts before `dependencies`, and tcl-lang.org
+// differs under both. Reported as one comparison, the live consumer-side
+// difference was invisible behind an inert build-side one — and the summary
+// that followed, "23 of 25 are under build, which no consumer reads", was an
+// artefact of the alphabet.
+func TestRunAgainstPantryAsksTheConsumerQuestionFirst(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	writeFile(t, filepath.Join(pantry, "projects", "acme.org", "package.yml"),
+		"distributable:\n  url: https://acme.org/{{version}}.tar.gz\nbuild:\n  script: make\nversions:\n  url: https://sourceforge.net/x\n")
+	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
+		"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\nbuild {\n  script = \"gmake\"\n}\nversions {\n  url = \"https://acme.org/downloads\"\n}\n")
+	var buf bytes.Buffer
+	if code := runAgainstPantry(pantry, overlay, &buf); code != 1 {
+		t.Fatalf("code = %d\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "CONSUMER") || !strings.Contains(buf.String(), "versions") {
+		t.Errorf("the consumer half must be reported over the build half:\n%s", buf.String())
+	}
+}
+
+// Within the consumer half too: `dependencies` sorts before `versions`, so one
+// key at a time, and every one of them reported.
+func TestConsumerDiffLetsNoKeyHideAnother(t *testing.T) {
+	a := map[string]any{
+		"dependencies": map[string]any{"a.org": "1"},
+		"versions":     map[string]any{"url": "https://old"},
+		"build":        map[string]any{"script": "make"},
+	}
+	b := map[string]any{
+		"dependencies": map[string]any{"a.org": "2"},
+		"versions":     map[string]any{"url": "https://new"},
+		"build":        map[string]any{"script": "gmake"},
+	}
+	got := consumerDiff(a, b)
+	if !strings.Contains(got, "dependencies") || !strings.Contains(got, "versions") {
+		t.Errorf("both keys must be reported, got %q", got)
+	}
+	// `build` is not a consumer's business, and reporting it here would put
+	// the noise back.
+	if strings.Contains(got, "build") {
+		t.Errorf("build must not appear in the consumer half: %q", got)
+	}
+	if consumerDiff(a, a) != "" {
+		t.Errorf("agreement must be silent")
+	}
+	// A key on one side only, in both directions.
+	if got := consumerDiff(map[string]any{"provides": []any{"bin/x"}}, map[string]any{}); got != "provides: dropped" {
+		t.Errorf("got %q", got)
+	}
+	if got := consumerDiff(map[string]any{}, map[string]any{"provides": []any{"bin/x"}}); got != "provides: added" {
+		t.Errorf("got %q", got)
+	}
+}
