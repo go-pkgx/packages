@@ -382,6 +382,43 @@ func elide(d string) string {
 	return d
 }
 
+// consumerKeys are the keys a CONSUMER reads out of a recipe: resolving a
+// closure needs the runtime dependencies, what a package provides, and which
+// versions exist. Everything else in a recipe describes a build.
+var consumerKeys = []string{"dependencies", "provides", "versions", "distributable"}
+
+// consumerDiff reports EVERY consumer-visible key the two halves part at.
+//
+// One key at a time, not one comparison of the four: DocDiff returns the first
+// difference in sorted key order and stops, so within a single comparison
+// `dependencies` hides `versions` exactly as `build` hides both. tcl-lang.org
+// was hidden twice over — its `versions` block still scrapes tcl-lang.org's
+// download page, which lists only what upstream currently recommends, while
+// the pantry was corrected to enumerate SourceForge, where the tarball its own
+// `distributable` downloads actually lives. The overlay WINS for a consumer,
+// so that stale block is what a consumer resolves tcl versions with.
+func consumerDiff(a, b map[string]any) string {
+	var out []string
+	for _, k := range consumerKeys {
+		x, inA := a[k]
+		y, inB := b[k]
+		switch {
+		case !inA && !inB:
+		case inA != inB:
+			side := "added"
+			if inA {
+				side = "dropped"
+			}
+			out = append(out, k+": "+side)
+		default:
+			if d := bottle.DocDiff(map[string]any{k: x}, map[string]any{k: y}); d != "" {
+				out = append(out, strings.TrimPrefix(d, ".."))
+			}
+		}
+	}
+	return strings.Join(out, "; ")
+}
+
 // recipeDiff names the first key the two halves part at, or "" when they agree.
 //
 // "They differ" is not a report anybody can act on, and 25 of the 183 projects
@@ -399,6 +436,16 @@ func recipeDiff(overlay []byte, overlayName string, patch []byte) (string, error
 	b, err := recipeDoc(patch, "package.yml")
 	if err != nil {
 		return "", fmt.Errorf("the patch's package.yml: %w", err)
+	}
+	// The CONSUMER half first, and on its own. DocDiff returns the FIRST
+	// difference in sorted key order and stops — and "build" sorts before
+	// "dependencies", so any build-side difference hides every consumer-side
+	// one behind it. Reported as one comparison, 23 of 25 disagreements looked
+	// like build drift and 2 like deliberate overlay declarations; that split
+	// was an artefact of the alphabet, not a measurement. Asking the question
+	// that matters first is the only way the answer cannot be masked.
+	if d := consumerDiff(a, b); d != "" {
+		return "CONSUMER " + d, nil
 	}
 	return bottle.DocDiff(a, b), nil
 }
