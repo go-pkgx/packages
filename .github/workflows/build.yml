@@ -18,6 +18,10 @@ on:
         description: "only consider versions matching this pkgx constraint, e.g. ^3 — the handle for an OLD line, which max_versions (newest-first) can never reach."
         required: false
         default: ""
+      clean_build_root:
+        description: "`1` removes the whole brewkit build root before starting. bk drops a tree once its bottle is published (go-pkgx/bk#217), but what a run INHERITS from earlier ones it cannot drop — and a seed on a small machine dies on that litter, reporting `no space left on device` against whichever project asked next. Destructive: a FAILED build's tree is kept on purpose, and this discards those too, so use it when the disk matters more than the last failure's evidence."
+        required: false
+        default: ""
       pin_to_dependents:
         description: "`1` holds each REQUESTED project to the constraints its dependents place on it, as a closure-only dependency already is. For a SEED, where every project is named and none would otherwise be held to anything: gnu.org/glibc asks for gnu.org/gcc 14, and a seed naming gcc built 16.2.0 — twenty-five minutes of compiling for a version nothing could use. Leave blank for a repair run: naming a project is how you say `this version, whatever else wants`."
         required: false
@@ -345,6 +349,11 @@ jobs:
           # naming a project that had done nothing wrong. bk now removes a
           # published build tree (go-pkgx/bk#217); what a run INHERITS from
           # earlier ones it cannot remove, and only a number shows that.
+          if [ -n "${{ github.event.inputs.clean_build_root }}" ]; then
+            echo "clearing the build root a previous run left behind:"
+            du -sh "$HOME/.local/share/brewkit" 2>/dev/null || true
+            rm -rf "$HOME/.local/share/brewkit"
+          fi
           echo "disk before:"; df -h "$HOME" | tail -1
           du -sh "$HOME/.local/share/brewkit" 2>/dev/null || echo "  (no build root yet)"
           MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
