@@ -4,6 +4,12 @@
 #
 # Usage:  builder/sovereign-build.sh <rootfs> <pantry> <overrides> [bk args...]
 #
+# $SOVEREIGN_OVERLAY, when set, is a pantry-overlay checkout bound in as
+# /overlay and passed to `bk factory --overlay`. It does not change what is
+# BUILT — the factory still compiles the pantry's recipe — it widens the
+# CLOSURE, so a dependency only our overlay declares is built rather than left
+# for consumers to resolve and not find (go-pkgx/bk#224).
+#
 # The rootfs is what `bk builder --container` staged. Everything the build needs
 # beyond it is arranged here, and each piece is here because its absence was
 # measured:
@@ -24,8 +30,9 @@
 set -euo pipefail
 
 root="${1:?rootfs}"; pantry="${2:?pantry}"; overrides="${3:?overrides}"; shift 3
+overlay="${SOVEREIGN_OVERLAY:-}"
 
-mkdir -p "$root/pantry" "$root/overrides" "$root/dist" "$root/dev" "$root/proc" "$root/tmp" "$root/etc"
+mkdir -p "$root/pantry" "$root/overrides" "$root/overlay" "$root/dist" "$root/dev" "$root/proc" "$root/tmp" "$root/etc"
 chmod 1777 "$root/tmp"
 cp /etc/resolv.conf "$root/etc/resolv.conf"
 
@@ -40,7 +47,7 @@ if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 # in the new namespace, where these variables are the ones that matter.
 $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_PANTRY_OVERLAY \
   unshare --mount --pid --fork "$(command -v bash)" -euxc '
-    r="$1"; pantry="$2"; overrides="$3"; shift 3
+    r="$1"; pantry="$2"; overrides="$3"; overlay="$4"; shift 4
     for d in null zero full random urandom tty; do
       [ -e "$r/dev/$d" ] || : > "$r/dev/$d"
       mount --bind "/dev/$d" "$r/dev/$d"
@@ -48,12 +55,17 @@ $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,JOBS,QE
     mount -t proc proc "$r/proc"
     mount --bind "$pantry" "$r/pantry"
     mount --bind "$overrides" "$r/overrides"
+    ov=()
+    if [ -n "$overlay" ]; then
+      mount --bind "$overlay" "$r/overlay"
+      ov=(--overlay /overlay)
+    fi
     exec chroot "$r" /usr/local/bin/pkgx \
       +gnu.org/glibc +gnu.org/coreutils +gnu.org/make +llvm.org \
       -- /usr/local/bin/bk factory \
-           --pantry /pantry --overrides /overrides --libc pkgx \
+           --pantry /pantry --overrides /overrides --libc pkgx "${ov[@]}" \
            --to "${OCI_TO:-oci://ghcr.io/go-pkgx/packages}" --bottles /dist "$@"
-  ' bash "$root" "$pantry" "$overrides" "$@" 2>&1 | tee "$log"
+  ' bash "$root" "$pantry" "$overrides" "$overlay" "$@" 2>&1 | tee "$log"
 
 # `bk factory` is best-effort: it exits 0 with a per-recipe tally. That is right
 # for a 50-project chunk and useless as a signal on its own, so read the tally.

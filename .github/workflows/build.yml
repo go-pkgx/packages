@@ -35,7 +35,11 @@ on:
         required: false
         default: ""
       arch:
-        description: "restrict the matrix to one arch: blank = x86-64 AND aarch64, or name one of `x86-64`, `aarch64`, `s390x`. A manual dispatch forces a rebuild, so healing one arch's gaps without this reruns the others for nothing. s390x is OPT-IN — it is absent from the blank set until its toolchain is published, because adding an architecture with no bottles to every nightly buys a matrix of failures nobody reads."
+        description: "restrict the matrix to one arch: blank = x86-64 AND aarch64, or name one of `x86-64`, `aarch64`, `s390x`. A manual dispatch forces a rebuild by default (see `force`), so healing one arch's gaps without this reruns the others for nothing. s390x is OPT-IN — it is absent from the blank set until its toolchain is published, because adding an architecture with no bottles to every nightly buys a matrix of failures nobody reads."
+        required: false
+        default: ""
+      force:
+        description: "blank = a manual dispatch REBUILDS every project it names, even one already published, which is what healing a stale bottle needs. `0` skips the ones already in the dist, so a list can mean `build what is MISSING from this` — the question a bootstrap asks on every pass, and the only way to ask it today was to work out the answer beforehand by reading logs."
         required: false
         default: ""
       sovereign:
@@ -87,6 +91,39 @@ jobs:
       # generator in shell.
       - name: jq
         run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
+      # Contradictory inputs, refused BEFORE a runner is taken. `bootstrap`
+      # means "there is no base toolchain on this architecture yet, take the
+      # tools from the host"; the sovereign rootfs is staged by RESOLVING that
+      # same toolchain from a dist. Asking for both is asking for a toolchain
+      # that does not exist, and what came back was
+      #
+      #   builder: resolve closure: GET https://dist.pkgx.dev/gnu.org/glibc/linux/s390x/versions.txt: Not Found
+      #
+      # ninety seconds into a job on the s390x runner — an error naming glibc,
+      # which had done nothing wrong, for a contradiction stated in the inputs.
+      # `sovereign` is not flipped silently: an input that quietly means
+      # something else is worse than one that is refused.
+      - name: a bootstrap dispatch states its two companions
+        env:
+          BOOTSTRAP: ${{ github.event.inputs.bootstrap }}
+          SOVEREIGN: ${{ github.event.inputs.sovereign }}
+          MAX_VERSIONS: ${{ github.event.inputs.max_versions }}
+        run: |
+          [ -n "$BOOTSTRAP" ] || exit 0
+          [ "$SOVEREIGN" = 0 ] || {
+            echo "::error::bootstrap=$BOOTSTRAP stages no toolchain, so the sovereign rootfs cannot be built from one. Pass sovereign=0 with it."
+            exit 1
+          }
+          # `max_versions` blank means ALL versions, which is right for a
+          # nightly and catastrophic for a seed: dispatched without it, a
+          # 76-project bootstrap started down zlib.net's entire release
+          # history — 1.2.5.2, 1.2.6, 1.2.7, … — on a host toolchain, and was
+          # 191 builds in when it was cancelled. A seed makes an architecture
+          # BUILDABLE; every historical version of every project is not that.
+          [ -n "$MAX_VERSIONS" ] || {
+            echo "::error::bootstrap=$BOOTSTRAP with max_versions blank means every version of every project. Pass max_versions=1 for a seed, or state a number."
+            exit 1
+          }
       - uses: actions/checkout@v7
       - id: gen
         run: |
@@ -215,6 +252,19 @@ jobs:
       - name: clone pantry
         run: git clone --depth 1 https://github.com/pkgxdev/pantry
 
+      # The overlay is the half a CONSUMER resolves from, and it declares edges
+      # upstream does not: perl.org NEEDs libcrypt.so.1, our overlay names the
+      # provider, upstream's recipe says nothing. Until go-pkgx/bk#224 the
+      # factory's closure walk read the pantry alone, so such a provider was
+      # never built while every consumer asked the registry for it — and the
+      # s390x seed only worked because its order had been computed by hand with
+      # `bk closure --build --overlay` and pasted in.
+      #
+      # It does NOT change what is compiled: `bk factory` still builds the
+      # pantry's recipe with the overrides applied. It widens the closure.
+      - name: clone the pantry overlay
+        run: git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+
       # The sovereign path: a rootfs assembled from OUR bottles, entered with
       # chroot. The host then contributes three static Go binaries and a mount
       # namespace, and nothing it links against reaches the build. See
@@ -333,7 +383,15 @@ jobs:
           FORCE=""
           if [ "${{ matrix.chunk }}" = "manual" ]; then
             RECIPES="${{ github.event.inputs.recipes }}"
-            FORCE=1   # explicit manual dispatch always rebuilds (bypass skip-if-published → refresh stale bottles)
+            # A manual dispatch rebuilds what it names by default — that is what
+            # refreshing a stale bottle is. `force: 0` turns the same list into
+            # "build what is MISSING from this", which is the question a
+            # bootstrap pass asks every time: a seed of 76 projects is grown a
+            # few at a time and nothing on the outside knows which of them the
+            # seed registry already holds. Without this the only way to ask was
+            # to reconstruct the answer from the previous runs' logs, and a
+            # count read off a log is a count of what the log happened to print.
+            [ "${{ github.event.inputs.force }}" = "0" ] || FORCE=1
           else
             start=$(( ${{ matrix.chunk }} * CHUNK + 1 )); end=$(( start + CHUNK - 1 ))
             RECIPES="$(grep -vE '^[[:space:]]*(#|$)' recipes.txt | sed -n "${start},${end}p" | tr '\n' ' ')"
@@ -387,6 +445,7 @@ jobs:
             # the result, and a recipe that genuinely does not build must not
             # paint the whole lot red. The proof job keeps the strict posture.
             export SOVEREIGN_STRICT=0
+            SOVEREIGN_OVERLAY="$PWD/overlay" \
             builder/sovereign-build.sh \
               "$RUNNER_TEMP/rootfs" "$PWD/pantry" "$PWD/overrides" \
               ${GLIBC:+--glibc "$GLIBC"} \
@@ -409,6 +468,7 @@ jobs:
             bk factory \
               --pantry pantry \
               --overrides overrides \
+              --overlay overlay \
               --to "$PKGX_DIST" \
               --bottles dist \
               ${BOOTSTRAP:+--bootstrap} \
