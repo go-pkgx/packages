@@ -103,13 +103,25 @@ jobs:
       # which had done nothing wrong, for a contradiction stated in the inputs.
       # `sovereign` is not flipped silently: an input that quietly means
       # something else is worse than one that is refused.
-      - name: bootstrap and the sovereign rootfs are mutually exclusive
+      - name: a bootstrap dispatch states its two companions
         env:
           BOOTSTRAP: ${{ github.event.inputs.bootstrap }}
           SOVEREIGN: ${{ github.event.inputs.sovereign }}
+          MAX_VERSIONS: ${{ github.event.inputs.max_versions }}
         run: |
-          [ -z "$BOOTSTRAP" ] || [ "$SOVEREIGN" = 0 ] || {
+          [ -n "$BOOTSTRAP" ] || exit 0
+          [ "$SOVEREIGN" = 0 ] || {
             echo "::error::bootstrap=$BOOTSTRAP stages no toolchain, so the sovereign rootfs cannot be built from one. Pass sovereign=0 with it."
+            exit 1
+          }
+          # `max_versions` blank means ALL versions, which is right for a
+          # nightly and catastrophic for a seed: dispatched without it, a
+          # 76-project bootstrap started down zlib.net's entire release
+          # history — 1.2.5.2, 1.2.6, 1.2.7, … — on a host toolchain, and was
+          # 191 builds in when it was cancelled. A seed makes an architecture
+          # BUILDABLE; every historical version of every project is not that.
+          [ -n "$MAX_VERSIONS" ] || {
+            echo "::error::bootstrap=$BOOTSTRAP with max_versions blank means every version of every project. Pass max_versions=1 for a seed, or state a number."
             exit 1
           }
       - uses: actions/checkout@v7
