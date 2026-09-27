@@ -1,0 +1,20 @@
+--- a/projects/rsync.samba.org/package.yml	2026-09-27 19:05:30
++++ b/projects/rsync.samba.org/package.yml	2026-09-27 19:05:30
+@@ -9,6 +9,17 @@
+   zlib.net: ^1
+   facebook.com/zstd: ^1
+   lz4.org: ^1
++  # rsync's configure AUTO-DETECTS idn2 and ABORTS when the header is
++  # absent — `Failed to find idn2.h for IDN support` — so this was a
++  # dependency on whatever the BUILD MACHINE happened to carry. It built
++  # on x86-64 and aarch64 because those images ship libidn2-dev, and died
++  # on linux/s390x, where nothing does.
++  #
++  # Nothing noticed, because bottle's soname map answers libidn2 with
++  # gnu.org/libidn2 at INSTALL time: `bk undeclared rsync.samba.org`
++  # reports 0 edges, correctly. The map repairs the consequence; the
++  # recipe is what was incomplete.
++  gnu.org/libidn2: '*'
+ 
+ build:
+   dependencies:
