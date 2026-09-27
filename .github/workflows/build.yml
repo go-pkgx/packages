@@ -18,6 +18,10 @@ on:
         description: "only consider versions matching this pkgx constraint, e.g. ^3 — the handle for an OLD line, which max_versions (newest-first) can never reach."
         required: false
         default: ""
+      pin_to_dependents:
+        description: "`1` holds each REQUESTED project to the constraints its dependents place on it, as a closure-only dependency already is. For a SEED, where every project is named and none would otherwise be held to anything: gnu.org/glibc asks for gnu.org/gcc 14, and a seed naming gcc built 16.2.0 — twenty-five minutes of compiling for a version nothing could use. Leave blank for a repair run: naming a project is how you say `this version, whatever else wants`."
+        required: false
+        default: ""
       no_closure:
         description: "build ONLY the projects named in recipes, not their dependency closure. For a REPAIR run: the dependencies are already published, and walking to them costs a version resolution each and can drag a toolchain in behind them."
         required: false
@@ -336,7 +340,8 @@ jobs:
           # `bk factory` itself; the rest is passed explicitly.
           MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
           NO_CLOSURE="${{ github.event.inputs.no_closure }}"
-          export RECIPES FORCE MAX_VERSIONS NO_CLOSURE
+          PIN_TO_DEPENDENTS="${{ github.event.inputs.pin_to_dependents }}"
+          export RECIPES FORCE MAX_VERSIONS NO_CLOSURE PIN_TO_DEPENDENTS
           # A glibc-pinned build links the pkgx glibc bottle directly, which bakes
           # an ABSOLUTE PT_INTERP pointing into $PKGX_DIR. Under the default
           # ($HOME/.pkgx) that is the RUNNER's home — a path no consumer has, so
