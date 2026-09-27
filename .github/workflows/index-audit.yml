@@ -28,11 +28,16 @@ name: index-audit
 # the platform tags existed — as a list to read, not a lane to go red.
 #
 # The blind spot is named in the output: the count of omitted manifests is
-# printed with the number EXAMINED, because a publisher that stops writing the
-# platform tag would take the gate to zero and say nothing. Measured
+# printed with the number EXAMINED, because "0 of nothing" reads exactly like
+# "0 of everything" and only one of them is a pass.
+#
+# What it is blind to is HISTORY, not a gap anyone has to close. Measured
 # 2026-09-27, openssl.org carries 62 linux platform tags while zlib.net and
-# curl.se carry only darwin ones and gnu.org/gperf none at all — closing that
-# is a change to the publishers, not to this lane.
+# curl.se carry only darwin ones and gnu.org/gperf none at all — which first
+# read like publishers that disagree. They do not: bottle's push is the single
+# publish path for a build and a mirror alike, and it has tagged every platform
+# manifest since go-pkgx/bottle#37. What carries no tag is what was published
+# BEFORE that, and the set shrinks on its own as the catalogue is rebuilt.
 #
 # Not on pull_request: the crawl walks the whole catalogue over the network for
 # several minutes, and a PR cannot change what is already published.

@@ -157,11 +157,17 @@ func splitByPlatformTag(lost []gap, have map[string]map[string]bool) (reindexabl
 //
 // It cannot have a false positive: the manifest is there or it is not.
 //
-// It CAN be blind. A publisher that does not write the platform tag leaves
-// nothing to compare — measured 2026-09-27, openssl.org carries 62 linux
-// platform tags while zlib.net and curl.se carry only darwin ones and
-// gnu.org/gperf none at all. Closing that is a change to the publishers, not
-// to this check, and until then a lane that writes no tag is unwatched here.
+// It CAN be blind, and the reason is HISTORY rather than a gap anyone has to
+// close. Measured 2026-09-27, openssl.org carries 62 linux platform tags while
+// zlib.net and curl.se carry only darwin ones and gnu.org/gperf none at all —
+// which first read like publishers that disagree. They do not: bottle's push
+// is the single publish path for a build and a mirror alike, and it has tagged
+// every platform manifest since go-pkgx/bottle#37. What has no tag is what was
+// published BEFORE that, and the set shrinks on its own as the catalogue is
+// rebuilt.
+//
+// So nothing is owed here. The denominator beside the count is what says how
+// far the evidence reaches on any given day.
 //
 // `have` is keyed by the PARSED manifest — `<version>\x00<os>/<arch>` — rather
 // than by the tag text. A tag is parsed once, where it is read, so there is no
