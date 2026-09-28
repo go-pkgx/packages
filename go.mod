@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	github.com/go-pkgx/bk v0.0.0-20260928111145-81e66cc79328
 	github.com/go-pkgx/bottle v0.23.1-0.20260927210538-5e8776a0c8ef
+	github.com/hashicorp/hcl/v2 v2.25.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -24,7 +25,7 @@ require (
 	github.com/go-git/go-billy/v5 v5.9.0 // indirect
 	github.com/go-git/go-git/v5 v5.19.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
-	github.com/hashicorp/hcl/v2 v2.25.0 // indirect
+	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
 	github.com/klauspost/compress v1.20.0 // indirect

@@ -237,7 +237,7 @@ func runAgainstPantry(pantryDir, overlayHint, overridesDir string, out io.Writer
 			broken++
 			continue
 		}
-		d, err := recipeDiffDoc(body, name, builtDoc)
+		d, err := recipeDiffDoc(body, name, builtDoc, upstreamDoc(pantryDir, project))
 		switch {
 		case err != nil:
 			fmt.Fprintf(out, "✗ %s: cannot compare the halves: %v\n", project, err)
@@ -468,11 +468,22 @@ func builtRecipe(set *logical.Set, pantryDir, project string) (map[string]any, e
 	return doc, nil
 }
 
-// recipeDiffDoc is recipeDiff against a document already read.
-func recipeDiffDoc(overlay []byte, overlayName string, b map[string]any) (string, error) {
+// recipeDiffDoc compares what a CONSUMER resolves with what the factory
+// builds.
+//
+// The consumer's side is the overlay MERGED over upstream, not the overlay
+// alone (go-pkgx/bottle#103). An entry states only what it changes now, so
+// reading it on its own says a reduced entry has no `versions` and no
+// `provides` — which is true of the FILE and false of the recipe. Comparing
+// the file was right while every entry was a full copy, and became wrong the
+// day they stopped being.
+func recipeDiffDoc(overlay []byte, overlayName string, b, upstream map[string]any) (string, error) {
 	a, err := recipeDoc(overlay, overlayName)
 	if err != nil {
 		return "", fmt.Errorf("the overlay's %s: %w", overlayName, err)
+	}
+	if upstream != nil {
+		a = mergeOver(upstream, a)
 	}
 	// The CONSUMER half first, and on its own. DocDiff returns the FIRST
 	// difference in sorted key order and stops — and "build" sorts before
@@ -497,4 +508,37 @@ func recipeDoc(src []byte, name string) (map[string]any, error) {
 		src, name = converted, name+".hcl"
 	}
 	return bottle.HCLToMap(src, name)
+}
+
+// upstreamDoc reads the pantry's own copy, unoverridden — the baseline a
+// consumer merges the overlay over. Nil when upstream does not carry it.
+func upstreamDoc(pantryDir, project string) map[string]any {
+	b, err := os.ReadFile(filepath.Join(pantryDir, "projects", filepath.FromSlash(project), "package.yml"))
+	if err != nil {
+		return nil
+	}
+	doc, err := recipeDoc(b, "package.yml")
+	if err != nil {
+		return nil
+	}
+	return doc
+}
+
+// mergeOver is bottle's rule: a key the overlay states replaces that key, a
+// key it omits is inherited, and a list replaces rather than merges.
+func mergeOver(base, over map[string]any) map[string]any {
+	out := make(map[string]any, len(base)+len(over))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range over {
+		if om, ok := v.(map[string]any); ok {
+			if bm, ok2 := out[k].(map[string]any); ok2 {
+				out[k] = mergeOver(bm, om)
+				continue
+			}
+		}
+		out[k] = v
+	}
+	return out
 }
