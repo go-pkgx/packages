@@ -38,15 +38,6 @@ jobs:
       - run: go vet ./...
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
-      # A project that upstream does not carry lives in two places — the override
-      # patch the factory BUILDS from, and the overlay a consumer RESOLVES from.
-      # Four such projects were published, signed, and unreachable to any
-      # consumer because only the build half existed; nothing said so, because
-      # the bottles were there and only a recipe fetch would have failed. This
-      # reads the published overlay, not a checkout: a checkout can be right
-      # while what is served is not.
-      - name: both halves of a new project agree
-        run: go run ./overlaycheck
 
       # The overrides are HCL now, and say WHAT they change rather than where
       # the lines are — so "it stopped applying" has become three answers
@@ -115,6 +106,18 @@ jobs:
       - name: any unified diff left is convertible, and the conversion is faithful
         run: go run ./logicalise
 
+      # A project upstream does not carry lives in ONE place now: the overlay,
+      # which bk builds from and a consumer resolves from (go-pkgx/bk#231). It
+      # used to live in two — a patch that created the recipe, and the overlay
+      # — and four such projects were published, signed and unreachable to any
+      # consumer because only the build half existed. Nothing said so: the
+      # bottles were there, and only a RECIPE fetch would have failed.
+      #
+      # That risk is not gone, it has moved: the overlay's copy has to be
+      # SERVED. A checkout can be right while the contents API still returns
+      # the old state — raw.githubusercontent holds a file for minutes and
+      # nothing dislodges it — so this asks the API for the eight, and compares
+      # the other 175 against the recipe the factory builds.
       - name: the half a consumer resolves from agrees
         run: |
           rm -rf "$RUNNER_TEMP/overlay"

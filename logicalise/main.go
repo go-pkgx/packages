@@ -181,11 +181,17 @@ func run(dir, pantry string, write bool, out io.Writer) int {
 		// and failed, sending the reader to check their paths instead of the
 		// failure. The same sentence with the same defect had to be fixed in
 		// overlaycheck the day before.
-		if len(res.Applied) == 0 {
-			fmt.Fprintf(out, "logicalise: no patch in %s — is that an override directory?\n", dir)
+		// "Nothing to convert" and "wrong directory" are different answers and
+		// this has had to tell them apart twice, because what counts as the
+		// end state kept moving. It is now: a directory holding overrides in
+		// the logical form and no convertible patch is DONE.
+		hcl, _ := filepath.Glob(filepath.Join(dir, "*.hcl"))
+		if len(res.Applied)+len(hcl) == 0 {
+			fmt.Fprintf(out, "logicalise: nothing in %s — is that an override directory?\n", dir)
 			return 2
 		}
-		fmt.Fprintf(out, "%d patch(es), none of which modify an existing recipe: nothing to convert\n", len(res.Applied))
+		fmt.Fprintf(out, "%d override(s) and %d patch(es), none of which modify an existing recipe: nothing to convert\n",
+			len(hcl), len(res.Applied))
 		return 0
 	}
 	fmt.Fprintf(out, "\n%d project(s) reproduce the unified diff exactly, %d do not\n", converted, bad)

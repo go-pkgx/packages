@@ -134,7 +134,7 @@ func TestRunRefusesAnEmptyComparison(t *testing.T) {
 	if code := run(t.TempDir(), pantry, false, &buf); code != 2 {
 		t.Fatalf("code = %d\n%s", code, buf.String())
 	}
-	if !strings.Contains(buf.String(), "no patch in") {
+	if !strings.Contains(buf.String(), "nothing in") {
 		t.Errorf("report:\n%s", buf.String())
 	}
 }
@@ -599,7 +599,31 @@ index 0000000..1111111
 	if code := run(t.TempDir(), pantry, false, &buf); code != 2 {
 		t.Fatalf("code = %d\n%s", code, buf.String())
 	}
-	if !strings.Contains(buf.String(), "no patch in") {
+	if !strings.Contains(buf.String(), "nothing in") {
 		t.Errorf("report:\n%s", buf.String())
+	}
+}
+
+// The real end state: every override is HCL and there is no patch at all. That
+// is done, not broken — and it is a different answer from an empty directory,
+// which this has had to be taught twice as the end state moved.
+func TestRunWhenEverythingIsAlreadyLogical(t *testing.T) {
+	pantry := gitPantry(t, map[string]string{"acme.org": acmeRecipe})
+	dir := overrideDir(t, map[string]string{"acme.org.hcl": `
+project = "acme.org"
+why     = "our registry carries no openssl 1.x"
+edits   = [{ path = "dependencies[\"openssl.org\"]", set = "^3" }]
+`})
+	var buf bytes.Buffer
+	if code := run(dir, pantry, false, &buf); code != 0 {
+		t.Fatalf("code = %d\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "nothing to convert") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+	// And a directory with neither is still a refusal.
+	buf.Reset()
+	if code := run(t.TempDir(), pantry, false, &buf); code != 2 {
+		t.Errorf("code = %d\n%s", code, buf.String())
 	}
 }
