@@ -62,63 +62,9 @@ func writePatches(t *testing.T, m map[string]string) string {
 	return dir
 }
 
-func TestAddedRecipes(t *testing.T) {
-	got := addedRecipes(newPatch + editPatch + propPatch)
-	if len(got) != 1 {
-		t.Fatalf("added = %v, want only the created recipe", got)
-	}
-	want := "distributable:\n  url: https://acme.org/tool-{{version}}.tar.gz\ndisplay-name: tool\n"
-	if string(got["acme.org/tool"]) != want {
-		t.Errorf("content = %q, want %q", got["acme.org/tool"], want)
-	}
-}
-
-func TestProjectOf(t *testing.T) {
-	for path, want := range map[string]string{
-		"projects/acme.org/tool/package.yml": "acme.org/tool",
-		"projects/acme.org/tool/fix.diff":    "",
-		"elsewhere/package.yml":              "",
-	} {
-		if got := projectOf(path); got != want {
-			t.Errorf("projectOf(%q) = %q, want %q", path, got, want)
-		}
-	}
-}
-
 // The two halves are in different FORMATS — the overlay is HCL, the build
 // patch stays YAML because it applies to an upstream clone — so drift is a
 // question about what each says, not about the bytes.
-func TestSameRecipe(t *testing.T) {
-	yaml := []byte("dependencies:\n  openssl.org: ^3\nprovides:\n  - bin/x\n")
-	hcl := []byte("dependencies = { \"openssl.org\" = \"^3\" }\nprovides = [\"bin/x\"]\n")
-	if same, err := sameRecipe(hcl, "package.hcl", yaml); err != nil || !same {
-		t.Errorf("the same recipe in two formats is not drift: %v, %v", same, err)
-	}
-	// And a real disagreement still is.
-	other := []byte("dependencies = { \"openssl.org\" = \"^1\" }\nprovides = [\"bin/x\"]\n")
-	if same, err := sameRecipe(other, "package.hcl", yaml); err != nil || same {
-		t.Errorf("a different constraint is drift: %v, %v", same, err)
-	}
-	// Formatting is not drift — which the byte comparison this replaces could
-	// not say.
-	spaced := []byte("provides = [\"bin/x\"]\n\ndependencies = {\n  \"openssl.org\" = \"^3\"\n}\n")
-	if same, err := sameRecipe(spaced, "package.hcl", yaml); err != nil || !same {
-		t.Errorf("reordering and whitespace are not drift: %v, %v", same, err)
-	}
-	// A YAML overlay still works, for a project the flip has not reached.
-	if same, err := sameRecipe(yaml, "package.yml", yaml); err != nil || !same {
-		t.Errorf("yaml against yaml: %v, %v", same, err)
-	}
-	// A half that cannot be read is NOT "no drift": saying so would pass a
-	// project whose recipe no consumer can parse.
-	if _, err := sameRecipe([]byte("build { script = \n"), "package.hcl", yaml); err == nil {
-		t.Error("an unreadable overlay half must be an error")
-	}
-	if _, err := sameRecipe(hcl, "package.hcl", []byte("\tnot yaml\n")); err == nil {
-		t.Error("an unreadable patch half must be an error")
-	}
-}
-
 // The overlay is asked for BOTH names, in the order a consumer tries them.
 // Asking for package.yml alone reported all eight of this tool's projects
 // "absent from the overlay" the day those recipes became package.hcl — every
@@ -176,91 +122,8 @@ func TestFetchOverlayRecipeTriesBothNames(t *testing.T) {
 	}
 }
 
-func TestRunAgreement(t *testing.T) {
-	dir := writePatches(t, map[string]string{"acme-new.patch": newPatch})
-	old := httpGet
-	defer func() { httpGet = old }()
-	// The overlay answers in HCL and the patch half is YAML, which is the
-	// arrangement in production: the two agree as DOCUMENTS and share barely a
-	// byte.
-	httpGet = func(url string) (int, []byte, error) {
-		if !strings.Contains(url, "/projects/acme.org/tool/package.hcl") {
-			t.Errorf("unexpected url %q", url)
-		}
-		return 200, []byte("distributable {\n  url = \"https://acme.org/tool-{{version}}.tar.gz\"\n}\ndisplay-name = \"tool\"\n"), nil
-	}
-	var out bytes.Buffer
-	if code := run(dir, &out); code != 0 {
-		t.Fatalf("code = %d, out = %s", code, out.String())
-	}
-	if !strings.Contains(out.String(), "✓ acme.org/tool") {
-		t.Errorf("out = %s", out.String())
-	}
-}
-
-func TestRunDisagreements(t *testing.T) {
-	dir := writePatches(t, map[string]string{"acme-new.patch": newPatch})
-	old := httpGet
-	defer func() { httpGet = old }()
-
-	for _, tc := range []struct {
-		name string
-		get  func(string) (int, []byte, error)
-		want string
-	}{
-		{"absent", func(string) (int, []byte, error) { return http.StatusNotFound, nil, nil },
-			"absent from the overlay"},
-		{"server error", func(string) (int, []byte, error) { return 500, nil, nil },
-			"overlay answered 500"},
-		{"transport", func(string) (int, []byte, error) { return 0, nil, errors.New("boom") },
-			"cannot read the overlay: boom"},
-		{"drifted", func(string) (int, []byte, error) { return 200, []byte("display-name = \"something else\"\n"), nil },
-			"halves have drifted"},
-		// A half that cannot be READ is not "no drift": passing it would let
-		// through a recipe no consumer can parse.
-		{"unreadable", func(string) (int, []byte, error) { return 200, []byte("build { script = \n"), nil },
-			"cannot compare the halves"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			httpGet = tc.get
-			var out bytes.Buffer
-			if code := run(dir, &out); code != 1 {
-				t.Fatalf("code = %d, want 1", code)
-			}
-			if !strings.Contains(out.String(), tc.want) {
-				t.Errorf("out = %q, want %q", out.String(), tc.want)
-			}
-		})
-	}
-}
-
-func TestRunUnreadableDir(t *testing.T) {
-	var out bytes.Buffer
-	if code := run(filepath.Join(t.TempDir(), "absent"), &out); code != 2 {
-		t.Fatalf("code = %d, want 2", code)
-	}
-	if !strings.Contains(out.String(), "overlaycheck:") {
-		t.Errorf("out = %q", out.String())
-	}
-}
-
 // A patch file that cannot be read is a hard failure, not a project silently
 // left unchecked — the whole value of this tool is that it does not skip.
-func TestRunUnreadablePatch(t *testing.T) {
-	dir := writePatches(t, map[string]string{"acme-new.patch": newPatch})
-	p := filepath.Join(dir, "unreadable.patch")
-	if err := os.WriteFile(p, []byte("x"), 0o000); err != nil {
-		t.Fatal(err)
-	}
-	if os.Geteuid() == 0 {
-		t.Skip("root reads anything")
-	}
-	var out bytes.Buffer
-	if code := run(dir, &out); code != 2 {
-		t.Fatalf("code = %d, want 2", code)
-	}
-}
-
 // The default seam must be the real one; exercising it without a network is
 // what a bad address is for. Both credential paths are walked: a token is what
 // CI has, and its absence is what a laptop has.
@@ -278,49 +141,38 @@ func TestHTTPGetIsWired(t *testing.T) {
 	}
 }
 
+// The entry point, in the one mode it has left.
 func TestMainRuns(t *testing.T) {
-	dir := writePatches(t, map[string]string{"acme-new.patch": newPatch})
-	old, oldArgs, oldExit := httpGet, os.Args, osExit
-	defer func() { httpGet, os.Args, osExit = old, oldArgs, oldExit }()
+	pantry, overlay := twoHalves(t)
+	oldGet, oldArgs, oldExit := httpGet, os.Args, osExit
+	t.Cleanup(func() { httpGet, os.Args, osExit = oldGet, oldArgs, oldExit })
 	exited := -1
 	osExit = func(c int) { exited = c }
+	httpGet = func(string) (int, []byte, error) { return 200, []byte("ok"), nil }
 
-	httpGet = func(string) (int, []byte, error) {
-		return 200, []byte("distributable {\n  url = \"https://acme.org/tool-{{version}}.tar.gz\"\n}\ndisplay-name = \"tool\"\n"), nil
-	}
-	os.Args = []string{"overlaycheck", dir}
+	os.Args = []string{"overlaycheck", "--pantry", pantry, "--overlay", overlay, "--overrides", t.TempDir()}
 	main()
 	if exited != -1 {
 		t.Errorf("agreement must not exit, got %d", exited)
 	}
 
-	// A disagreement exits non-zero, which is what makes this a CI gate rather
-	// than a report nobody reads.
-	httpGet = func(string) (int, []byte, error) { return http.StatusNotFound, nil, nil }
+	// Without an overlay there is nothing to compare, and that is a refusal
+	// rather than a clean run — the shape that reported "0 projects, both
+	// halves in agreement" for a directory whose subject had disappeared.
+	os.Args = []string{"overlaycheck"}
+	main()
+	if exited != 2 {
+		t.Errorf("exit = %d, want 2", exited)
+	}
+
+	// A disagreement exits non-zero, which is what makes this a gate.
+	exited = -1
+	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
+		"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\nprovides = [\"bin/acme\"]\n")
+	os.Args = []string{"overlaycheck", "--pantry", pantry, "--overlay", overlay, "--overrides", t.TempDir()}
 	main()
 	if exited != 1 {
 		t.Errorf("exit = %d, want 1", exited)
-	}
-
-	// With no argument it reads ./overrides — the layout of this repository,
-	// which is the only way it is ever invoked in CI.
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = os.Chdir(wd) }()
-	root := t.TempDir()
-	if err := os.Mkdir(filepath.Join(root, "overrides"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(root); err != nil {
-		t.Fatal(err)
-	}
-	os.Args = []string{"overlaycheck"}
-	exited = -1
-	main()
-	if exited != -1 {
-		t.Errorf("an empty overrides dir is not a failure, got %d", exited)
 	}
 }
 
@@ -401,15 +253,35 @@ func TestRunAgainstPantryNamesTheKey(t *testing.T) {
 
 // A project the overlay carries and the pantry does not is the ADDED case, and
 // the narrow check owns it: this mode must pass over it, not fail on it.
-func TestRunAgainstPantrySkipsWhatIsOnlyInTheOverlay(t *testing.T) {
+func TestAProjectOnlyTheOverlayCarriesMustBeServed(t *testing.T) {
 	pantry, overlay := twoHalves(t)
 	writeFile(t, filepath.Join(overlay, "projects", "only.example", "package.hcl"),
 		"distributable {\n  url = \"https://only.example/x.tar.gz\"\n}\n")
+
+	old := httpGet
+	t.Cleanup(func() { httpGet = old })
+
+	// Upstream has no such project, so the overlay's copy is the only recipe
+	// there is — for the builder AND the consumer. There are no two halves to
+	// compare, and the one thing that can still go wrong is the one that cost
+	// four published, signed, unreachable packages: it has to be SERVED.
+	httpGet = func(string) (int, []byte, error) { return 200, []byte("ok"), nil }
 	var buf bytes.Buffer
 	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 0 {
-		t.Fatalf("code = %d, want 0\n%s", code, buf.String())
+		t.Fatalf("code = %d\n%s", code, buf.String())
 	}
-	if !strings.Contains(buf.String(), "1 of 2 overlay project(s)") {
+	if !strings.Contains(buf.String(), "1 are ours alone and served") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+
+	// Merged but not served: a checkout can be right while the contents API
+	// still returns the old state.
+	httpGet = func(string) (int, []byte, error) { return 404, nil, nil }
+	buf.Reset()
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 1 {
+		t.Fatalf("code = %d\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "does not SERVE it") {
 		t.Errorf("report:\n%s", buf.String())
 	}
 }
@@ -475,6 +347,12 @@ func TestRunAgainstPantryRefusesTheWrongTrees(t *testing.T) {
 	}
 
 	t.Run("trees that share no project", func(t *testing.T) {
+		// Served, so the "ours alone" arm succeeds and the only thing left to
+		// say is that the two trees do not line up. Without the stub this
+		// tests a 404 from the real API instead.
+		old := httpGet
+		t.Cleanup(func() { httpGet = old })
+		httpGet = func(string) (int, []byte, error) { return 200, []byte("ok"), nil }
 		other := t.TempDir()
 		writeFile(t, filepath.Join(other, "projects", "elsewhere.example", "package.yml"), "distributable:\n  url: x\n")
 		var buf bytes.Buffer
@@ -733,10 +611,14 @@ func TestRunAgainstPantryReportsABadOverrideDirectory(t *testing.T) {
 		p, o := twoHalves(t)
 		writeFile(t, filepath.Join(p, "projects", "acme.org", "package.yml"), "a: [\n")
 		var buf bytes.Buffer
-		// Unreadable as YAML: treated as absent, which is the ADDED case the
-		// narrow check owns — so nothing is compared and that is a refusal.
-		if code := runAgainstPantry(p, o, "", &buf); code != 2 {
+		// A recipe that is THERE and does not parse is a failure the run
+		// measured, not a missing project. Treating it as absent used to make
+		// it vanish into the skip arm.
+		if code := runAgainstPantry(p, o, "", &buf); code != 1 {
 			t.Errorf("code = %d\n%s", code, buf.String())
+		}
+		if !strings.Contains(buf.String(), "cannot read the built recipe") {
+			t.Errorf("report:\n%s", buf.String())
 		}
 	})
 
@@ -748,8 +630,15 @@ why     = "w"
 edits   = [{ path = "build.script", from = "cmake", to = "cmake3" }]
 `)
 		var buf bytes.Buffer
-		if code := runAgainstPantry(pantry, overlay, ov, &buf); code != 2 {
+		// 1, not 2: this is a FAILURE the run measured, not a pair of trees
+		// that do not line up. The first draft reported it as the latter, and
+		// called it "upstream has no such project" — which sends the reader to
+		// the wrong question entirely.
+		if code := runAgainstPantry(pantry, overlay, ov, &buf); code != 1 {
 			t.Errorf("code = %d — an override that cannot apply must stop the run\n%s", code, buf.String())
+		}
+		if !strings.Contains(buf.String(), "cannot read the built recipe") {
+			t.Errorf("report:\n%s", buf.String())
 		}
 	})
 }
