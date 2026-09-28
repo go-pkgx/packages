@@ -271,11 +271,26 @@ func runAgainstPantry(pantryDir, overlayHint, overridesDir string, out io.Writer
 	}
 	fmt.Fprintf(out, "\n%d of %d overlay project(s) are in both halves, %d disagree; %d are ours alone and served.\n",
 		checked, len(projects), bad, ours)
-	// A build-side difference is reported and does NOT fail: nothing reads a
-	// build section out of the overlay — the factory compiles the pantry's
-	// recipe with the overrides applied. 23 of the 25 disagreements are that,
-	// they are our own override patches, and failing on them would mean
-	// mirroring every patch into a second tree forever.
+	// A build-side difference is reported and does NOT fail. For build.script
+	// and build.env that is because nothing reads them out of the overlay: the
+	// factory compiles the pantry's recipe with the overrides applied, and
+	// failing on those would mean mirroring every patch into a second tree
+	// forever.
+	//
+	// That reason used to be given for the WHOLE build section, and for
+	// `build.dependencies` it is FALSE. The factory's CLOSURE reads both
+	// halves — the union in closureOf since go-pkgx/bk#224, the merge in
+	// closureGraph since go-pkgx/bk#232 — and the closure decides the build
+	// ORDER, which decides which bottles exist when. The overlay's own
+	// llvm.org entry says as much in a comment, while this said the opposite.
+	//
+	// They are marked CLOSURE rather than counted with the rest, and they
+	// still do not fail, on a MEASUREMENT rather than on that claim: on
+	// 2026-09-28 all six were checked with `bk closure --build`, with and
+	// without --overlay, and every one gave the same set. The only difference
+	// anywhere was github.com/besser82/libxcrypt, which comes from perl.org's
+	// deliberate entry and not from these. Re-measure that before trusting
+	// this paragraph; it is the kind of sentence that outlives its subject.
 	//
 	// A CONSUMER-side difference is another matter. It is what resolution
 	// actually uses, the overlay WINS there, and a stale one is served. So
@@ -322,6 +337,28 @@ func runAgainstPantry(pantryDir, overlayHint, overridesDir string, out io.Writer
 
 // consumerMark prefixes a difference in the half a consumer resolves from.
 const consumerMark = "CONSUMER "
+
+// closureMark names a difference under `build.dependencies`. It does not fail,
+// and it is NOT lumped in with the rest of the build section, because the
+// reason the rest is excluded does not apply to it.
+//
+// "Nothing reads a build section out of the overlay" was the stated reason,
+// and for build.script and build.env it is true. For build.dependencies it is
+// FALSE: the factory's closure reads both halves — the union in closureOf
+// since go-pkgx/bk#224, the merge in closureGraph since go-pkgx/bk#232 — and
+// the closure decides the build ORDER, which decides which bottles exist when.
+// The overlay's own llvm.org entry says so in a comment.
+//
+// So this is reported by its own name rather than hidden in the build count.
+// Measured 2026-09-28, all six of them: `bk closure --build` with and without
+// --overlay gives the same set for every one, the only difference anywhere
+// being github.com/besser82/libxcrypt, which comes from perl.org's deliberate
+// entry and not from these. The exclusion is therefore right TODAY, and it
+// rests on that measurement rather than on the claim it used to rest on.
+const closureMark = "CLOSURE  "
+
+// closureKeys are the build-side keys the factory's CLOSURE reads.
+var closureKeys = []string{"build.dependencies"}
 
 // deliberate names the projects whose CONSUMER half is meant to disagree with
 // upstream's. Each one is this overlay doing the job it exists for: declaring
@@ -445,11 +482,16 @@ var consumerKeys = []string{"dependencies", "provides", "versions", "distributab
 // the pantry was corrected to enumerate SourceForge, where the tarball its own
 // `distributable` downloads actually lives. The overlay WINS for a consumer,
 // so that stale block is what a consumer resolves tcl versions with.
-func consumerDiff(a, b map[string]any) string {
+func consumerDiff(a, b map[string]any) string { return keysDiff(a, b, consumerKeys) }
+
+// keysDiff compares one named key at a time, each on its own, so none can mask
+// another. A key may be a dotted path — `build.dependencies` is the key the
+// CLOSURE reads, and it is not at the top level.
+func keysDiff(a, b map[string]any, keys []string) string {
 	var out []string
-	for _, k := range consumerKeys {
-		x, inA := a[k]
-		y, inB := b[k]
+	for _, k := range keys {
+		x, inA := at(a, k)
+		y, inB := at(b, k)
 		switch {
 		case !inA && !inB:
 		case inA != inB:
@@ -465,6 +507,24 @@ func consumerDiff(a, b map[string]any) string {
 		}
 	}
 	return strings.Join(out, "; ")
+}
+
+// at walks a dotted path. A path whose prefix is not a mapping is absent
+// rather than an error: a recipe whose `build` is a bare script string has no
+// build.dependencies, and that is a fact about the recipe, not a fault.
+func at(doc map[string]any, path string) (any, bool) {
+	cur := any(doc)
+	for _, part := range strings.Split(path, ".") {
+		m, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		cur, ok = m[part]
+		if !ok {
+			return nil, false
+		}
+	}
+	return cur, true
 }
 
 // builtRecipe reads a pantry recipe the way the FACTORY reads it: the file,
@@ -512,6 +572,12 @@ func recipeDiffDoc(overlay []byte, overlayName string, b, upstream map[string]an
 	// that matters first is the only way the answer cannot be masked.
 	if d := consumerDiff(a, b); d != "" {
 		return consumerMark + d, nil
+	}
+	// Then the keys the CLOSURE reads, before the rest of the build section —
+	// same reason as above, `build.dependencies` would otherwise be masked by
+	// whatever under `build` sorts before it.
+	if d := keysDiff(a, b, closureKeys); d != "" {
+		return closureMark + d, nil
 	}
 	return bottle.DocDiff(a, b), nil
 }
