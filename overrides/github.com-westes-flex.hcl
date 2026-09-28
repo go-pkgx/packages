@@ -4,7 +4,6 @@ why     = "converted from github.com-westes-flex-gettext-v1.patch; the reason is
 edits = [
   {
     path = "dependencies[\"gnu.org/gettext\"]"
-    from = "0"
-    to   = "1"
+    set = "^1"
   },
 ]

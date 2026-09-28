@@ -8,7 +8,6 @@ edits = [
   },
   {
     path = "dependencies[\"openssl.org\"]"
-    from = "1"
-    to   = "3"
+    set = "^3"
   },
 ]

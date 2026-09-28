@@ -4,7 +4,6 @@ why     = "converted from zlib.net-source-from-github.patch; the reason is in th
 edits = [
   {
     path = "distributable.url"
-    from = "zlib.net"
-    to   = "github.com/madler/zlib/releases/download/v{{version.raw}}"
+    set = "https://github.com/madler/zlib/releases/download/v{{version.raw}}/zlib-{{version.raw}}.tar.gz"
   },
 ]

@@ -29,17 +29,25 @@ edits = [
   },
   {
     path = "build.script"
-    from = "S "
-    to   = "S $${EXTRA_ARGS:-} "
-  },
-  {
-    path = "build.script"
-    from = "re $ARGS"
-    to   = "re $ARGS $${EXTRA_ARGS:-}"
-  },
-  {
-    path = "build.script"
-    from = "ble $ARGS"
-    to   = "ble $ARGS $${EXTRA_ARGS:-}"
+    set = [
+      "./configure --enable-single $ARGS $${EXTRA_ARGS:-} || (cat config.log && false)",
+      "make --jobs {{hw.concurrency}} install",
+      "make clean",
+      "./configure $ARGS $${EXTRA_ARGS:-}",
+      "make --jobs {{hw.concurrency}} install",
+      "make clean",
+      "./configure --enable-long-double $ARGS $${EXTRA_ARGS:-}",
+      "make --jobs {{hw.concurrency}} install",
+    ]
+    expect = [
+      "./configure --enable-single $ARGS || (cat config.log && false)",
+      "make --jobs {{hw.concurrency}} install",
+      "make clean",
+      "./configure $ARGS",
+      "make --jobs {{hw.concurrency}} install",
+      "make clean",
+      "./configure --enable-long-double $ARGS",
+      "make --jobs {{hw.concurrency}} install",
+    ]
   },
 ]

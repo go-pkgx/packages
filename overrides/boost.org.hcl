@@ -5,11 +5,13 @@ edits = [
   {
     path = "build.script"
     from = <<EOT
-B
+@loader_path $LIB
+done
 EOT
     to   = <<EOT
-B
+@loader_path $LIB
   install_name_tool -add_rpath @loader_path/../../.. $LIB
+done
 EOT
   },
   {

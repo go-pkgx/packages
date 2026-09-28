@@ -3,7 +3,7 @@ module github.com/go-pkgx/packages
 go 1.26.4
 
 require (
-	github.com/go-pkgx/bk v0.0.0-20260928070252-614a70470b5a
+	github.com/go-pkgx/bk v0.0.0-20260928085343-a789f0ee0c49
 	github.com/go-pkgx/bottle v0.23.1-0.20260927210538-5e8776a0c8ef
 	gopkg.in/yaml.v3 v3.0.1
 )

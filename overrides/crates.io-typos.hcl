@@ -4,7 +4,7 @@ why     = "`cargo install` without --locked ignores the Cargo.lock the release s
 edits = [
   {
     path = "build.script"
-    from = "l --"
-    to   = "l --locked --"
+    from = "install --path"
+    to   = "install --locked --path"
   },
 ]

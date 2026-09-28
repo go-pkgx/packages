@@ -12,7 +12,7 @@ edits = [
   },
   {
     path = "build.script"
-    from = "l --"
-    to   = "l --locked --"
+    from = "install --path"
+    to   = "install --locked --path"
   },
 ]

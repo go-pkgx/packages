@@ -4,8 +4,7 @@ why     = "This recipe pins openssl to a 1.x line. Our registry holds no 1.x bot
 edits = [
   {
     path = "build.env.LDFLAGS"
-    from = "-W"
-    to   = "$LDFLAGS -W"
+    set = "$LDFLAGS -Wl,-rpath,{{prefix}}"
   },
   {
     path = "dependencies[\"openssl.org\"]"

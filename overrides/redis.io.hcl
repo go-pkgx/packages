@@ -4,7 +4,6 @@ why     = "This recipe pins openssl to a 1.x line. Our registry holds no 1.x bot
 edits = [
   {
     path = "dependencies[\"openssl.org\"]"
-    from = "1"
-    to   = "3"
+    set = "^3"
   },
 ]

@@ -16,8 +16,8 @@ edits = [
   },
   {
     path = "build.script"
-    from = "se"
-    to   = "se $LCMS_ARGS"
+    from = "-DCMAKE_BUILD_TYPE=Release\nmake"
+    to   = "-DCMAKE_BUILD_TYPE=Release $LCMS_ARGS\nmake"
   },
   {
     path = "dependencies[\"littlecms.com\"]"
