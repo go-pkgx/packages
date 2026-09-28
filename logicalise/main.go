@@ -166,18 +166,29 @@ func run(dir, pantry string, write bool, out io.Writer) int {
 		}
 	}
 
-	fmt.Fprintf(out, "\n%d project(s) reproduce the unified diff exactly, %d do not\n", converted, bad)
 	if converted+bad == 0 {
-		// Nothing EXAMINED is not agreement: it is a run that did not happen.
+		// Nothing EXAMINED is not agreement — but it has two causes, and only
+		// one of them is a fault.
+		//
+		// Once the migration is done the directory holds patches that CREATE a
+		// project and nothing else; those are recipes of ours, not overrides,
+		// and there is genuinely nothing to convert. A directory with no patch
+		// AT ALL is the other case: a wrong path, or a clone that never
+		// happened, which this reported as a clean run once already.
 		//
 		// Counted as converted+bad, not as converted: written the other way it
-		// reported "not one project was compared" for a run where one WAS
-		// compared and failed, which sends the reader to look at their paths
-		// instead of at the failure. The same sentence, with the same defect,
-		// had to be fixed in overlaycheck the day before.
-		fmt.Fprintln(out, "logicalise: not one project was compared — is that an override directory?")
-		return 2
+		// said "not one project was compared" for a run where one WAS compared
+		// and failed, sending the reader to check their paths instead of the
+		// failure. The same sentence with the same defect had to be fixed in
+		// overlaycheck the day before.
+		if len(res.Applied) == 0 {
+			fmt.Fprintf(out, "logicalise: no patch in %s — is that an override directory?\n", dir)
+			return 2
+		}
+		fmt.Fprintf(out, "%d patch(es), none of which modify an existing recipe: nothing to convert\n", len(res.Applied))
+		return 0
 	}
+	fmt.Fprintf(out, "\n%d project(s) reproduce the unified diff exactly, %d do not\n", converted, bad)
 	if bad > 0 {
 		return 1
 	}

@@ -134,7 +134,7 @@ func TestRunRefusesAnEmptyComparison(t *testing.T) {
 	if code := run(t.TempDir(), pantry, false, &buf); code != 2 {
 		t.Fatalf("code = %d\n%s", code, buf.String())
 	}
-	if !strings.Contains(buf.String(), "not one project was compared") {
+	if !strings.Contains(buf.String(), "no patch in") {
 		t.Errorf("report:\n%s", buf.String())
 	}
 }
@@ -567,5 +567,39 @@ index 1111111..2222222 100644
 func TestNotIdempotentOnNothing(t *testing.T) {
 	if why, ok := notIdempotent(nil, map[string]any{"a": "x"}); !ok {
 		t.Errorf("no operations move nothing: %q", why)
+	}
+}
+
+// The end state: the directory holds patches that CREATE a project and nothing
+// else. Those are recipes of ours, not overrides, and there is genuinely
+// nothing to convert — which must not read as the other empty case, a wrong
+// path or a clone that never happened.
+func TestRunWithNothingLeftToConvert(t *testing.T) {
+	pantry := gitPantry(t, map[string]string{"acme.org": acmeRecipe})
+	const create = `diff --git a/projects/brand.new/package.yml b/projects/brand.new/package.yml
+new file mode 100644
+index 0000000..1111111
+--- /dev/null
++++ b/projects/brand.new/package.yml
+@@ -0,0 +1,2 @@
++build:
++  script: make
+`
+	dir := overrideDir(t, map[string]string{"brand.new-new.patch": create})
+	var buf bytes.Buffer
+	if code := run(dir, pantry, false, &buf); code != 0 {
+		t.Fatalf("code = %d\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "nothing to convert") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+
+	// And the other empty case is still a refusal.
+	buf.Reset()
+	if code := run(t.TempDir(), pantry, false, &buf); code != 2 {
+		t.Fatalf("code = %d\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "no patch in") {
+		t.Errorf("report:\n%s", buf.String())
 	}
 }
