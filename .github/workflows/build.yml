@@ -362,12 +362,34 @@ jobs:
           if [ -r /proc/meminfo ]; then
             memkb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
             avail=$(awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo)
-            echo "memory: $((memkb/1024)) MiB total, $avail MiB available"
+            # SWAP, because without it the cap below is the whole budget and a
+            # single translation unit can exceed it. llvm.org 23.1.2 was
+            # OOM-killed on the s390x seed at object 3880 of 7967, after 1h43,
+            # on RISCVInstructionSelector.cpp -- with the cap ALREADY applied
+            # (4 asked for, 3 used, 8009 MiB total). The log said "run: exit
+            # status 1" and the census said nothing about swap, so whether
+            # there was any to exceed took a trawl through 6000 lines to learn.
+            swapkb=$(awk '/^SwapTotal:/{print $2}' /proc/meminfo)
+            echo "memory: $((memkb/1024)) MiB total, $avail MiB available, $((swapkb/1024)) MiB swap"
             cap=$(( memkb / 2097152 ))   # one job per 2 GiB
-            [ "$cap" -lt 1 ] && cap=1
+            # An `if`, not `[ ... ] && cap=1`. The mechanism is not `set -e`,
+            # which leaves an AND-list alone: it is the SCRIPT'S EXIT STATUS.
+            # A bare `[ false ] && x` as the last command executed makes the
+            # script exit 1 and the step fail, wherever the shell got to.
+            #
+            #   bash -e -c 'cap=3; [ $cap -lt 1 ] && cap=1; echo hi'   -> hi, 0
+            #   bash -e -c 'cap=3; [ $cap -lt 1 ] && cap=1'            -> 1
+            #
+            # This one has echoes after it, so it is harmless TODAY. An `if` is
+            # harmless wherever it is moved to, which is the difference worth
+            # having in a file people append to.
+            if [ "$cap" -lt 1 ]; then cap=1; fi
             echo "cpus:   $(nproc 2>/dev/null || echo '?')"
             echo "MEM_JOBS=$cap" >> "$GITHUB_ENV"
             echo "memory fits $cap concurrent compile job(s)"
+            if [ "$swapkb" -eq 0 ]; then
+              echo "::warning::no swap: a compile that needs more than $((memkb/1024/cap)) MiB is an OOM kill, not a slow build"
+            fi
           fi
 
       - name: build + publish this chunk
@@ -461,8 +483,10 @@ jobs:
           # Build such bottles under the canonical /pkgx prefix instead: the same
           # one `pkgm image` bakes into a from-scratch image, so the interpreter
           # resolves where the package is actually installed.
-          # (an `if`, not `[ … ] &&`: the runner wraps this in `bash -e {0}`, so a
-          # false test as a bare statement would abort the whole step)
+          # (an `if`, not `[ … ] &&`. Not because of `set -e`, which leaves an
+          # AND-list alone, but because a bare `[ false ] && x` as the LAST
+          # command executed sets the script's exit status to 1 and fails the
+          # step. An `if` is harmless wherever it is moved to.)
           if [ -n "$GLIBC" ]; then export PKGX_DIR=/pkgx; fi
           # Sovereign by default. The two arches are proven — lz4.org built in
           # the staged rootfs on x86-64 and on the EMULATED aarch64 pool, the
@@ -526,9 +550,11 @@ jobs:
           # runs on failure. llvm.org died at 4297 of 7967 objects with
           # "Killed signal terminated program cc1plus" and took the runner with
           # it, and the log held no number at all.
-          # An `if`, not `[ … ] &&`: the runner wraps this in `bash -e {0}`, so
-          # a false test as a bare statement aborts the whole step. The repo
-          # already had that note eighty lines up and I walked into it anyway.
+          # An `if`, not `[ … ] &&`. The note this replaces blamed `set -e`,
+          # which is wrong and sent me looking for a landmine that was not
+          # there: `set -e` leaves an AND-list alone. What bites is the
+          # SCRIPT'S EXIT STATUS — a bare `[ false ] && x` as the LAST command
+          # executed makes the step fail. An `if` is harmless wherever it lands.
           if [ -r /proc/meminfo ]; then
             awk '/^Mem(Total|Available):/{printf "%s %d MiB\n", $1, $2/1024}' /proc/meminfo
           fi
