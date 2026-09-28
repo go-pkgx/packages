@@ -1,9 +1,9 @@
 project = "gnupg.org"
-why     = "converted from gnupg.org-gettext-v1.patch, gnupg.org-gpgme-declares-what-it-links.patch, gnupg.org-libassuan-declares-what-it-links.patch, gnupg.org-libgpg-error-darwin-gettext.patch, gnupg.org-v2.5-gettext-v1.patch; the reason is in the git history of those files"
+why     = "gnupg pins gettext's 0 major on darwin, which is stale after the 0.26-to-1.0.0 renumbering, and it links libraries its recipe does not declare."
 
 edits = [
   {
     path = "dependencies.darwin[\"gnu.org/gettext\"]"
-    set = "^1"
+    set  = "^1"
   },
 ]

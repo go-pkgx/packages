@@ -1,13 +1,13 @@
 project = "videolan.org/x265"
-why     = "converted from videolan.org-x265-build.patch; the reason is in the git history of those files"
+why     = "On darwin the recipe means Apple's libtool and PATH answers with ours. The build reaches 100%, builds every target, and dies merging the three bit-depth archives."
 
 edits = [
   {
     path = "build.script"
     set = [
       {
-        "if" = "<4"
-        "run" = <<EOT
+        "if"                = "<4"
+        "run"               = <<EOT
 python3 - <<'EOF'
 import glob, re
 changed = []
@@ -27,7 +27,7 @@ EOT
         "working-directory" = ".."
       },
       {
-        "run" = <<EOT
+        "run"               = <<EOT
 cmake ../source -DENABLE_HDR10_PLUS=ON $ARGS_DEFAULT $HIGHBITARGS
 make
 mv libx265.a ../8bit/libx265_main10.a
@@ -35,7 +35,7 @@ EOT
         "working-directory" = "../10bit"
       },
       {
-        "run" = <<EOT
+        "run"               = <<EOT
 cmake ../source -DMAIN12=ON $ARGS_DEFAULT $HIGHBITARGS
 make
 mv libx265.a ../8bit/libx265_main12.a
@@ -50,11 +50,11 @@ mv libx265.a libx265_main.a
 EOT
       },
       {
-        "if" = "darwin"
+        "if"  = "darwin"
         "run" = "/usr/bin/libtool -static -o $LIB_ARGS"
       },
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = "ar crs $LIB_ARGS"
       },
       {
@@ -63,7 +63,7 @@ EOT
     ]
     expect = [
       {
-        "run" = <<EOT
+        "run"               = <<EOT
 cmake ../source -DENABLE_HDR10_PLUS=ON $ARGS_DEFAULT $HIGHBITARGS
 make
 mv libx265.a ../8bit/libx265_main10.a
@@ -71,7 +71,7 @@ EOT
         "working-directory" = "../10bit"
       },
       {
-        "run" = <<EOT
+        "run"               = <<EOT
 cmake ../source -DMAIN12=ON $ARGS_DEFAULT $HIGHBITARGS
 make
 mv libx265.a ../8bit/libx265_main12.a
@@ -86,11 +86,11 @@ mv libx265.a libx265_main.a
 EOT
       },
       {
-        "if" = "darwin"
+        "if"  = "darwin"
         "run" = "libtool -static -o $LIB_ARGS"
       },
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = "ar crs $LIB_ARGS"
       },
       {

@@ -1,5 +1,5 @@
 project = "qt.io"
-why     = "converted from qt.io-libcxx-removed-unary-function.patch, qt.io-source-moved-to-archive.patch; the reason is in the git history of those files"
+why     = "qt 5.15.10 does not build on darwin/aarch64 because libc++ removed std::unary_function, which its headers still use; and its source moved to the upstream archive, so the original URL 404s."
 
 edits = [
   {
@@ -11,6 +11,6 @@ edits = [
   },
   {
     path = "distributable.url"
-    set = "https://download.qt.io/archive/qt/{{version.marketing}}/{{version}}/single/qt-everywhere-opensource-src-{{version}}.tar.xz"
+    set  = "https://download.qt.io/archive/qt/{{version.marketing}}/{{version}}/single/qt-everywhere-opensource-src-{{version}}.tar.xz"
   },
 ]

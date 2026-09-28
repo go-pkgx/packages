@@ -1,5 +1,5 @@
 project = "mozilla.org/nss"
-why     = "converted from mozilla.org-nss-darwin-rpath.patch, mozilla.org-nss-darwin-werror.patch, mozilla.org-nss-no-testlib.patch; the reason is in the git history of those files"
+why     = "nss records an absolute rpath, so its own dylibs cannot resolve nspr once installed anywhere else — bk's fixup guard refuses to publish that. It also needs -Werror relaxed and its test library left unbuilt."
 
 edits = [
   {

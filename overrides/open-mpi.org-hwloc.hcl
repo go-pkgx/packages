@@ -1,5 +1,5 @@
 project = "open-mpi.org/hwloc"
-why     = "converted from open-mpi.org-hwloc-libxml2.patch; the reason is in the git history of those files"
+why     = "hwloc declares NO runtime dependencies and links libxml2, so a bottle installed into an empty store cannot start."
 
 edits = [
   {

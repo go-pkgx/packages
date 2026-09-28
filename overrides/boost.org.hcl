@@ -1,5 +1,5 @@
 project = "boost.org"
-why     = "converted from boost.org-declares-bzip2.patch, boost.org-rpath.patch; the reason is in the git history of those files"
+why     = "libboost_iostreams links bzip2 and nothing declared it, so a bottle installed into an empty store cannot start. The rpath edit is the same fault on the other side: the library recorded a path that exists on the runner that built it and on no user's machine."
 
 edits = [
   {
@@ -16,6 +16,6 @@ EOT
   },
   {
     path = "dependencies[\"sourceware.org/bzip2\"]"
-    set = "^1"
+    set  = "^1"
   },
 ]

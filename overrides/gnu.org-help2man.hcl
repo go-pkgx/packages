@@ -1,9 +1,9 @@
 project = "gnu.org/help2man"
-why     = "converted from gnu.org-help2man-gettext-1.patch; the reason is in the git history of those files"
+why     = "help2man pins gettext ^0, which is stale: gettext renumbered 0.26 to 1.0.0 and kept the same library. The dead pin blocks gcc two levels up."
 
 edits = [
   {
     path = "dependencies[\"gnu.org/gettext\"]"
-    set = "*"
+    set  = "*"
   },
 ]

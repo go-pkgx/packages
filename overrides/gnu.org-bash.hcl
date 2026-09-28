@@ -1,16 +1,16 @@
 project = "gnu.org/bash"
-why     = "converted from gnu.org-bash-darwin-gettext.patch, gnu.org-bash-without-bash-malloc.patch; the reason is in the git history of those files"
+why     = "bash links gettext's libintl on darwin and did not declare it, and `--without-bash-malloc` is needed because bash's own allocator does not survive this platform's page size."
 
 edits = [
   {
     path = "build.script"
     set = [
       {
-        "if" = "<5"
+        "if"  = "<5"
         "run" = "CFLAGS=\"$CFLAGS -Wno-incompatible-pointer-types -Wno-implicit-int\""
       },
       {
-        "if" = "<5"
+        "if"  = "<5"
         "run" = "ARGS=\"$ARGS $LEGACY_ARGS\""
       },
       {
@@ -21,11 +21,11 @@ edits = [
     ]
     expect = [
       {
-        "if" = "<5"
+        "if"  = "<5"
         "run" = "CFLAGS=\"$CFLAGS -Wno-incompatible-pointer-types -Wno-implicit-int\""
       },
       {
-        "if" = "<5"
+        "if"  = "<5"
         "run" = "ARGS=\"$ARGS $LEGACY_ARGS\""
       },
       "./configure --prefix={{ prefix }} $ARGS",

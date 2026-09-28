@@ -1,10 +1,10 @@
 project = "gnu.org/gcc"
-why     = "converted from gnu.org-gcc-bootstrap-pin.patch, gnu.org-gcc-darwin-multilib.patch, gnu.org-gcc-triplet.patch; the reason is in the git history of those files"
+why     = "gcc pins `gnu.org/gcc: 14` as its own linux build dependency, for every version. `14` is a caret range, so it means major 14 and nothing else, and our registry starts at 16.2.0 — let the newest gcc we have build the older one."
 
 edits = [
   {
     path = "build.dependencies.linux[\"gnu.org/gcc\"]"
-    set = ">=14"
+    set  = ">=14"
   },
   {
     path = "build.env.darwin.ARGS"
@@ -52,11 +52,11 @@ edits = [
       },
       "ARGS=($ARGS --with-pkgversion=\"pkgx GCC {{version}}\")",
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = "export ARGS=(\"$${ARGS[@]}\" --with-boot-ldflags=\"-static-libstdc++ -static-libgcc $LDFLAGS\")"
       },
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = <<EOT
 if [ {{version.major}} -ge 6 ];  then ARGS=("$${ARGS[@]}" --enable-default-pie); fi
 if [ {{version.major}} -ge 9 ];  then ARGS=("$${ARGS[@]}" --enable-pie-tools); fi
@@ -65,25 +65,25 @@ export ARGS
 EOT
       },
       {
-        "if" = "<10"
+        "if"  = "<10"
         "run" = "ARGS=(\"$${ARGS[@]}\" --disable-lto --disable-plugin); export ARGS"
       },
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = <<EOT
 DEPRP="{{deps.gnu.org/mpc.prefix}}/lib:{{deps.gnu.org/mpfr.prefix}}/lib:{{deps.gnu.org/gmp.prefix}}/lib:{{deps.zlib.net.prefix}}/lib"
 export LDFLAGS="$LDFLAGS -Wl,-rpath,$DEPRP -Wl,-rpath-link,$DEPRP"
 EOT
       },
       {
-        "if" = "darwin"
+        "if"  = "darwin"
         "run" = "export LDFLAGS_FOR_TARGET=\"$LDFLAGS\""
       },
       "../configure \"$${ARGS[@]}\"",
       "make --jobs {{ hw.concurrency }}",
       "make install",
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = <<EOT
 if [ {{version.major}} -lt 10 ]; then
   for d in {{prefix}}/lib/gcc/*/{{version.raw}}/include-fixed; do
@@ -98,7 +98,7 @@ fi
 EOT
       },
       {
-        "if" = "darwin"
+        "if"   = "darwin"
         "prop" = <<EOT
 /#define .*STDIO/a\
 #include <stddef.h>\
@@ -113,7 +113,7 @@ EOT
         "working-directory" = "$${{prefix}}"
       },
       {
-        "run" = "test -f gc++ || ln -sf c++ gc++"
+        "run"               = "test -f gc++ || ln -sf c++ gc++"
         "working-directory" = "$${{prefix}}/bin"
       },
       {
@@ -181,11 +181,11 @@ EOT
       },
       "ARGS=($ARGS --with-pkgversion=\"pkgx GCC {{version}}\")",
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = "export ARGS=(\"$${ARGS[@]}\" --with-boot-ldflags=\"-static-libstdc++ -static-libgcc $LDFLAGS\")"
       },
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = <<EOT
 if [ {{version.major}} -ge 6 ];  then ARGS=("$${ARGS[@]}" --enable-default-pie); fi
 if [ {{version.major}} -ge 9 ];  then ARGS=("$${ARGS[@]}" --enable-pie-tools); fi
@@ -194,25 +194,25 @@ export ARGS
 EOT
       },
       {
-        "if" = "<10"
+        "if"  = "<10"
         "run" = "ARGS=(\"$${ARGS[@]}\" --disable-lto --disable-plugin); export ARGS"
       },
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = <<EOT
 DEPRP="{{deps.gnu.org/mpc.prefix}}/lib:{{deps.gnu.org/mpfr.prefix}}/lib:{{deps.gnu.org/gmp.prefix}}/lib:{{deps.zlib.net.prefix}}/lib"
 export LDFLAGS="$LDFLAGS -Wl,-rpath,$DEPRP -Wl,-rpath-link,$DEPRP"
 EOT
       },
       {
-        "if" = "darwin"
+        "if"  = "darwin"
         "run" = "export LDFLAGS_FOR_TARGET=\"$LDFLAGS\""
       },
       "../configure \"$${ARGS[@]}\"",
       "make --jobs {{ hw.concurrency }}",
       "make install",
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = <<EOT
 if [ {{version.major}} -lt 10 ]; then
   for d in {{prefix}}/lib/gcc/*/{{version.raw}}/include-fixed; do
@@ -227,7 +227,7 @@ fi
 EOT
       },
       {
-        "if" = "darwin"
+        "if"   = "darwin"
         "prop" = <<EOT
 /#define .*STDIO/a\
 #include <stddef.h>\
@@ -242,7 +242,7 @@ EOT
         "working-directory" = "$${{prefix}}"
       },
       {
-        "run" = "test -f gc++ || ln -sf c++ gc++"
+        "run"               = "test -f gc++ || ln -sf c++ gc++"
         "working-directory" = "$${{prefix}}/bin"
       },
       {

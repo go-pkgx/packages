@@ -1,5 +1,5 @@
 project = "freedesktop.org/fontconfig"
-why     = "converted from freedesktop.org-fontconfig-darwin-gettext.patch; the reason is in the git history of those files"
+why     = "fontconfig links gettext's libintl on darwin and did not declare it. Found by asking the mechanism rather than one report at a time: every darwin Mach-O on disk referencing libintl, cross-checked against what its project declares."
 
 edits = [
   {

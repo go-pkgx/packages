@@ -1,5 +1,5 @@
 project = "poppler.freedesktop.org"
-why     = "converted from poppler.freedesktop.org-tiff-hint.patch; the reason is in the git history of those files"
+why     = "poppler's darwin/aarch64 rebuild stops at configure: CMake goes looking for libtiff instead of using the one we declared, and finds the runner's."
 
 edits = [
   {

@@ -118,6 +118,25 @@ jobs:
       # the old state — raw.githubusercontent holds a file for minutes and
       # nothing dislodges it — so this asks the API for the eight, and compares
       # the other 175 against the recipe the factory builds.
+      # A `why` that points at the git history is not a why. The converter's
+      # fallback wrote one for every override it could not map to a generated
+      # family, and 59 of the 206 carried it — 29% of the directory telling the
+      # reader to go to the one place nobody looks. Every one of them was
+      # recoverable: `git log --diff-filter=A -- overrides/<name>.patch` had the
+      # reason, often in the subject line alone.
+      #
+      # The format exists to carry the WHY beside the WHAT. This is the crudest
+      # possible check of that and it is still worth having, because the way
+      # the placeholder came back would be a tool writing it, not a person.
+      - name: no override defers its reason to the git history
+        run: |
+          if grep -l "the reason is in the git history" overrides/*.hcl; then
+            echo "::error::the overrides above say where to look instead of saying why."
+            echo "Recover it: git log --diff-filter=A --all -- overrides/<name>.patch"
+            exit 1
+          fi
+          echo "$(ls overrides/*.hcl | wc -l) override(s), none deferring its reason"
+
       - name: the half a consumer resolves from agrees
         run: |
           rm -rf "$RUNNER_TEMP/overlay"

@@ -1,5 +1,5 @@
 project = "gnu.org/gawk"
-why     = "converted from gnu.org-gawk-darwin-gettext.patch; the reason is in the git history of those files"
+why     = "gawk links gettext's libintl on darwin and did not declare it, so the darwin bottle does not start from an empty store."
 
 edits = [
   {

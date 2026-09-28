@@ -1,5 +1,5 @@
 project = "gnupg.org/libgpg-error"
-why     = "converted from gnupg.org-libgpg-error-darwin-gettext.patch; the reason is in the git history of those files"
+why     = "libgpg-error links gettext's libintl on darwin and did not declare it. Found by cross-checking every darwin Mach-O that references libintl against what its project declares."
 
 edits = [
   {

@@ -1,5 +1,5 @@
 project = "openjpeg.org"
-why     = "converted from openjpeg.org-declares-littlecms.patch; the reason is in the git history of those files"
+why     = "opj_compress links little-cms and nothing declared it. CMake found one on the RUNNER, and bk refused to publish a result that names a library no consumer has."
 
 edits = [
   {
@@ -21,6 +21,6 @@ edits = [
   },
   {
     path = "dependencies[\"littlecms.com\"]"
-    set = "^2"
+    set  = "^2"
   },
 ]

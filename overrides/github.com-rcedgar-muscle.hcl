@@ -1,5 +1,5 @@
 project = "github.com/rcedgar/muscle"
-why     = "converted from github.com-rcedgar-muscle-darwin-strip.patch; the reason is in the git history of those files"
+why     = "The published muscle 5.3 darwin/aarch64 bottle does not run — the kernel kills it, because `strip` on PATH was GNU's rather than Apple's and it produced a Mach-O the loader rejects. The stripper has to be named."
 
 edits = [
   {

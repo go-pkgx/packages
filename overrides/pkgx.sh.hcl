@@ -1,5 +1,5 @@
 project = "pkgx.sh"
-why     = "converted from pkgx.sh-darwin-xz.patch; the reason is in the git history of those files"
+why     = "pkgx links liblzma on darwin and its recipe declares no runtime dependencies at all."
 
 edits = [
   {

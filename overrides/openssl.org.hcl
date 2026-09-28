@@ -1,9 +1,9 @@
 project = "openssl.org"
-why     = "converted from openssl.org-perl-line.patch; the reason is in the git history of those files"
+why     = "openssl's build declares `perl.org: 5`, while texinfo and gettext pin ~5.42 — their XS modules are compiled against that minor and bk's base toolchain pins it for the same reason. One closure cannot satisfy both."
 
 edits = [
   {
     path = "build.dependencies[\"perl.org\"]"
-    set = "~5.42"
+    set  = "~5.42"
   },
 ]
