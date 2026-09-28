@@ -642,3 +642,48 @@ edits   = [{ path = "build.script", from = "cmake", to = "cmake3" }]
 		}
 	})
 }
+
+// upstreamDoc is the baseline a consumer merges over, and a baseline it cannot
+// read is no baseline: the comparison falls back to the overlay file alone
+// rather than merging over something half-read.
+func TestUpstreamDocOnWhatItCannotRead(t *testing.T) {
+	pantry := t.TempDir()
+	if got := upstreamDoc(pantry, "absent.example"); got != nil {
+		t.Errorf("a project upstream does not carry has no baseline: %v", got)
+	}
+	writeFile(t, filepath.Join(pantry, "projects", "bad.example", "package.yml"), "a: [\n")
+	if got := upstreamDoc(pantry, "bad.example"); got != nil {
+		t.Errorf("a recipe that does not parse is no baseline: %v", got)
+	}
+	writeFile(t, filepath.Join(pantry, "projects", "ok.example", "package.yml"), "provides:\n  - bin/x\n")
+	if got := upstreamDoc(pantry, "ok.example"); got == nil {
+		t.Error("a readable recipe is the baseline")
+	}
+}
+
+// The comparison is against the MERGED consumer view. An entry that states
+// only what it changes has no `versions` and no `provides` in the FILE, and
+// reading the file alone would call every reduced entry a disagreement — which
+// is what happened the moment the overlay stopped being 183 full copies.
+func TestRunAgainstPantryComparesTheMergedView(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	writeFile(t, filepath.Join(pantry, "projects", "acme.org", "package.yml"),
+		"distributable:\n  url: https://acme.org/{{version}}.tar.gz\nprovides:\n  - bin/acme\ndependencies:\n  openssl.org: ^1.1\n")
+	// Says only what it changes.
+	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
+		"dependencies = {\n  \"openssl.org\" = \"^3\"\n}\n")
+
+	ov := t.TempDir()
+	writeFile(t, filepath.Join(ov, "acme.hcl"), `
+project = "acme.org"
+why     = "our registry carries no openssl 1.x"
+edits   = [{ path = "dependencies[\"openssl.org\"]", set = "^3" }]
+`)
+	var buf bytes.Buffer
+	if code := runAgainstPantry(pantry, overlay, ov, &buf); code != 0 {
+		t.Fatalf("code = %d — a reduced entry is not a disagreement\n%s", code, buf.String())
+	}
+	if strings.Contains(buf.String(), "provides") {
+		t.Errorf("a key the entry inherits was read as missing:\n%s", buf.String())
+	}
+}
