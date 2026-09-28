@@ -159,6 +159,24 @@ func runAgainstPantry(pantryDir, overlayHint, overridesDir string, out io.Writer
 		fmt.Fprintln(out, "overlaycheck:", err)
 		return 2
 	}
+	// And an empty OVERRIDE set is the same failure as an empty overlay, which
+	// the guard below has caught since the beginning. LoadDir returns an empty
+	// set for a directory that is not there — the comment above says why that
+	// matters and the check was still missing.
+	//
+	// Measured 2026-09-28, the same trees twice: from go-pkgx/packages, where
+	// `overrides/` resolves, 26 projects disagree and the run passes; from one
+	// directory away it is 175, and 149 of those are our own openssl pin
+	// reported as drift. A gate whose answer depends on the shell's working
+	// directory is not a gate.
+	//
+	// An EMPTY name is the one honest way to ask for no overrides, and the
+	// tests use it as the control that shows they matter. A name that was
+	// given and holds nothing is the mistake.
+	if overridesDir != "" && len(set.Projects()) == 0 {
+		fmt.Fprintf(out, "overlaycheck: no *.hcl under %s — the pantry half would be read UNOVERRIDDEN, and every override we carry would report as drift\n", overridesDir)
+		return 2
+	}
 	projects, err := overlayProjects(overlayHint)
 	if err != nil {
 		fmt.Fprintln(out, "overlaycheck:", err)
