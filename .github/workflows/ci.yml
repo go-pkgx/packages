@@ -91,6 +91,24 @@ jobs:
       # for. It had been reported for as long as the tool existed, as
       # `..build.script: 15 items became 14`, because the comparison returned
       # the first difference in sorted key order and `build` sorts first.
+      # The overrides are being moved from unified diffs to the logical HCL
+      # form (go-pkgx/bk#226): a diff says WHERE lines are and stops applying
+      # when upstream edits a neighbour, while an override that says WHAT it
+      # changes is addressed by key. 3 of 231 diffs had silently stopped
+      # applying on 2026-09-24, and one that `git apply --check` accepted was
+      # refused by the builder and merged broken on 2026-09-27.
+      #
+      # Both formats are present while the builder is taught to read the new
+      # one. This is what makes that safe: it derives the operations from each
+      # *.patch, writes them out, READS THEM BACK, applies them to a pristine
+      # recipe, and demands the same document the patch produced. Anything that
+      # differs is named with the key it differs at.
+      #
+      # It clones its own pantry rather than reusing the one above, which by
+      # this point has the patches applied to it.
+      - name: the two override formats agree
+        run: go run ./logicalise
+
       - name: the half a consumer resolves from agrees
         run: |
           rm -rf "$RUNNER_TEMP/overlay"
