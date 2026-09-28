@@ -1,0 +1,44 @@
+project = "info-zip.org/zip"
+why     = "converted from info-zip.org-zip.patch; the reason is in the git history of those files"
+
+edits = [
+  {
+    path = "build.script"
+    set = [
+      {
+        "run" = "wget https://deb.debian.org/debian/pool/main/z/zip/zip_3.0-13.debian.tar.xz && tar xf zip_3.0-13.debian.tar.xz"
+        "working-directory" = "patch"
+      },
+      "patch -p1 < patch/debian/patches/01-typo-it-is-transferring-not-transfering.patch",
+      "patch -p1 < patch/debian/patches/02-typo-it-is-privileges-not-priviliges.patch",
+      "patch -p1 < patch/debian/patches/03-manpages-in-section-1-not-in-section-1l.patch",
+      "patch -p1 < patch/debian/patches/04-do-not-set-unwanted-cflags.patch",
+      "patch -p1 < patch/debian/patches/05-typo-it-is-preceding-not-preceeding.patch",
+      "patch -p1 < patch/debian/patches/06-stack-markings-to-avoid-executable-stack.patch",
+      "patch -p1 < patch/debian/patches/07-fclose-in-file-not-fclose-x.patch",
+      "patch -p1 < patch/debian/patches/08-hardening-build-fix-1.patch",
+      "patch -p1 < patch/debian/patches/09-hardening-build-fix-2.patch",
+      "patch -p1 < patch/debian/patches/10-remove-build-date.patch",
+      "make -f unix/Makefile CC=\"{{deps.gnu.org/gcc.prefix}}/bin/gcc -std=gnu17 -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion\" generic",
+      "make -f unix/Makefile BINDIR={{prefix}}/bin MANDIR={{prefix}}/man/man1 install",
+    ]
+    expect = [
+      {
+        "run" = "wget https://deb.debian.org/debian/pool/main/z/zip/zip_3.0-11.debian.tar.xz && tar xf zip_3.0-11.debian.tar.xz"
+        "working-directory" = "patch"
+      },
+      "patch -p1 < patch/debian/patches/01-typo-it-is-transferring-not-transfering",
+      "patch -p1 < patch/debian/patches/02-typo-it-is-privileges-not-priviliges",
+      "patch -p1 < patch/debian/patches/03-manpages-in-section-1-not-in-section-1l",
+      "patch -p1 < patch/debian/patches/04-do-not-set-unwanted-cflags",
+      "patch -p1 < patch/debian/patches/05-typo-it-is-preceding-not-preceeding",
+      "patch -p1 < patch/debian/patches/06-stack-markings-to-avoid-executable-stack",
+      "patch -p1 < patch/debian/patches/07-fclose-in-file-not-fclose-x",
+      "patch -p1 < patch/debian/patches/08-hardening-build-fix-1",
+      "patch -p1 < patch/debian/patches/09-hardening-build-fix-2",
+      "patch -p1 < patch/debian/patches/10-remove-build-date",
+      "make -f unix/Makefile CC={{deps.gnu.org/gcc.prefix}}/bin/gcc generic",
+      "make -f unix/Makefile BINDIR={{prefix}}/bin MANDIR={{prefix}}/man/man1 install",
+    ]
+  },
+]
