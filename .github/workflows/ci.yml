@@ -129,6 +129,27 @@ jobs:
           # 180 disagreements, every one of them ours.
           go run ./overlaycheck --pantry "$RUNNER_TEMP/pantry" --overlay "$RUNNER_TEMP/overlay" --overrides overrides
 
+      # The seed order is a human artefact with a machine-checkable property.
+      # An order over a graph with CYCLES is not a topological sort — there is
+      # none — it is a topological sort of everything else plus a choice of
+      # which edges to give up on. Inside a cycle that choice is unavoidable;
+      # between two cycles nothing forces it, and this gates only the second.
+      #
+      # It is not a formality. The first run of it, 2026-09-28, found two:
+      # rust-lang.org and rust-lang.org/cargo both ordered before llvm.org,
+      # which is in a different component. That was the live seed failure of
+      # that day — `cargo: resolve deps: GET .../llvm.org/.../versions.txt: Not
+      # Found` — with two more cascading from it, and the file had been edited
+      # by hand for weeks with nothing able to say so.
+      - name: the seed order honours every edge outside a cycle
+        run: |
+          GOPROXY=direct go run github.com/go-pkgx/bk/cmd/bk@main closure --build \
+            --check-order seed/order.txt \
+            --pantry "$RUNNER_TEMP/pantry" \
+            --overlay "$RUNNER_TEMP/overlay" \
+            --overrides overrides \
+            $(grep -vE '^[[:space:]]*(#|$)' seed/order.txt | tr '\n' ' ')
+
       - name: test + 100% coverage gate
         run: |
           go test ./... -covermode=atomic -coverprofile=cov.out
