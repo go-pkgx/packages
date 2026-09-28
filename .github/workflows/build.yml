@@ -371,7 +371,31 @@ jobs:
             # there was any to exceed took a trawl through 6000 lines to learn.
             swapkb=$(awk '/^SwapTotal:/{print $2}' /proc/meminfo)
             echo "memory: $((memkb/1024)) MiB total, $avail MiB available, $((swapkb/1024)) MiB swap"
+            # A CONTAINER sees the host's /proc/meminfo, not its own limit, so
+            # the GARM lanes would compute a cap for a machine they do not
+            # have. The cgroup limit is the honest number when there is one;
+            # v2 writes "max" when there is none.
+            lim=""
+            for f in /sys/fs/cgroup/memory.max /sys/fs/cgroup/memory/memory.limit_in_bytes; do
+              if [ -r "$f" ]; then v=$(cat "$f"); case "$v" in [0-9]*) lim=$((v/1024));; esac; break; fi
+            done
+            if [ -n "$lim" ] && [ "$lim" -gt 0 ] && [ "$lim" -lt "$memkb" ]; then
+              echo "cgroup: $((lim/1024)) MiB limit, below the $((memkb/1024)) MiB this host has"
+              memkb=$lim
+            fi
             cap=$(( memkb / 2097152 ))   # one job per 2 GiB
+            # And never more jobs than CORES. Measured 2026-09-28: the s390x VM
+            # has nproc=2 and 8009 MiB, so the memory cap alone said 3 and the
+            # run compiled THREE llvm translation units on TWO cores -- each
+            # wanting upwards of 2 GiB of a machine that has 7.8. The cap was
+            # above the core count, so it capped nothing that mattered, and
+            # min(2,3)=2 would have halved the peak for no loss of speed: two
+            # cores do not run three compilers faster.
+            cpus=$(nproc 2>/dev/null || echo 1)
+            if [ "$cpus" -lt "$cap" ]; then
+              echo "cores:  $cpus, below the $cap that memory allows"
+              cap=$cpus
+            fi
             # An `if`, not `[ ... ] && cap=1`. The mechanism is not `set -e`,
             # which leaves an AND-list alone: it is the SCRIPT'S EXIT STATUS.
             # A bare `[ false ] && x` as the last command executed makes the
