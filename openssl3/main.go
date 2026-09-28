@@ -37,6 +37,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -66,21 +67,21 @@ var depLine = regexp.MustCompile(`^(\s+openssl\.org:\s*)(['"]?)([\^~]?1(?:\.[^\s
 // want is what the constraint becomes: the major line our registry carries.
 const want = "^3"
 
-// osExit and patchOne are seams: the first lets a test drive main() without
+// osExit and overrideOne are seams: the first lets a test drive main() without
 // killing the test binary, the second lets it drive the "this project could not
 // be patched" path, which is the one that must NOT abort the whole run.
 var (
-	osExit   = os.Exit
-	patchOne = patchFor
+	osExit      = os.Exit
+	overrideOne = overrideFor
 )
 
 func main() { osExit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
-func run(args []string, stdout, stderr *os.File) int {
+func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("openssl3", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	pantry := fs.String("pantry", "pantry", "pantry checkout to read recipes from")
-	out := fs.String("overrides", "overrides", "directory the patches are written to")
+	out := fs.String("overrides", "overrides", "directory the overrides are written to")
 	overlay := fs.String("overlay", "", "ALSO write each corrected recipe whole into this pantry-overlay projects/ dir")
 	dry := fs.Bool("n", false, "report what would change, write nothing")
 	if err := fs.Parse(args); err != nil {
@@ -92,18 +93,34 @@ func run(args []string, stdout, stderr *os.File) int {
 		return 1
 	}
 	sort.Strings(projects)
+	shared := 0
 	for _, proj := range projects {
-		patch, err := patchOne(*pantry, proj)
+		name := filepath.Join(*out, strings.ReplaceAll(proj, "/", "-")+".hcl")
+
+		// A file that is already there may hold somebody else's work — a
+		// project can need an override for more than one reason, and its
+		// operations live in one file so they are read together. Check it
+		// rather than overwrite it.
+		if paths, err := stalePinPaths(*pantry, proj); err == nil {
+			if ok, err := carriesThePins(name, paths); err == nil {
+				if !ok {
+					fmt.Fprintf(stderr, "openssl3: %s exists and does NOT carry the pin — add it by hand\n", name)
+					shared++
+				}
+				continue
+			}
+		}
+
+		src, err := overrideOne(*pantry, proj)
 		if err != nil {
 			fmt.Fprintf(stderr, "openssl3: skip %s: %v\n", proj, err)
 			continue
 		}
-		name := filepath.Join(*out, strings.ReplaceAll(proj, "/", "-")+"-openssl3.patch")
 		if *dry {
 			fmt.Fprintln(stdout, name)
 			continue
 		}
-		if err := os.WriteFile(name, []byte(patch), 0o644); err != nil {
+		if err := os.WriteFile(name, src, 0o644); err != nil {
 			fmt.Fprintln(stderr, "openssl3:", err)
 			return 1
 		}
@@ -118,6 +135,12 @@ func run(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintln(stdout, filepath.Join(*overlay, proj, "package.yml"))
 	}
 	fmt.Fprintf(stdout, "%d project(s) pin an openssl that does not exist\n", len(projects))
+	if shared > 0 {
+		// Not written, and not silently right either: a project whose override
+		// is shared has to be edited by a person, and saying nothing would let
+		// a stale pin sit behind a file that looks handled.
+		fmt.Fprintf(stdout, "%d of them have an override written for another reason and must be edited by hand\n", shared)
+	}
 	return 0
 }
 
@@ -144,64 +167,6 @@ func pinned(projectsDir string) ([]string, error) {
 		return nil
 	})
 	return out, err
-}
-
-// patchFor renders the unified diff retargeting one project's pin. It is
-// written directly rather than shelled out to `git diff`: the change is a
-// single line, and the pantry is not always a git checkout (CI clones it
-// shallow, the local harness mounts a copy).
-func patchFor(pantry, proj string) (string, error) {
-	rel := "projects/" + proj + "/package.yml"
-	b, err := os.ReadFile(filepath.Join(pantry, filepath.FromSlash(rel)))
-	if err != nil {
-		return "", err
-	}
-	lines := strings.Split(string(b), "\n")
-	var hit []int
-	for i, line := range lines {
-		if depLine.MatchString(line) {
-			hit = append(hit, i)
-		}
-	}
-	if len(hit) == 0 {
-		return "", fmt.Errorf("no openssl pin")
-	}
-	// A recipe can pin openssl twice — crates.io/sccache pins it in both its
-	// runtime and its build dependencies — so emit one hunk per changed line,
-	// merging the ranges that would otherwise overlap into a single hunk.
-	var b2 strings.Builder
-	fmt.Fprintf(&b2, "diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n", rel, rel, rel, rel)
-	for _, r := range ranges(hit, len(lines)) {
-		fmt.Fprintf(&b2, "@@ -%d,%d +%d,%d @@\n", r.start+1, r.end-r.start, r.start+1, r.end-r.start)
-		for i := r.start; i < r.end; i++ {
-			m := depLine.FindStringSubmatch(lines[i])
-			if m == nil {
-				fmt.Fprintf(&b2, " %s\n", lines[i])
-				continue
-			}
-			fmt.Fprintf(&b2, "-%s\n+%s\n", lines[i], m[1]+m[2]+want+m[4]+m[5])
-		}
-	}
-	return b2.String(), nil
-}
-
-// hunkRange is a half-open [start, end) line span of a patch hunk.
-type hunkRange struct{ start, end int }
-
-// ranges turns changed line indexes into hunk spans with three lines of context
-// either side (what `git diff -U3` writes), merging spans that touch so a hunk
-// never repeats a line — a patch that lists the same context twice is rejected.
-func ranges(hit []int, n int) []hunkRange {
-	var out []hunkRange
-	for _, i := range hit {
-		r := hunkRange{start: max(i-3, 0), end: min(i+4, n)}
-		if len(out) > 0 && r.start <= out[len(out)-1].end {
-			out[len(out)-1].end = r.end
-			continue
-		}
-		out = append(out, r)
-	}
-	return out
 }
 
 // writeOverlay writes the corrected recipe WHOLE into a pantry-overlay tree.

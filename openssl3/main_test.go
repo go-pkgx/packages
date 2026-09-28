@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"github.com/go-pkgx/bk/logical"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,79 +53,126 @@ func TestDepLine(t *testing.T) {
 	}
 }
 
-// TestRewritePreservesTheLine: only the constraint changes — indentation,
-// quoting and any trailing comment survive, because these patches are meant to
-// be proposed upstream and a gratuitous reformat is a reason to reject one.
-func TestRewritePreservesTheLine(t *testing.T) {
+// The override names the KEY, wherever the pin sits. There is no line to
+// preserve and no indentation to get right, because the file is not touched:
+// the correction is applied to the recipe's document as it is read.
+func TestOverrideNamesEveryPinnedPath(t *testing.T) {
 	p := t.TempDir()
-	writeRecipe(t, p, "a.org", "dependencies:\n  openssl.org: '^1.1' # keep me\n  zlib.net: ^1\n")
-	patch, err := patchFor(p, "a.org")
+	writeRecipe(t, p, "a.org", `dependencies:
+  openssl.org: '^1.1'
+  zlib.net: ^1
+build:
+  dependencies:
+    openssl.org: ^1.1
+    linux:
+      openssl.org: 1.1
+`)
+	src, err := overrideFor(p, "a.org")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(patch, "-  openssl.org: '^1.1' # keep me\n+  openssl.org: '^3' # keep me\n") {
-		t.Errorf("line not preserved:\n%s", patch)
-	}
-	if !strings.Contains(patch, "--- a/projects/a.org/package.yml\n+++ b/projects/a.org/package.yml\n") {
-		t.Errorf("paths must be relative to the pantry root:\n%s", patch)
-	}
-	// zlib's own ^1 is a different project and must be untouched context.
-	if strings.Contains(patch, "-  zlib.net") {
-		t.Errorf("touched an unrelated dependency:\n%s", patch)
-	}
-}
-
-// A recipe may pin openssl twice (crates.io/sccache pins it in both its runtime
-// and its build deps): both are rewritten, in as many hunks as needed.
-func TestTwoPins(t *testing.T) {
-	p := t.TempDir()
-	var y strings.Builder
-	y.WriteString("dependencies:\n  openssl.org: ^1.1\n")
-	for i := 0; i < 10; i++ {
-		y.WriteString("  filler" + string(rune('a'+i)) + ": '*'\n")
-	}
-	y.WriteString("build:\n  dependencies:\n    openssl.org: ^1.1\n")
-	writeRecipe(t, p, "b.org", y.String())
-	patch, err := patchFor(p, "b.org")
+	o, err := logical.Parse(src, "a.hcl")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("the generator wrote something that does not parse: %v\n%s", err, src)
 	}
-	if n := strings.Count(patch, "+  openssl.org: ^3") + strings.Count(patch, "+    openssl.org: ^3"); n != 2 {
-		t.Errorf("rewrote %d of 2 pins:\n%s", n, patch)
+	want := map[string]bool{
+		`dependencies["openssl.org"]`:             false,
+		`build.dependencies["openssl.org"]`:       false,
+		`build.dependencies.linux["openssl.org"]`: false,
 	}
-	if n := strings.Count(patch, "@@ "); n != 2 {
-		t.Errorf("want two hunks (the pins are far apart), got %d:\n%s", n, patch)
+	for _, op := range o.Ops {
+		k := op.Path.String()
+		if _, ok := want[k]; !ok {
+			t.Errorf("touched a path nobody asked for: %s", k)
+			continue
+		}
+		if op.Set != "^3" {
+			t.Errorf("%s set to %v", k, op.Set)
+		}
+		want[k] = true
+	}
+	for k, seen := range want {
+		if !seen {
+			t.Errorf("%s was not retargeted", k)
+		}
+	}
+	// zlib's own ^1 is a different project.
+	if strings.Contains(string(src), "zlib.net") {
+		t.Errorf("touched an unrelated dependency:\n%s", src)
+	}
+	// And the reason is in the file, with the condition for deleting it.
+	if !strings.Contains(o.Why, "end-of-life") || !strings.Contains(o.Why, "delete it when") {
+		t.Errorf("why = %q", o.Why)
 	}
 }
 
-// Adjacent pins must land in ONE hunk: a patch that lists the same context line
-// twice is malformed and every applier rejects it.
-func TestAdjacentPinsMergeIntoOneHunk(t *testing.T) {
+// YAML reads an unquoted 1.1 as a float, and amp.rs writes it that way.
+// Reading only strings missed it, and the conversion said so:
+// `string(^3) became float64(1.1)`.
+func TestAnUnquotedPinIsStillAPin(t *testing.T) {
+	for _, v := range []string{"1.1", "'^1.1'", "^1", "'>=1.1<2'", "1"} {
+		p := t.TempDir()
+		writeRecipe(t, p, "a.org", "dependencies:\n  openssl.org: "+v+"\n")
+		if _, err := overrideFor(p, "a.org"); err != nil {
+			t.Errorf("%s: %v", v, err)
+		}
+	}
+	// And what is NOT a 1.x pin is left alone.
+	for _, v := range []string{"'^3'", "3", "'*'", "^4"} {
+		p := t.TempDir()
+		writeRecipe(t, p, "a.org", "dependencies:\n  openssl.org: "+v+"\n")
+		if _, err := overrideFor(p, "a.org"); err == nil {
+			t.Errorf("%s is not a stale pin", v)
+		}
+	}
+	// A value that is neither text nor a number.
 	p := t.TempDir()
-	writeRecipe(t, p, "c.org", "dependencies:\n  openssl.org: ^1.1\n  zlib.net: '*'\n  openssl.org: ^1.1\n")
-	patch, err := patchFor(p, "c.org")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := strings.Count(patch, "@@ "); n != 1 {
-		t.Errorf("want one merged hunk, got %d:\n%s", n, patch)
-	}
-	if n := strings.Count(patch, "+  openssl.org: ^3"); n != 2 {
-		t.Errorf("rewrote %d of 2 pins:\n%s", n, patch)
+	writeRecipe(t, p, "a.org", "dependencies:\n  openssl.org: [1.1]\n")
+	if _, err := overrideFor(p, "a.org"); err == nil {
+		t.Error("a list is not a constraint")
 	}
 }
 
-func TestRanges(t *testing.T) {
-	// far apart -> two spans; touching -> merged; clamped at both ends
-	got := ranges([]int{0, 20}, 30)
-	if len(got) != 2 || got[0] != (hunkRange{0, 4}) || got[1] != (hunkRange{17, 24}) {
-		t.Errorf("ranges = %v", got)
+// A project can need an override for more than one reason, and its operations
+// live in ONE file so they are read together — so a generator cannot own such
+// a file. It checks instead.
+func TestCarriesThePins(t *testing.T) {
+	dir := t.TempDir()
+	pathFor := func(name, body string) string {
+		f := filepath.Join(dir, name)
+		if err := os.WriteFile(f, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return f
 	}
-	if got = ranges([]int{5, 8}, 30); len(got) != 1 || got[0] != (hunkRange{2, 12}) {
-		t.Errorf("merge = %v", got)
+	pins := []logical.Path{{"dependencies", "openssl.org"}}
+
+	ok, err := carriesThePins(pathFor("has.hcl", `
+project = "a.org"
+why     = "somebody's own reason"
+edits   = [
+  { path = "build.script", from = "make", to = "gmake" },
+  { path = "dependencies[\"openssl.org\"]", set = "^3" },
+]
+`), pins)
+	if err != nil || !ok {
+		t.Errorf("ok=%v err=%v", ok, err)
 	}
-	if got = ranges([]int{1}, 3); len(got) != 1 || got[0] != (hunkRange{0, 3}) {
-		t.Errorf("clamp = %v", got)
+
+	ok, err = carriesThePins(pathFor("lacks.hcl", `
+project = "a.org"
+why     = "somebody's own reason"
+edits   = [{ path = "build.script", from = "make", to = "gmake" }]
+`), pins)
+	if err != nil || ok {
+		t.Errorf("ok=%v err=%v", ok, err)
+	}
+
+	if _, err := carriesThePins(filepath.Join(dir, "absent.hcl"), pins); err == nil {
+		t.Error("a missing file must be an error, not a silent no")
+	}
+	if _, err := carriesThePins(pathFor("bad.hcl", "project = "), pins); err == nil {
+		t.Error("a file that does not parse must be an error")
 	}
 }
 
@@ -141,11 +190,11 @@ func TestPinnedAndErrors(t *testing.T) {
 		t.Fatalf("pinned = %v, want the two stale ones", got)
 	}
 	// a project with no stale pin is not patchable
-	if _, err := patchFor(p, "clean.org"); err == nil {
+	if _, err := overrideFor(p, "clean.org"); err == nil {
 		t.Error("expected an error for a recipe with no stale pin")
 	}
 	// nor is one that does not exist
-	if _, err := patchFor(p, "absent.org"); err == nil {
+	if _, err := overrideFor(p, "absent.org"); err == nil {
 		t.Error("expected an error for a missing recipe")
 	}
 	// an unreadable projects dir is reported, not ignored
@@ -184,7 +233,7 @@ func TestRun(t *testing.T) {
 	if code := run([]string{"-pantry", p, "-overrides", out}, null, null); code != 0 {
 		t.Fatalf("code = %d", code)
 	}
-	for _, want := range []string{"a.org-openssl3.patch", "nested-b.org-openssl3.patch"} {
+	for _, want := range []string{"a.org.hcl", "nested-b.org.hcl"} {
 		if _, err := os.Stat(filepath.Join(out, want)); err != nil {
 			t.Errorf("missing %s: %v", want, err)
 		}
@@ -212,9 +261,9 @@ func TestRunSkipsWhatItCannotPatch(t *testing.T) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	old := patchOne
-	patchOne = func(string, string) (string, error) { return "", errBoom }
-	defer func() { patchOne = old }()
+	old := overrideOne
+	overrideOne = func(string, string) ([]byte, error) { return nil, errBoom }
+	defer func() { overrideOne = old }()
 
 	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
@@ -377,5 +426,79 @@ func TestOverlayKeepsAHandWrittenEntry(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(ovl, "a.org", "package.yml")); strings.Contains(string(got), "^1.1") {
 		t.Errorf("a stale entry was not refreshed:\n%s", got)
+	}
+}
+
+// A project whose override already exists is CHECKED, not overwritten: it may
+// hold somebody else's work, and a project's operations live in one file so
+// they are read together.
+func TestRunChecksAnOverrideItDoesNotOwn(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "shared.org", "dependencies:\n  openssl.org: ^1.1\n")
+	writeRecipe(t, p, "mine.org", "dependencies:\n  openssl.org: ^1.1\n")
+	out := filepath.Join(p, "overrides")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Hand-written, carrying another correction and NOT the pin.
+	handWritten := `
+project = "shared.org"
+why     = "it needs gmake, and somebody wrote that down"
+edits   = [{ path = "build.script", from = "make", to = "gmake" }]
+`
+	if err := os.WriteFile(filepath.Join(out, "shared.org.hcl"), []byte(handWritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var outBuf, errBuf bytes.Buffer
+	code := run([]string{"-pantry", p, "-overrides", out}, &outBuf, &errBuf)
+	if code != 0 {
+		t.Fatalf("code = %d\n%s", code, errBuf.String())
+	}
+	// Untouched.
+	got, err := os.ReadFile(filepath.Join(out, "shared.org.hcl"))
+	if err != nil || string(got) != handWritten {
+		t.Errorf("the hand-written override was rewritten:\n%s", got)
+	}
+	// And said so, loudly enough to act on.
+	if !strings.Contains(errBuf.String(), "does NOT carry the pin") {
+		t.Errorf("stderr:\n%s", errBuf.String())
+	}
+	if !strings.Contains(outBuf.String(), "must be edited by hand") {
+		t.Errorf("stdout:\n%s", outBuf.String())
+	}
+	// The one it owns was written.
+	if _, err := os.Stat(filepath.Join(out, "mine.org.hcl")); err != nil {
+		t.Errorf("the project it owns was not written: %v", err)
+	}
+
+	// Now give the shared one the pin as well: nothing more to say.
+	withPin := handWritten + "\n"
+	withPin = strings.Replace(handWritten,
+		`edits   = [{ path = "build.script", from = "make", to = "gmake" }]`,
+		"edits   = [\n  { path = \"build.script\", from = \"make\", to = \"gmake\" },\n  { path = \"dependencies[\\\"openssl.org\\\"]\", set = \"^3\" },\n]", 1)
+	if err := os.WriteFile(filepath.Join(out, "shared.org.hcl"), []byte(withPin), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	outBuf.Reset()
+	errBuf.Reset()
+	if code := run([]string{"-pantry", p, "-overrides", out}, &outBuf, &errBuf); code != 0 {
+		t.Fatalf("code = %d\n%s", code, errBuf.String())
+	}
+	if strings.Contains(errBuf.String(), "does NOT carry") {
+		t.Errorf("an override that carries the pin must be silent:\n%s", errBuf.String())
+	}
+}
+
+// A recipe the generator cannot read at all is skipped and reported, never
+// fatal: one unreadable project must not stop the other 133.
+func TestOverrideForOnAnUnreadableRecipe(t *testing.T) {
+	p := t.TempDir()
+	if _, err := overrideFor(p, "absent.org"); err == nil {
+		t.Error("a missing recipe must be an error")
+	}
+	writeRecipe(t, p, "bad.org", "a: [\n")
+	if _, err := overrideFor(p, "bad.org"); err == nil {
+		t.Error("a recipe that is not YAML must be an error")
 	}
 }
