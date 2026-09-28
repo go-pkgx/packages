@@ -715,3 +715,48 @@ func TestRunAgainstPantryRefusesAnOverrideDirectoryThatHoldsNothing(t *testing.T
 		t.Errorf("an explicit none must not be refused:\n%s", buf.String())
 	}
 }
+
+// TestBuildDependenciesAreNotInert. "Nothing reads a build section out of the
+// overlay" was the stated reason for not failing on one, and for
+// build.dependencies it is false: the factory's CLOSURE reads both halves, and
+// the closure decides the build ORDER. They get their own mark so the risk is
+// visible, and they still do not fail — on a measurement, not on that claim.
+func TestBuildDependenciesAreNotInert(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	writeFile(t, filepath.Join(pantry, "projects", "acme.org", "package.yml"),
+		"distributable:\n  url: https://acme.org/{{version}}.tar.gz\nbuild:\n  dependencies:\n    cmake.org: ^3\n  script: make\n")
+	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
+		"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\nbuild {\n  dependencies = {\n    \"cmake.org\" = \"^4\"\n  }\n  script = \"make\"\n}\n")
+
+	var buf bytes.Buffer
+	// It is REPORTED, by its own name...
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 0 {
+		t.Fatalf("a closure-side difference must not fail: code = %d\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "CLOSURE") || !strings.Contains(buf.String(), "cmake.org") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+	// ...and not as a plain build difference, which is what hid it.
+	if strings.Contains(buf.String(), "..build.dependencies") {
+		t.Errorf("it must not be counted with build.script and build.env:\n%s", buf.String())
+	}
+}
+
+// A recipe whose `build` is a bare script string has no build.dependencies.
+// That is a fact about the recipe, not a fault, and `bk`'s own pantry is full
+// of them — `build: make`.
+func TestAtOnAPathWhoseParentIsNotAMapping(t *testing.T) {
+	doc := map[string]any{"build": "make", "deps": map[string]any{"x": 1}}
+	if v, ok := at(doc, "build.dependencies"); ok {
+		t.Errorf("got %v", v)
+	}
+	if v, ok := at(doc, "deps.absent"); ok {
+		t.Errorf("got %v", v)
+	}
+	if v, ok := at(doc, "deps.x"); !ok || v != 1 {
+		t.Errorf("got %v %v", v, ok)
+	}
+	if v, ok := at(doc, "build"); !ok || v != "make" {
+		t.Errorf("got %v %v", v, ok)
+	}
+}
