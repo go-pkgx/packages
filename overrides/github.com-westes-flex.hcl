@@ -1,9 +1,9 @@
 project = "github.com/westes/flex"
-why     = "converted from github.com-westes-flex-gettext-v1.patch; the reason is in the git history of those files"
+why     = "gettext renumbered 0.26 to 1.0.0 and kept the same library — both bottles ship the same libintl. This recipe pins the 0 major, so it now excludes the current release rather than describing a compatibility boundary, and a closure holding both generations resolves whichever constraint it read last. An environment-module stack has to build ONE coherent generation."
 
 edits = [
   {
     path = "dependencies[\"gnu.org/gettext\"]"
-    set = "^1"
+    set  = "^1"
   },
 ]

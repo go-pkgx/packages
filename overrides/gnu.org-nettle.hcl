@@ -1,5 +1,5 @@
 project = "gnu.org/nettle"
-why     = "converted from gnu.org-nettle-declares-gmp.patch; the reason is in the git history of those files"
+why     = "nettle links libraries it did not declare, so a bottle installed into an empty store cannot start."
 
 edits = [
   {

@@ -1,5 +1,5 @@
 project = "rust-lang.org/cargo"
-why     = "converted from rust-lang.org-cargo-official-bootstrap.patch, rust-lang.org-cargo-s390x-bootstrap-triple.patch; the reason is in the git history of those files"
+why     = "cargo is built by cargo, and the published bottle of it — ours AND upstream's — links OpenSSL 1.1, which our registry does not carry. Bootstrap from rust's own official binary instead, and on s390x name the triple explicitly because the default guess is wrong there."
 
 edits = [
   {
@@ -10,13 +10,13 @@ edits = [
   },
   {
     path = "build.dependencies[\"openssl.org\"]"
-    set = "^3"
+    set  = "^3"
   },
   {
     path = "build.script"
     prepend = [
       {
-        "if" = "linux"
+        "if"  = "linux"
         "run" = <<EOT
 set -eu
 L=""
@@ -99,6 +99,6 @@ EOT
   },
   {
     path = "dependencies[\"openssl.org\"]"
-    set = "^3"
+    set  = "^3"
   },
 ]

@@ -1,5 +1,5 @@
 project = "lloyd.github.io/yajl"
-why     = "converted from the unified diff overrides; the reason is in the git history"
+why     = "yajl asks for a `cmake_minimum_required` below 3.5, which CMake 4 removed, AND uses GET_TARGET_PROPERTY(... LOCATION), which CMake 4 removed with policy CMP0026. The policy flag alone is not enough: the source has to say $<TARGET_FILE:...> instead."
 
 edits = [
   {

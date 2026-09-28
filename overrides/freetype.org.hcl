@@ -1,5 +1,5 @@
 project = "freetype.org"
-why     = "converted from freetype.org-brotli.patch; the reason is in the git history of those files"
+why     = "freetype links brotli and did not declare it, so the published darwin bottle asks dyld for a path that exists on the runner that built it and on no user's machine."
 
 edits = [
   {
@@ -13,6 +13,6 @@ edits = [
   },
   {
     path = "dependencies[\"github.com/google/brotli\"]"
-    set = "*"
+    set  = "*"
   },
 ]

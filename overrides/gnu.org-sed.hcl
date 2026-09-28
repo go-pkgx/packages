@@ -1,5 +1,5 @@
 project = "gnu.org/sed"
-why     = "converted from gnu.org-sed-darwin-gettext.patch; the reason is in the git history of those files"
+why     = "sed links libintl on darwin and never said so. gettext is in bk's base toolchain, so it is always present while this is BUILT and the closure a consumer installs has a hole in it."
 
 edits = [
   {

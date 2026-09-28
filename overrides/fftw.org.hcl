@@ -1,25 +1,25 @@
 project = "fftw.org"
-why     = "converted from fftw.org-no-fortran-on-darwin.patch; the reason is in the git history of those files"
+why     = "fftw's darwin build asks for a Fortran compiler. There is none on darwin here, and the rebuild never started — the Fortran interface is not in the bottle either way."
 
 edits = [
   {
-    path = "build.dependencies[\"gnu.org/binutils\"]"
+    path   = "build.dependencies[\"gnu.org/binutils\"]"
     remove = true
   },
   {
-    path = "build.dependencies[\"gnu.org/gcc\"]"
+    path   = "build.dependencies[\"gnu.org/gcc\"]"
     remove = true
   },
   {
     path = "build.dependencies.linux"
     set = {
       "gnu.org/binutils" = "~2.44"
-      "gnu.org/gcc" = 14
+      "gnu.org/gcc"      = 14
     }
   },
   {
     path = "build.env.darwin.EXTRA_ARGS"
-    set = "--disable-fortran"
+    set  = "--disable-fortran"
   },
   {
     path = "build.env.linux"

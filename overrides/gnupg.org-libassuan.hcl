@@ -1,5 +1,5 @@
 project = "gnupg.org/libassuan"
-why     = "converted from gnupg.org-libassuan-declares-what-it-links.patch; the reason is in the git history of those files"
+why     = "libassuan declares what its BUILD runs and not what the result LINKS, so a consumer installing the bottle into an empty store is missing libraries nothing named."
 
 edits = [
   {

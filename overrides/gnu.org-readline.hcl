@@ -1,5 +1,5 @@
 project = "gnu.org/readline"
-why     = "converted from gnu.org-readline-link-tinfow.patch; the reason is in the git history of those files"
+why     = "readline has to link against libtinfow, not libtinfo: without it `UP` and `tgetent` are undefined at link time."
 
 edits = [
   {

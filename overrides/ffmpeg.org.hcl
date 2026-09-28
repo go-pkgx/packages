@@ -1,5 +1,5 @@
 project = "ffmpeg.org"
-why     = "converted from ffmpeg.org-disable-doc.patch; the reason is in the git history of those files"
+why     = "ffmpeg's rebuild dies before it links anything, building manual pages the bottle does not ship. Nothing consumes them and they need a texinfo the closure does not carry."
 
 edits = [
   {

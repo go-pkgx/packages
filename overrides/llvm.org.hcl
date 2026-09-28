@@ -1,9 +1,9 @@
 project = "llvm.org"
-why     = "converted from llvm.org-darwin-rpath.patch, llvm.org-libxml2.patch, llvm.org-semverator-is-darwin-only.patch; the reason is in the git history of those files"
+why     = "llvm records a darwin rpath that exists only on the runner that built it, links libxml2 without declaring it, and asks for semverator on every platform although only the darwin build path uses it."
 
 edits = [
   {
-    path = "build.dependencies[\"crates.io/semverator\"]"
+    path   = "build.dependencies[\"crates.io/semverator\"]"
     remove = true
   },
   {
@@ -20,10 +20,10 @@ edits = [
   },
   {
     path = "dependencies[\"gnome.org/libxml2\"]"
-    set = "^2"
+    set  = "^2"
   },
   {
-    path = "test.dependencies[\"crates.io/semverator\"]"
+    path   = "test.dependencies[\"crates.io/semverator\"]"
     remove = true
   },
   {

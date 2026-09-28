@@ -1,9 +1,9 @@
 project = "gnutls.org"
-why     = "converted from gnutls.org-darwin-crau-attribute.patch; the reason is in the git history of those files"
+why     = "gnutls' own header invites CRAU_MAYBE_UNUSED to be defined from outside, and without it the build fails on an attribute the compiler here does not accept in that position."
 
 edits = [
   {
     path = "build.env.darwin.CFLAGS"
-    set = "$CFLAGS -Wno-implicit-int -Wno-unused-parameter -DCRAU_MAYBE_UNUSED="
+    set  = "$CFLAGS -Wno-implicit-int -Wno-unused-parameter -DCRAU_MAYBE_UNUSED="
   },
 ]

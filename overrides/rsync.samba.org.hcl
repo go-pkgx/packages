@@ -1,9 +1,9 @@
 project = "rsync.samba.org"
-why     = "converted from rsync.samba.org-declare-libidn2.patch; the reason is in the git history of those files"
+why     = "rsync was silently borrowing a library it never declared, and the s390x build is where that stopped working."
 
 edits = [
   {
     path = "dependencies[\"gnu.org/libidn2\"]"
-    set = "*"
+    set  = "*"
   },
 ]

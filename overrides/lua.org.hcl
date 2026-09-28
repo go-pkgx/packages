@@ -1,5 +1,5 @@
 project = "lua.org"
-why     = "converted from lua.org-sed-delimiter.patch; the reason is in the git history of those files"
+why     = "lua 5.5.1 fails to build on darwin, both arches: the recipe's `sed` uses a delimiter that $LDFLAGS itself contains, so the substitution runs off the end of the expression."
 
 edits = [
   {

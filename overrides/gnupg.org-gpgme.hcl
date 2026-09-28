@@ -1,11 +1,11 @@
 project = "gnupg.org/gpgme"
-why     = "converted from gnupg.org-gpgme-declares-what-it-links.patch; the reason is in the git history of those files"
+why     = "gpgme declares what its BUILD runs and not what the result LINKS, so a consumer installing the bottle into an empty store is missing libraries nothing named."
 
 edits = [
   {
     path = "dependencies"
     set = {
-      "gnupg.org/libassuan" = "^2"
+      "gnupg.org/libassuan"    = "^2"
       "gnupg.org/libgpg-error" = "^1"
     }
   },

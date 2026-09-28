@@ -1,12 +1,12 @@
 project = "info-zip.org/zip"
-why     = "converted from info-zip.org-zip.patch; the reason is in the git history of those files"
+why     = "Upstream carries no recipe for info-zip's zip, so this is ours: a local recipe-override layer lets a fix be validated here before it is offered upstream."
 
 edits = [
   {
     path = "build.script"
     set = [
       {
-        "run" = "wget https://deb.debian.org/debian/pool/main/z/zip/zip_3.0-13.debian.tar.xz && tar xf zip_3.0-13.debian.tar.xz"
+        "run"               = "wget https://deb.debian.org/debian/pool/main/z/zip/zip_3.0-13.debian.tar.xz && tar xf zip_3.0-13.debian.tar.xz"
         "working-directory" = "patch"
       },
       "patch -p1 < patch/debian/patches/01-typo-it-is-transferring-not-transfering.patch",
@@ -24,7 +24,7 @@ edits = [
     ]
     expect = [
       {
-        "run" = "wget https://deb.debian.org/debian/pool/main/z/zip/zip_3.0-11.debian.tar.xz && tar xf zip_3.0-11.debian.tar.xz"
+        "run"               = "wget https://deb.debian.org/debian/pool/main/z/zip/zip_3.0-11.debian.tar.xz && tar xf zip_3.0-11.debian.tar.xz"
         "working-directory" = "patch"
       },
       "patch -p1 < patch/debian/patches/01-typo-it-is-transferring-not-transfering",
