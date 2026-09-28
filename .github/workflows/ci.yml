@@ -119,7 +119,12 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/overlay"
           git clone --depth 1 https://github.com/go-pkgx/pantry-overlay "$RUNNER_TEMP/overlay"
-          go run ./overlaycheck --pantry "$RUNNER_TEMP/pantry" --overlay "$RUNNER_TEMP/overlay"
+          # --overrides, because the pantry on disk is no longer the recipe
+          # the factory builds: the logical overrides are applied as a recipe
+          # is READ and change nothing on the filesystem. Without it this
+          # compared the overlay against an UNOVERRIDDEN recipe and reported
+          # 180 disagreements, every one of them ours.
+          go run ./overlaycheck --pantry "$RUNNER_TEMP/pantry" --overlay "$RUNNER_TEMP/overlay" --overrides overrides
 
       - name: test + 100% coverage gate
         run: |

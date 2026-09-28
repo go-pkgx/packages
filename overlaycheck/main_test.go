@@ -375,7 +375,7 @@ func twoHalves(t *testing.T) (pantry, overlay string) {
 func TestRunAgainstPantryAgrees(t *testing.T) {
 	pantry, overlay := twoHalves(t)
 	var buf bytes.Buffer
-	if code := runAgainstPantry(pantry, overlay, &buf); code != 0 {
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 0 {
 		t.Fatalf("code = %d, want 0\n%s", code, buf.String())
 	}
 	if !strings.Contains(buf.String(), "1 of 1 overlay project(s) are in both halves, 0 disagree") {
@@ -391,7 +391,7 @@ func TestRunAgainstPantryNamesTheKey(t *testing.T) {
 	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
 		"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\ndependencies = {\n  \"gnu.org/gettext\" = \"^1\"\n}\n")
 	var buf bytes.Buffer
-	if code := runAgainstPantry(pantry, overlay, &buf); code != 1 {
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 1 {
 		t.Fatalf("code = %d, want 1\n%s", code, buf.String())
 	}
 	if !strings.Contains(buf.String(), "dependencies") {
@@ -406,7 +406,7 @@ func TestRunAgainstPantrySkipsWhatIsOnlyInTheOverlay(t *testing.T) {
 	writeFile(t, filepath.Join(overlay, "projects", "only.example", "package.hcl"),
 		"distributable {\n  url = \"https://only.example/x.tar.gz\"\n}\n")
 	var buf bytes.Buffer
-	if code := runAgainstPantry(pantry, overlay, &buf); code != 0 {
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 0 {
 		t.Fatalf("code = %d, want 0\n%s", code, buf.String())
 	}
 	if !strings.Contains(buf.String(), "1 of 2 overlay project(s)") {
@@ -427,7 +427,7 @@ func TestRunAgainstPantryUnreadableOverlayRecipe(t *testing.T) {
 	}
 	var buf bytes.Buffer
 	// It is still CHECKED — one project, one failure — so the exit is 1.
-	if code := runAgainstPantry(pantry, overlay, &buf); code != 1 {
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 1 {
 		t.Fatalf("code = %d, want 2\n%s", code, buf.String())
 	}
 	if !strings.Contains(buf.String(), "cannot read the overlay") {
@@ -440,7 +440,7 @@ func TestRunAgainstPantryUnparsable(t *testing.T) {
 	pantry, overlay := twoHalves(t)
 	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"), "this is not hcl {{{\n")
 	var buf bytes.Buffer
-	if code := runAgainstPantry(pantry, overlay, &buf); code != 1 {
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 1 {
 		t.Fatalf("code = %d, want 1\n%s", code, buf.String())
 	}
 	if !strings.Contains(buf.String(), "cannot compare the halves") {
@@ -465,7 +465,7 @@ func TestRunAgainstPantryRefusesTheWrongTrees(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var buf bytes.Buffer
-			if code := runAgainstPantry(tc.pantry, tc.overlay, &buf); code != 2 {
+			if code := runAgainstPantry(tc.pantry, tc.overlay, "", &buf); code != 2 {
 				t.Fatalf("code = %d, want 2\n%s", code, buf.String())
 			}
 			if !strings.Contains(buf.String(), tc.want) {
@@ -478,7 +478,7 @@ func TestRunAgainstPantryRefusesTheWrongTrees(t *testing.T) {
 		other := t.TempDir()
 		writeFile(t, filepath.Join(other, "projects", "elsewhere.example", "package.yml"), "distributable:\n  url: x\n")
 		var buf bytes.Buffer
-		if code := runAgainstPantry(other, overlay, &buf); code != 2 {
+		if code := runAgainstPantry(other, overlay, "", &buf); code != 2 {
 			t.Fatalf("code = %d, want 2\n%s", code, buf.String())
 		}
 		if !strings.Contains(buf.String(), "are these the right trees?") {
@@ -576,7 +576,7 @@ func TestRunAgainstPantryAsksTheConsumerQuestionFirst(t *testing.T) {
 	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
 		"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\nbuild {\n  script = \"gmake\"\n}\nversions {\n  url = \"https://acme.org/downloads\"\n}\n")
 	var buf bytes.Buffer
-	if code := runAgainstPantry(pantry, overlay, &buf); code != 1 {
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 1 {
 		t.Fatalf("code = %d\n%s", code, buf.String())
 	}
 	if !strings.Contains(buf.String(), "CONSUMER") || !strings.Contains(buf.String(), "versions") {
@@ -647,7 +647,7 @@ func TestRunAgainstPantryGatesOnlyTheConsumerHalf(t *testing.T) {
 			writeFile(t, filepath.Join(pantry, "projects", "acme.org", "package.yml"), tc.pantry)
 			writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"), tc.overlay)
 			var buf bytes.Buffer
-			if code := runAgainstPantry(pantry, overlay, &buf); code != tc.want {
+			if code := runAgainstPantry(pantry, overlay, "", &buf); code != tc.want {
 				t.Fatalf("code = %d, want %d\n%s", code, tc.want, buf.String())
 			}
 			// Either way the difference is REPORTED. A gate that passes in
@@ -667,7 +667,7 @@ func TestRunAgainstPantryGatesOnlyTheConsumerHalf(t *testing.T) {
 		writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
 			"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\nprovides = [\"bin/acme\"]\n")
 		var buf bytes.Buffer
-		if code := runAgainstPantry(pantry, overlay, &buf); code != 0 {
+		if code := runAgainstPantry(pantry, overlay, "", &buf); code != 0 {
 			t.Fatalf("code = %d, want 0\n%s", code, buf.String())
 		}
 	})
@@ -680,6 +680,76 @@ func TestRunAgainstPantryGatesOnlyTheConsumerHalf(t *testing.T) {
 			if !strings.Contains(p, ".") {
 				t.Errorf("%q is not a project name", p)
 			}
+		}
+	})
+}
+
+// The pantry on disk stopped being the recipe the factory builds when the
+// overrides became logical: most are applied as a recipe is READ. A check that
+// read package.yml alone compared the overlay against an UNOVERRIDDEN recipe
+// and reported 180 disagreements the day the last unified diff was deleted,
+// every one of them ours.
+func TestRunAgainstPantryAppliesTheLogicalOverrides(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	// The overlay says ^3; the pantry file still says ^1.1, and an override
+	// closes the gap at load.
+	writeFile(t, filepath.Join(pantry, "projects", "acme.org", "package.yml"),
+		"distributable:\n  url: https://acme.org/{{version}}.tar.gz\ndependencies:\n  openssl.org: ^1.1\n")
+	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
+		"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\ndependencies = {\n  \"openssl.org\" = \"^3\"\n}\n")
+
+	ov := t.TempDir()
+	writeFile(t, filepath.Join(ov, "acme.hcl"), `
+project = "acme.org"
+why     = "our registry carries no openssl 1.x"
+edits   = [{ path = "dependencies[\"openssl.org\"]", set = "^3" }]
+`)
+	var buf bytes.Buffer
+	if code := runAgainstPantry(pantry, overlay, ov, &buf); code != 0 {
+		t.Fatalf("code = %d\n%s", code, buf.String())
+	}
+	// Without the overrides the same two halves disagree, and on the half a
+	// consumer reads — so this is a failure, not noise.
+	buf.Reset()
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code != 1 {
+		t.Errorf("code = %d — reading the file alone must not agree\n%s", code, buf.String())
+	}
+}
+
+// Every way reading the built recipe can fail.
+func TestRunAgainstPantryReportsABadOverrideDirectory(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+
+	t.Run("an override that does not parse", func(t *testing.T) {
+		ov := t.TempDir()
+		writeFile(t, filepath.Join(ov, "bad.hcl"), "project = ")
+		var buf bytes.Buffer
+		if code := runAgainstPantry(pantry, overlay, ov, &buf); code != 2 {
+			t.Errorf("code = %d\n%s", code, buf.String())
+		}
+	})
+
+	t.Run("a pantry recipe that does not parse", func(t *testing.T) {
+		p, o := twoHalves(t)
+		writeFile(t, filepath.Join(p, "projects", "acme.org", "package.yml"), "a: [\n")
+		var buf bytes.Buffer
+		// Unreadable as YAML: treated as absent, which is the ADDED case the
+		// narrow check owns — so nothing is compared and that is a refusal.
+		if code := runAgainstPantry(p, o, "", &buf); code != 2 {
+			t.Errorf("code = %d\n%s", code, buf.String())
+		}
+	})
+
+	t.Run("an override whose premise is gone", func(t *testing.T) {
+		ov := t.TempDir()
+		writeFile(t, filepath.Join(ov, "acme.hcl"), `
+project = "acme.org"
+why     = "w"
+edits   = [{ path = "build.script", from = "cmake", to = "cmake3" }]
+`)
+		var buf bytes.Buffer
+		if code := runAgainstPantry(pantry, overlay, ov, &buf); code != 2 {
+			t.Errorf("code = %d — an override that cannot apply must stop the run\n%s", code, buf.String())
 		}
 	})
 }

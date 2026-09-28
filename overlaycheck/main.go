@@ -40,6 +40,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/go-pkgx/bk/logical"
 	"github.com/go-pkgx/bottle"
 )
 
@@ -116,6 +117,7 @@ func main() {
 	fs := flag.NewFlagSet("overlaycheck", flag.ExitOnError)
 	pantryDir := fs.String("pantry", "", "a pantry checkout with the overrides ALREADY APPLIED — `bk overrides` leaves one")
 	overlayDir := fs.String("overlay", "", "an overlay checkout, to enumerate what it carries")
+	overridesDir := fs.String("overrides", "overrides", "the override directory, so the pantry recipe is read as the FACTORY reads it")
 	_ = fs.Parse(os.Args[1:])
 
 	if *pantryDir != "" || *overlayDir != "" {
@@ -124,7 +126,7 @@ func main() {
 			osExit(2)
 			return
 		}
-		if code := runAgainstPantry(*pantryDir, *overlayDir, os.Stdout); code != 0 {
+		if code := runAgainstPantry(*pantryDir, *overlayDir, *overridesDir, os.Stdout); code != 0 {
 			osExit(code)
 		}
 		return
@@ -155,7 +157,18 @@ func main() {
 // nothing compared those two for a project that already existed upstream.
 // bk builds from the first and pkgx resolves dependencies from the second, in
 // the same build.
-func runAgainstPantry(pantryDir, overlayHint string, out io.Writer) int {
+func runAgainstPantry(pantryDir, overlayHint, overridesDir string, out io.Writer) int {
+	// The pantry on disk is no longer the recipe the factory builds. Since the
+	// overrides became logical (go-pkgx/packages#268) most of them are applied
+	// as a recipe is READ and change nothing on the filesystem, so a check that
+	// reads package.yml is comparing the overlay against an UNOVERRIDDEN
+	// recipe. It reported 180 disagreements the moment the last unified diff
+	// was deleted, every one of them ours.
+	set, err := logical.LoadDir(overridesDir)
+	if err != nil {
+		fmt.Fprintln(out, "overlaycheck:", err)
+		return 2
+	}
 	projects, err := overlayProjects(overlayHint)
 	if err != nil {
 		fmt.Fprintln(out, "overlaycheck:", err)
@@ -182,7 +195,7 @@ func runAgainstPantry(pantryDir, overlayHint string, out io.Writer) int {
 	bad, checked, broken := 0, 0, 0
 	var unexplained []string
 	for _, project := range projects {
-		built, err := os.ReadFile(filepath.Join(pantryDir, "projects", filepath.FromSlash(project), "package.yml"))
+		builtDoc, err := builtRecipe(set, pantryDir, project)
 		if err != nil {
 			// Not in the pantry at all: that is the ADDED case, and the
 			// narrow check above already owns it.
@@ -206,7 +219,7 @@ func runAgainstPantry(pantryDir, overlayHint string, out io.Writer) int {
 			broken++
 			continue
 		}
-		d, err := recipeDiff(body, name, built)
+		d, err := recipeDiffDoc(body, name, builtDoc)
 		switch {
 		case err != nil:
 			fmt.Fprintf(out, "✗ %s: cannot compare the halves: %v\n", project, err)
@@ -485,13 +498,37 @@ func consumerDiff(a, b map[string]any) string {
 // bottle.DocDiff, not a comparison of our own: a second walk over two recipe
 // documents would be a second opinion about what a recipe means.
 func recipeDiff(overlay []byte, overlayName string, patch []byte) (string, error) {
-	a, err := recipeDoc(overlay, overlayName)
-	if err != nil {
-		return "", fmt.Errorf("the overlay's %s: %w", overlayName, err)
-	}
 	b, err := recipeDoc(patch, "package.yml")
 	if err != nil {
 		return "", fmt.Errorf("the patch's package.yml: %w", err)
+	}
+	return recipeDiffDoc(overlay, overlayName, b)
+}
+
+// builtRecipe reads a pantry recipe the way the FACTORY reads it: the file,
+// plus the project's logical override applied to the document. Reading the
+// file alone stopped being the built recipe when the overrides stopped
+// rewriting the tree.
+func builtRecipe(set *logical.Set, pantryDir, project string) (map[string]any, error) {
+	b, err := os.ReadFile(filepath.Join(pantryDir, "projects", filepath.FromSlash(project), "package.yml"))
+	if err != nil {
+		return nil, err
+	}
+	doc, err := recipeDoc(b, "package.yml")
+	if err != nil {
+		return nil, err
+	}
+	if _, err := set.ApplyTo(project, doc); err != nil {
+		return nil, err
+	}
+	return doc, nil
+}
+
+// recipeDiffDoc is recipeDiff against a document already read.
+func recipeDiffDoc(overlay []byte, overlayName string, b map[string]any) (string, error) {
+	a, err := recipeDoc(overlay, overlayName)
+	if err != nil {
+		return "", fmt.Errorf("the overlay's %s: %w", overlayName, err)
 	}
 	// The CONSUMER half first, and on its own. DocDiff returns the FIRST
 	// difference in sorted key order and stops — and "build" sorts before
