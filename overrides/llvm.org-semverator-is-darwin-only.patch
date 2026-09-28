@@ -1,0 +1,34 @@
+diff --git a/projects/llvm.org/package.yml b/projects/llvm.org/package.yml
+index 1f190df..7116850 100644
+--- a/projects/llvm.org/package.yml
++++ b/projects/llvm.org/package.yml
+@@ -47,7 +47,16 @@ build:
+     cmake.org: '>=3<3.29'
+     ninja-build.org: 1
+     python.org: '>=3<3.12'
+-    crates.io/semverator: '*'
++    # darwin only. Every call to it below sits in an `elif`, behind
++    # `if test "{{hw.platform}}" = "linux"` — so on linux this tool is
++    # installed and never run, and installing it is not free: it pulls
++    # rust-lang.org and rust-lang.org/cargo, and cargo's own build needs
++    # llvm.org. That is a cycle with no entry point, and on an architecture
++    # with no bottles yet it is where the seed stops:
++    #   llvm.org: bootstrap took these from the host, and one of them may not
++    #             be there: crates.io/semverator
++    darwin:
++      crates.io/semverator: '*'
+   working-directory: build
+   script:
+     # Building compiler-rt on darwin+aarch64 fails for versions less than
+@@ -167,7 +176,10 @@ test:
+       return 0;
+     }
+   dependencies:
+-    crates.io/semverator: '*'
++    # darwin only, for the same reason as the build dependency above: the
++    # linux arm of the chain below never calls it.
++    darwin:
++      crates.io/semverator: '*'
+   script:
+     # Building compiler-rt on darwin+aarch64 fails for versions less than
+     # 14 with the below configuration
