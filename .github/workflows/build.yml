@@ -170,7 +170,11 @@ jobs:
           # darwin arches are little-endian, so every recipe with a byte-order
           # bug has been invisible until now. That is the point of the lane and
           # also where its cost will be — not in this matrix entry.
-          SELFZ='{"runner":["self-hosted","linux","s390x"],"platform":"linux/s390x","slug":"linux-s390x","container":"","jobs":"4"}'
+          # jobs "" — this lane asks the MACHINE. It is the one lane whose host
+          # is a VM we resize, and "4" was written for it while the machine had
+          # 2 cores. An empty value means the build step takes the cap the
+          # census computed: min(nproc, min(MemTotal, cgroup)/2 GiB).
+          SELFZ='{"runner":["self-hosted","linux","s390x"],"platform":"linux/s390x","slug":"linux-s390x","container":"","jobs":""}'
           X64=$SELF; ARM=$SELFARM
           if [ "${{ github.event.inputs.runner }}" = github ]; then X64=$GH64; ARM=$GHARM; fi
           # `arch` drops one half of the pair. jq gets it as a string and
@@ -519,7 +523,17 @@ jobs:
           # The cap this run will use was computed and printed by the step
           # above, which finishes in a second so the number is readable while
           # this one runs for hours.
-          if [ -n "$MEM_JOBS" ] && [ -n "$JOBS" ] && [ "$JOBS" -gt "$MEM_JOBS" ]; then
+          if [ -z "$JOBS" ] && [ -n "$MEM_JOBS" ]; then
+            # The lane asked the MACHINE. "Computed here rather than written
+            # per machine: a number written down is what is wrong the day the
+            # VM is resized" — the census step says that about the cap, and the
+            # lane's own number was written down anyway. The s390x VM was
+            # resized twice in one day: 4 was written for it, the machine had
+            # 2 cores, and the replacement has 8.
+            echo "jobs: none asked for, $MEM_JOBS fits this machine — using $MEM_JOBS"
+            JOBS="$MEM_JOBS"
+            export JOBS
+          elif [ -n "$MEM_JOBS" ] && [ -n "$JOBS" ] && [ "$JOBS" -gt "$MEM_JOBS" ]; then
             echo "jobs: $JOBS asked for, $MEM_JOBS fits in memory — using $MEM_JOBS"
             JOBS="$MEM_JOBS"
             export JOBS
