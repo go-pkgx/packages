@@ -45,11 +45,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -105,74 +105,20 @@ var excluded = map[string]string{
 	"crates.io/pueue": "its lock pins time 0.3.31, which no longer compiles (E0282)",
 }
 
-// hunkRangesByFile reads every OTHER override patch and returns, per pantry
-// file, the line spans they touch.
-//
-// Two patches on one file are fine; two patches whose HUNKS OVERLAP are not.
-// Each is computed against the pristine recipe, so the first to apply changes a
-// line the second carries as CONTEXT, and the second is then skipped — silently
-// as far as the build is concerned, which reads the un-patched value and fails
-// somewhere else entirely.
-//
-// crates.io/zellij is the case that showed it: the openssl3 patch carries
-// `script: cargo install --path .` as context and this tool rewrote that line,
-// so the openssl3 patch stopped applying and the build died on
-//
-//	resolve deps: no version of openssl.org satisfies "^1.1"
-//
-// which names openssl and has nothing to do with openssl. Of the six projects
-// carrying both patches, exactly two overlap — so the test is the SPAN, not the
-// file: excluding by file would drop four that are fine.
-func hunkRangesByFile(overridesDir string) (map[string][]hunkRange, error) {
-	paths, err := filepath.Glob(filepath.Join(overridesDir, "*.patch"))
-	if err != nil {
-		return nil, err
-	}
-	out := map[string][]hunkRange{}
-	for _, p := range paths {
-		if strings.HasSuffix(p, suffix) {
-			continue // our own output: it is what we are about to rewrite
-		}
-		b, err := os.ReadFile(p)
-		if err != nil {
-			return nil, err
-		}
-		var file string
-		for _, line := range strings.Split(string(b), "\n") {
-			if rest, ok := strings.CutPrefix(line, "--- a/"); ok {
-				file = strings.TrimSpace(rest)
-				continue
-			}
-			if m := hunkHeader.FindStringSubmatch(line); m != nil && file != "" {
-				start, _ := strconv.Atoi(m[1])
-				n, _ := strconv.Atoi(m[2])
-				out[file] = append(out[file], hunkRange{start: start, end: start + n})
-			}
-		}
-	}
-	return out, nil
-}
-
-// hunkHeader captures the old-side start line and length of a unified hunk.
-var hunkHeader = regexp.MustCompile(`^@@ -(\d+),(\d+) `)
-
-// overlaps reports whether two half-open line spans intersect.
-func overlaps(a, b hunkRange) bool { return a.start < b.end && b.start < a.end }
-
 // suffix names this tool's output.
-const suffix = "-cargo-locked.patch"
+const suffix = ".hcl"
 
 // osExit and patchOne are seams: the first lets a test drive main() without
 // killing the test binary, the second lets it drive the "this project could
 // not be patched" path, which must NOT abort the whole run.
 var (
-	osExit   = os.Exit
-	patchOne = patchFor
+	osExit      = os.Exit
+	overrideOne = overrideFor
 )
 
 func main() { osExit(run(os.Args[1:], os.Stdout, os.Stderr)) }
 
-func run(args []string, stdout, stderr *os.File) int {
+func run(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("cargolocked", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	pantry := fs.String("pantry", "pantry", "pantry checkout to read recipes from")
@@ -187,14 +133,9 @@ func run(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintln(stderr, "cargolocked:", err)
 		return 1
 	}
-	others, err := hunkRangesByFile(*out)
-	if err != nil {
-		fmt.Fprintln(stderr, "cargolocked:", err)
-		return 1
-	}
 	sort.Strings(projects)
 	sort.Strings(deferred)
-	written := 0
+	written, shared := 0, 0
 	for _, proj := range deferred {
 		fmt.Fprintf(stderr, "cargolocked: %s installs with arguments from a variable — read it by hand\n", proj)
 	}
@@ -203,28 +144,44 @@ func run(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintf(stderr, "cargolocked: %s excluded — %s\n", proj, why)
 			continue
 		}
-		patch, err := patchOne(*pantry, proj)
+		name := filepath.Join(*out, strings.ReplaceAll(proj, "/", "-")+suffix)
+
+		// A file already there may hold somebody else's work: a project's
+		// operations live in one file so they are read together, and a
+		// generator cannot own one it shares.
+		if _, err := os.Stat(name); err == nil {
+			ok, err := carriesTheFlag(name)
+			if err != nil {
+				fmt.Fprintf(stderr, "cargolocked: %s: %v\n", name, err)
+				continue
+			}
+			if !ok {
+				fmt.Fprintf(stderr, "cargolocked: %s exists and does NOT add --locked — edit it by hand\n", name)
+				shared++
+			}
+			continue
+		}
+
+		src, err := overrideOne(*pantry, proj)
 		if err != nil {
 			fmt.Fprintf(stderr, "cargolocked: skip %s: %v\n", proj, err)
 			continue
 		}
-		if r, ok := collides(patch, others); ok {
-			fmt.Fprintf(stderr, "cargolocked: %s excluded — its hunk [%d,%d) overlaps another override patch on the same file, which would then stop applying\n", proj, r.start, r.end)
-			continue
-		}
-		name := filepath.Join(*out, strings.ReplaceAll(proj, "/", "-")+suffix)
 		if *dry {
 			fmt.Fprintln(stdout, name)
 			continue
 		}
-		if err := os.WriteFile(name, []byte(patch), 0o644); err != nil {
+		if err := os.WriteFile(name, src, 0o644); err != nil {
 			fmt.Fprintln(stderr, "cargolocked:", err)
 			return 1
 		}
 		fmt.Fprintln(stdout, name)
 		written++
 	}
-	fmt.Fprintf(stdout, "%d of %d project(s) patched; %d left alone\n", written, len(projects), len(projects)-written)
+	fmt.Fprintf(stdout, "%d of %d project(s) given an override; %d left alone\n", written, len(projects), len(projects)-written)
+	if shared > 0 {
+		fmt.Fprintf(stdout, "%d have an override written for another reason and must be edited by hand\n", shared)
+	}
 	return 0
 }
 
@@ -262,87 +219,4 @@ func unlocked(projectsDir, prefix string) (out, deferred []string, err error) {
 		return nil
 	})
 	return out, deferred, err
-}
-
-// patchFor renders the unified diff for one project. It is written directly
-// rather than shelled out to `git diff`: the change is a line, and the pantry
-// is not always a git checkout (CI clones it shallow, the local repro harness
-// mounts a copy).
-func patchFor(pantry, proj string) (string, error) {
-	rel := "projects/" + proj + "/package.yml"
-	b, err := os.ReadFile(filepath.Join(pantry, filepath.FromSlash(rel)))
-	if err != nil {
-		return "", err
-	}
-	lines := strings.Split(string(b), "\n")
-	var hit []int
-	for i, line := range lines {
-		if rewritable(line) {
-			hit = append(hit, i)
-		}
-	}
-	if len(hit) == 0 {
-		return "", fmt.Errorf("no unlocked cargo install")
-	}
-	// A recipe can install more than once — a workspace with two binaries does
-	// — so emit one hunk per changed line, merging ranges that would overlap.
-	var out strings.Builder
-	fmt.Fprintf(&out, "diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n", rel, rel, rel, rel)
-	for _, r := range ranges(hit, len(lines)) {
-		fmt.Fprintf(&out, "@@ -%d,%d +%d,%d @@\n", r.start+1, r.end-r.start, r.start+1, r.end-r.start)
-		for i := r.start; i < r.end; i++ {
-			m := installLine.FindStringSubmatch(lines[i])
-			if m == nil || !rewritable(lines[i]) {
-				fmt.Fprintf(&out, " %s\n", lines[i])
-				continue
-			}
-			fmt.Fprintf(&out, "-%s\n+%s --locked%s\n", lines[i], m[1], m[2])
-		}
-	}
-	return out.String(), nil
-}
-
-// hunkRange is a half-open [start, end) line span of a patch hunk.
-type hunkRange struct{ start, end int }
-
-// ranges turns changed line indexes into hunk spans with three lines of
-// context either side (what `git diff -U3` writes), merging spans that touch
-// so a hunk never repeats a line — a patch that lists the same context twice
-// is rejected.
-func ranges(hit []int, n int) []hunkRange {
-	var out []hunkRange
-	for _, i := range hit {
-		r := hunkRange{start: max(i-3, 0), end: min(i+4, n)}
-		if len(out) > 0 && r.start <= out[len(out)-1].end {
-			out[len(out)-1].end = r.end
-			continue
-		}
-		out = append(out, r)
-	}
-	return out
-}
-
-// collides reports whether a freshly rendered patch has a hunk overlapping one
-// another override patch already claims on the same file, and which hunk it is.
-func collides(patch string, others map[string][]hunkRange) (hunkRange, bool) {
-	var file string
-	for _, line := range strings.Split(patch, "\n") {
-		if rest, ok := strings.CutPrefix(line, "--- a/"); ok {
-			file = strings.TrimSpace(rest)
-			continue
-		}
-		m := hunkHeader.FindStringSubmatch(line)
-		if m == nil {
-			continue
-		}
-		start, _ := strconv.Atoi(m[1])
-		n, _ := strconv.Atoi(m[2])
-		mine := hunkRange{start: start, end: start + n}
-		for _, r := range others[file] {
-			if overlaps(mine, r) {
-				return mine, true
-			}
-		}
-	}
-	return hunkRange{}, false
 }

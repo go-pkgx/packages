@@ -157,7 +157,22 @@ instead, which is the factory's job to measure, project by project.
 `cargo install` without `--locked` ignores the `Cargo.lock` the release ships
 and re-resolves every dependency to the newest semver-compatible crate. The
 recipe does not change, the source does not change, and the build rots anyway,
-on somebody else's release schedule. `go run ./cargolocked` covers 18 projects.
+on somebody else's release schedule — `crates.io/pqrs` 0.3.2 locks chrono
+0.4.38 and cargo picked 0.4.45. `go run ./cargolocked` covers 19 of 20.
+
+The twentieth, `crates.io/pueue`, is excluded with a reason: its lock pins
+time 0.3.31, which no longer compiles.
+
+Two of the nineteen could not be covered at all while these were diffs. The
+openssl override for `crates.io/zellij` carried
+
+    script: cargo install --path .
+
+as CONTEXT, so rewriting that line stopped the openssl patch applying and the
+build died on `no version of openssl.org satisfies "^1.1"` — a message naming
+openssl that has nothing to do with openssl. Guarding against it took eighty
+lines of hunk-span arithmetic and still cost those two projects. Two logical
+overrides address different KEYS and cannot interact that way.
 
 ## Converting a diff, if one turns up
 

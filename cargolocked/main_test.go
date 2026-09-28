@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/go-pkgx/bk/logical"
 )
 
 // writeRecipe drops a package.yml under <pantry>/projects/<proj>/.
@@ -44,77 +48,6 @@ func TestInstallLine(t *testing.T) {
 		if rewritable(in) {
 			t.Errorf("must NOT be rewritten: %q", in)
 		}
-	}
-}
-
-// TestRewritePreservesTheLine: only the flag is inserted — indentation, YAML
-// shape and every other argument survive, because these patches are meant to be
-// proposed upstream and a gratuitous reformat is a reason to reject one.
-func TestRewritePreservesTheLine(t *testing.T) {
-	p := t.TempDir()
-	writeRecipe(t, p, "crates.io/pqrs", "build:\n  dependencies:\n    rust-lang.org: \">=1.65\"\n  script: cargo install --path . --root {{prefix}}\n")
-	patch, err := patchFor(p, "crates.io/pqrs")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(patch, "-  script: cargo install --path . --root {{prefix}}\n+  script: cargo install --locked --path . --root {{prefix}}\n") {
-		t.Errorf("line not preserved:\n%s", patch)
-	}
-	if !strings.Contains(patch, "--- a/projects/crates.io/pqrs/package.yml\n+++ b/projects/crates.io/pqrs/package.yml\n") {
-		t.Errorf("paths must be relative to the pantry root:\n%s", patch)
-	}
-	if strings.Contains(patch, "-    rust-lang.org") {
-		t.Errorf("touched an unrelated line:\n%s", patch)
-	}
-}
-
-// A workspace can install twice, and a recipe can mix a locked line with an
-// unlocked one. Both unlocked lines are rewritten; the locked one stays context.
-func TestTwoInstallsOneAlreadyLocked(t *testing.T) {
-	p := t.TempDir()
-	var y strings.Builder
-	y.WriteString("build:\n  script:\n    - cargo install --path cli --root {{prefix}}\n")
-	for i := 0; i < 10; i++ {
-		y.WriteString("    - echo filler" + string(rune('a'+i)) + "\n")
-	}
-	y.WriteString("    - cargo install --locked --path gui --root {{prefix}}\n")
-	y.WriteString("    - cargo install --path tui --root {{prefix}}\n")
-	writeRecipe(t, p, "crates.io/two", y.String())
-	patch, err := patchFor(p, "crates.io/two")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := strings.Count(patch, "+    - cargo install --locked --path"); n != 2 {
-		t.Errorf("want 2 rewritten lines, got %d:\n%s", n, patch)
-	}
-	if strings.Contains(patch, "-    - cargo install --locked --path gui") {
-		t.Errorf("rewrote an already-locked line:\n%s", patch)
-	}
-	if strings.Contains(patch, "--locked --locked") {
-		t.Errorf("double flag:\n%s", patch)
-	}
-	// The far-apart hits must not land in one hunk that repeats context.
-	// A hunk header opens with "@@ -" and closes with a bare "@@", so count the
-	// opening only — counting "@@" reports twice as many hunks as there are.
-	if n := strings.Count(patch, "@@ -"); n != 2 {
-		t.Errorf("want 2 hunks, got %d:\n%s", n, patch)
-	}
-}
-
-// A recipe with nothing to fix is not an error the run should carry: patchFor
-// declines it, and unlocked never offers it in the first place.
-func TestAlreadyLockedIsNotOffered(t *testing.T) {
-	p := t.TempDir()
-	writeRecipe(t, p, "crates.io/ok", "build:\n  script: cargo install --locked --path .\n")
-	if _, err := patchFor(p, "crates.io/ok"); err == nil {
-		t.Error("want an error for a recipe with nothing to rewrite")
-	}
-	got, _, err := unlocked(filepath.Join(p, "projects"), "crates.io/")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(got) != 0 {
-		t.Errorf("want no candidates, got %v", got)
 	}
 }
 
@@ -160,7 +93,7 @@ func TestDryRunWritesNothing(t *testing.T) {
 	if rc := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); rc != 0 {
 		t.Fatalf("rc = %d", rc)
 	}
-	if _, err := os.Stat(filepath.Join(out, "crates.io-x-cargo-locked.patch")); err != nil {
+	if _, err := os.Stat(filepath.Join(out, "crates.io-x.hcl")); err != nil {
 		t.Errorf("a real run must write the patch: %v", err)
 	}
 }
@@ -172,18 +105,18 @@ func TestOneFailureDoesNotStopTheRun(t *testing.T) {
 	writeRecipe(t, p, "crates.io/a", "build:\n  script: cargo install --path .\n")
 	writeRecipe(t, p, "crates.io/b", "build:\n  script: cargo install --path .\n")
 	out := t.TempDir()
-	orig := patchOne
-	defer func() { patchOne = orig }()
-	patchOne = func(pantry, proj string) (string, error) {
+	orig := overrideOne
+	defer func() { overrideOne = orig }()
+	overrideOne = func(pantry, proj string) ([]byte, error) {
 		if proj == "crates.io/a" {
-			return "", os.ErrNotExist
+			return nil, os.ErrNotExist
 		}
 		return orig(pantry, proj)
 	}
 	if rc := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); rc != 0 {
 		t.Fatalf("rc = %d", rc)
 	}
-	if _, err := os.Stat(filepath.Join(out, "crates.io-b-cargo-locked.patch")); err != nil {
+	if _, err := os.Stat(filepath.Join(out, "crates.io-b.hcl")); err != nil {
 		t.Errorf("the healthy project must still be patched: %v", err)
 	}
 }
@@ -203,23 +136,6 @@ func TestVariableArgumentsAreDeferredNotPatched(t *testing.T) {
 	}
 	if len(deferred) != 1 || deferred[0] != "crates.io/qsv" {
 		t.Errorf("must be reported for a person to read: %v", deferred)
-	}
-}
-
-// Prose that happens to quote the command is not the command. crates.io/bpb
-// explains why `cargo install bpb` does not work; the explanation must survive.
-func TestACommentIsNotACommand(t *testing.T) {
-	p := t.TempDir()
-	writeRecipe(t, p, "crates.io/bpb", "# cargo install bpb does not work because cargo does not require correct\n# metadata\nbuild:\n  script: cargo install --path . --root {{prefix}}\n")
-	patch, err := patchFor(p, "crates.io/bpb")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(patch, "-# cargo install") {
-		t.Errorf("rewrote a comment:\n%s", patch)
-	}
-	if !strings.Contains(patch, "+  script: cargo install --locked --path .") {
-		t.Errorf("did not rewrite the command:\n%s", patch)
 	}
 }
 
@@ -294,31 +210,6 @@ func TestUnlockedReportsWhatItCannotRead(t *testing.T) {
 	}
 }
 
-// patchFor is also reached for a project that is gone (the pantry moved between
-// the walk and the write); it must say so rather than emit an empty patch.
-func TestPatchForAbsentRecipe(t *testing.T) {
-	if _, err := patchFor(t.TempDir(), "crates.io/ghost"); err == nil {
-		t.Error("want an error for a recipe that is not there")
-	}
-}
-
-// Two installs three lines apart share their context. They must come out as ONE
-// hunk: a patch that lists the same context line twice is rejected by git.
-func TestAdjacentInstallsMergeIntoOneHunk(t *testing.T) {
-	p := t.TempDir()
-	writeRecipe(t, p, "crates.io/near", "build:\n  script:\n    - cargo install --path cli --root {{prefix}}\n    - echo between\n    - cargo install --path tui --root {{prefix}}\n")
-	patch, err := patchFor(p, "crates.io/near")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n := strings.Count(patch, "@@ -"); n != 1 {
-		t.Errorf("want 1 merged hunk, got %d:\n%s", n, patch)
-	}
-	if n := strings.Count(patch, "    - echo between"); n != 1 {
-		t.Errorf("context line repeated %d times:\n%s", n, patch)
-	}
-}
-
 func TestMain_(t *testing.T) {
 	oldExit, oldArgs := osExit, os.Args
 	code := -1
@@ -355,69 +246,6 @@ func TestExcludedProjectIsNamedAndNotPatched(t *testing.T) {
 	}
 }
 
-// Two patches on one file are fine; two whose HUNKS overlap are not — the first
-// to apply changes a line the second carries as context, and the second is then
-// skipped, so the build reads the un-patched value and fails somewhere else.
-func TestOverlappingHunkIsRefused(t *testing.T) {
-	p := t.TempDir()
-	// `openssl.org` sits three lines above the install line, so a 3-line context
-	// window puts them in one span — zellij's exact shape.
-	writeRecipe(t, p, "crates.io/zellij", "build:\n  dependencies:\n    rust-lang.org: '*'\n    openssl.org: ^1.1\n    perl.org: ^5\n  script: cargo install --path . --root {{prefix}}\n")
-	out := t.TempDir()
-	other := "diff --git a/projects/crates.io/zellij/package.yml b/projects/crates.io/zellij/package.yml\n" +
-		"--- a/projects/crates.io/zellij/package.yml\n+++ b/projects/crates.io/zellij/package.yml\n" +
-		"@@ -1,6 @@\n"
-	if err := os.WriteFile(filepath.Join(out, "crates.io-zellij-openssl3.patch"), []byte(other), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	errf, err := os.CreateTemp(t.TempDir(), "stderr")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer errf.Close()
-	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), errf); code != 0 {
-		t.Fatalf("code = %d", code)
-	}
-	b, _ := os.ReadFile(errf.Name())
-	if !strings.Contains(string(b), "overlaps another override patch") {
-		t.Errorf("stderr does not report the overlap:\n%s", b)
-	}
-	if _, err := os.Stat(filepath.Join(out, "crates.io-zellij"+suffix)); err == nil {
-		t.Error("wrote a patch that would silence the other one")
-	}
-	// A patch far from ours is NOT a collision: excluding by FILE would drop
-	// four projects that are fine today.
-	far := strings.Replace(other, "@@ -1,6 @@", "@@ -1,2 @@\n", 1)
-	if err := os.WriteFile(filepath.Join(out, "crates.io-zellij-openssl3.patch"), []byte(far), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); code != 0 {
-		t.Fatalf("code = %d", code)
-	}
-	if _, err := os.Stat(filepath.Join(out, "crates.io-zellij"+suffix)); err != nil {
-		t.Errorf("a non-overlapping patch must not block ours: %v", err)
-	}
-}
-
-// An unreadable overrides directory is an error, not an empty set of spans:
-// treating it as empty would emit exactly the patches this check exists to stop.
-func TestUnreadableOverridesDirIsAnError(t *testing.T) {
-	p := t.TempDir()
-	writeRecipe(t, p, "crates.io/a", "build:\n  script: cargo install --path .\n")
-	out := t.TempDir()
-	bad := filepath.Join(out, "x.patch")
-	if err := os.WriteFile(bad, []byte("--- a/f\n"), 0o000); err != nil {
-		t.Fatal(err)
-	}
-	defer os.Chmod(bad, 0o644)
-	if _, err := hunkRangesByFile(out); err == nil {
-		t.Skip("cannot drop read permission here")
-	}
-	if code := run([]string{"-pantry", p, "-overrides", out}, devnull(t), devnull(t)); code != 1 {
-		t.Errorf("code = %d, want 1", code)
-	}
-}
-
 // Re-running must not read this tool's OWN previous output as a rival patch:
 // every project would then look like it collides with itself and the sweep
 // would empty the directory it just filled.
@@ -440,17 +268,241 @@ func TestOurOwnPatchesAreNotRivals(t *testing.T) {
 	}
 }
 
-// An overrides path the glob cannot parse is an error, not an empty span set —
-// same reason as the unreadable directory: an empty set emits exactly the
-// patches the check exists to stop.
-func TestUnglobbableOverridesDir(t *testing.T) {
+// Two overrides on one project used to be able to silence each other, because
+// a diff carries its neighbours as CONTEXT: the openssl3 patch for
+// crates.io/zellij carried `cargo install --path .` as context, this tool
+// rewrote that line, and the openssl3 patch stopped applying. The build died
+// on `no version of openssl.org satisfies "^1.1"` — a message naming openssl
+// that has nothing to do with openssl. Guarding against it cost eighty lines
+// and two excluded projects.
+//
+// Logical overrides address KEYS. openssl3 assigns
+// `dependencies["openssl.org"]`; this edits `build.script`. There is nothing
+// to overlap.
+func TestTwoOverridesOnOneProjectDoNotCollide(t *testing.T) {
 	p := t.TempDir()
-	writeRecipe(t, p, "crates.io/a", "build:\n  script: cargo install --path .\n")
-	bad := filepath.Join(t.TempDir(), "a[b")
-	if err := os.MkdirAll(bad, 0o755); err != nil {
-		t.Skip("cannot create that directory name here")
+	writeRecipe(t, p, "crates.io/zellij",
+		"dependencies:\n  openssl.org: ^1.1\nbuild:\n  script: cargo install --path .\n")
+
+	src, err := overrideFor(p, "crates.io/zellij")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if code := run([]string{"-pantry", p, "-overrides", bad}, devnull(t), devnull(t)); code != 1 {
-		t.Errorf("code = %d, want 1", code)
+	mine, err := logical.Parse(src, "z.hcl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	theirs, err := logical.Parse([]byte(`
+project = "crates.io/zellij"
+why     = "our registry carries no openssl 1.x"
+edits   = [{ path = "dependencies[\"openssl.org\"]", set = "^3" }]
+`), "o.hcl")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both, in either order, and the result is the same.
+	for _, order := range [][]logical.Op{
+		append(append([]logical.Op{}, mine.Ops...), theirs.Ops...),
+		append(append([]logical.Op{}, theirs.Ops...), mine.Ops...),
+	} {
+		doc, err := recipeDoc(p, "crates.io/zellij")
+		if err != nil {
+			t.Fatal(err)
+		}
+		res, err := logical.Apply(doc, order)
+		if err != nil {
+			t.Fatalf("applying both: %v", err)
+		}
+		for _, r := range res {
+			if r.Outcome != logical.Applied {
+				t.Errorf("%s reports %q — one silenced the other", r.Op.Path, r.Outcome)
+			}
+		}
+		if got := doc["dependencies"].(map[string]any)["openssl.org"]; got != "^3" {
+			t.Errorf("openssl = %v", got)
+		}
+		if got := doc["build"].(map[string]any)["script"]; !strings.Contains(got.(string), "--locked") {
+			t.Errorf("script = %v", got)
+		}
+	}
+}
+
+// And the operations are IDEMPOTENT. The obvious hand-written version —
+// "cargo install " → "cargo install --locked " — is not: the replacement
+// contains the run, so a second pass gives `--locked --locked`. Deriving them
+// inherits the rule rather than re-deriving it badly.
+func TestTheDerivedSubstitutionAppliesOnlyOnce(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/a", "build:\n  script: cargo install --path . --root x\n")
+	src, err := overrideFor(p, "crates.io/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	o, err := logical.Parse(src, "a.hcl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := recipeDoc(p, "crates.io/a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := logical.Apply(doc, o.Ops); err != nil {
+		t.Fatal(err)
+	}
+	once := doc["build"].(map[string]any)["script"].(string)
+	res, err := logical.Apply(doc, o.Ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range res {
+		if r.Outcome != logical.Redundant {
+			t.Errorf("a second pass reports %q, not redundant", r.Outcome)
+		}
+	}
+	if twice := doc["build"].(map[string]any)["script"].(string); twice != once {
+		t.Errorf("applying twice changed it:\n once  %q\n twice %q", once, twice)
+	}
+	if strings.Count(once, "--locked") != 1 {
+		t.Errorf("got %q", once)
+	}
+}
+
+// The walk finds an install wherever it sits, and the shapes a recipe writes
+// one in: a plain string, a list, a step written as a mapping, a
+// platform-scoped script.
+func TestOverrideForFindsEveryShape(t *testing.T) {
+	for _, tc := range []struct{ name, recipe, wantPath string }{
+		{"a plain script", "build:\n  script: cargo install --path .\n", "build.script"},
+		{"a list", "build:\n  script:\n    - cargo install --path .\n    - echo done\n", "build.script"},
+		{"a mapping step", "build:\n  script:\n    - run: cargo install --path .\n      if: '>=1'\n", "build.script"},
+		{"under a platform", "build:\n  linux:\n    script: cargo install --path .\n", "build.linux.script"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := t.TempDir()
+			writeRecipe(t, p, "crates.io/a", tc.recipe)
+			src, err := overrideFor(p, "crates.io/a")
+			if err != nil {
+				t.Fatal(err)
+			}
+			o, err := logical.Parse(src, "a.hcl")
+			if err != nil {
+				t.Fatalf("%v\n%s", err, src)
+			}
+			if len(o.Ops) != 1 || o.Ops[0].Path.String() != tc.wantPath {
+				t.Fatalf("ops = %+v", o.Ops)
+			}
+			// And it reproduces: applying it leaves --locked exactly once.
+			doc, err := recipeDoc(p, "crates.io/a")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := logical.Apply(doc, o.Ops); err != nil {
+				t.Fatal(err)
+			}
+			if n := strings.Count(fmt.Sprint(doc), "--locked"); n != 1 {
+				t.Errorf("--locked appears %d times: %v", n, doc)
+			}
+		})
+	}
+}
+
+// A recipe with nothing to do, and one that cannot be read at all.
+func TestOverrideForRefuses(t *testing.T) {
+	p := t.TempDir()
+	if _, err := overrideFor(p, "absent.example"); err == nil {
+		t.Error("a missing recipe must be an error")
+	}
+	writeRecipe(t, p, "crates.io/bad", "a: [\n")
+	if _, err := overrideFor(p, "crates.io/bad"); err == nil {
+		t.Error("a recipe that is not YAML must be an error")
+	}
+	writeRecipe(t, p, "crates.io/done", "build:\n  script: cargo install --locked --path .\n")
+	if _, err := overrideFor(p, "crates.io/done"); err == nil {
+		t.Error("a recipe that already locks has nothing to do")
+	}
+	// A value that is not text at all, beside one that is.
+	writeRecipe(t, p, "crates.io/mixed", "build:\n  jobs: 4\n  script: cargo install --path .\n")
+	if _, err := overrideFor(p, "crates.io/mixed"); err != nil {
+		t.Errorf("a number beside a command must not stop it: %v", err)
+	}
+}
+
+// carriesTheFlag: the generator checks a file it does not own rather than
+// overwriting somebody's work.
+func TestCarriesTheFlag(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) string {
+		f := filepath.Join(dir, name)
+		if err := os.WriteFile(f, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	yes := write("yes.hcl", `
+project = "crates.io/a"
+why     = "somebody's own reason"
+edits   = [{ path = "build.script", from = "install --path", to = "install --locked --path" }]
+`)
+	if ok, err := carriesTheFlag(yes); err != nil || !ok {
+		t.Errorf("ok=%v err=%v", ok, err)
+	}
+	no := write("no.hcl", `
+project = "crates.io/a"
+why     = "somebody's own reason"
+edits   = [{ path = "dependencies[\"openssl.org\"]", set = "^3" }]
+`)
+	if ok, err := carriesTheFlag(no); err != nil || ok {
+		t.Errorf("ok=%v err=%v", ok, err)
+	}
+	// A substitution whose `from` ALREADY has --locked is not this tool's.
+	already := write("already.hcl", `
+project = "crates.io/a"
+why     = "somebody's own reason"
+edits   = [{ path = "build.script", from = "install --locked --path", to = "install --locked --path=." }]
+`)
+	if ok, err := carriesTheFlag(already); err != nil || ok {
+		t.Errorf("ok=%v err=%v", ok, err)
+	}
+	if _, err := carriesTheFlag(filepath.Join(dir, "absent.hcl")); err == nil {
+		t.Error("a missing file must be an error")
+	}
+	if _, err := carriesTheFlag(write("bad.hcl", "project = ")); err == nil {
+		t.Error("a file that does not parse must be an error")
+	}
+}
+
+// The run reports a shared file it may not own, and leaves it untouched.
+func TestRunChecksASharedOverride(t *testing.T) {
+	p := t.TempDir()
+	writeRecipe(t, p, "crates.io/shared", "build:\n  script: cargo install --path .\n")
+	out := t.TempDir()
+	hand := "\nproject = \"crates.io/shared\"\nwhy     = \"it needs openssl 3, and somebody wrote that down\"\nedits   = [{ path = \"dependencies[\\\"openssl.org\\\"]\", set = \"^3\" }]\n"
+	if err := os.WriteFile(filepath.Join(out, "crates.io-shared.hcl"), []byte(hand), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if rc := run([]string{"-pantry", p, "-overrides", out}, &stdout, &stderr); rc != 0 {
+		t.Fatalf("rc = %d\n%s", rc, stderr.String())
+	}
+	got, err := os.ReadFile(filepath.Join(out, "crates.io-shared.hcl"))
+	if err != nil || string(got) != hand {
+		t.Errorf("the hand-written override was rewritten:\n%s", got)
+	}
+	if !strings.Contains(stderr.String(), "does NOT add --locked") ||
+		!strings.Contains(stdout.String(), "must be edited by hand") {
+		t.Errorf("stdout:\n%s\nstderr:\n%s", stdout.String(), stderr.String())
+	}
+
+	// A file that exists and does not parse is reported, not overwritten.
+	if err := os.WriteFile(filepath.Join(out, "crates.io-shared.hcl"), []byte("project = "), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stderr.Reset()
+	if rc := run([]string{"-pantry", p, "-overrides", out}, &stdout, &stderr); rc != 0 {
+		t.Fatalf("rc = %d", rc)
+	}
+	if !strings.Contains(stderr.String(), "crates.io-shared.hcl") {
+		t.Errorf("stderr:\n%s", stderr.String())
 	}
 }
