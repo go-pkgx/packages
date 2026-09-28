@@ -150,7 +150,7 @@ func TestMainRuns(t *testing.T) {
 	osExit = func(c int) { exited = c }
 	httpGet = func(string) (int, []byte, error) { return 200, []byte("ok"), nil }
 
-	os.Args = []string{"overlaycheck", "--pantry", pantry, "--overlay", overlay, "--overrides", t.TempDir()}
+	os.Args = []string{"overlaycheck", "--pantry", pantry, "--overlay", overlay, "--overrides", ""}
 	main()
 	if exited != -1 {
 		t.Errorf("agreement must not exit, got %d", exited)
@@ -169,7 +169,7 @@ func TestMainRuns(t *testing.T) {
 	exited = -1
 	writeFile(t, filepath.Join(overlay, "projects", "acme.org", "package.hcl"),
 		"distributable {\n  url = \"https://acme.org/{{version}}.tar.gz\"\n}\nprovides = [\"bin/acme\"]\n")
-	os.Args = []string{"overlaycheck", "--pantry", pantry, "--overlay", overlay, "--overrides", t.TempDir()}
+	os.Args = []string{"overlaycheck", "--pantry", pantry, "--overlay", overlay, "--overrides", ""}
 	main()
 	if exited != 1 {
 		t.Errorf("exit = %d, want 1", exited)
@@ -421,7 +421,7 @@ func TestMainPantryMode(t *testing.T) {
 	exited := -1
 	osExit = func(c int) { exited = c }
 
-	os.Args = []string{"overlaycheck", "--pantry", pantry, "--overlay", overlay}
+	os.Args = []string{"overlaycheck", "--pantry", pantry, "--overlay", overlay, "--overrides", ""}
 	main()
 	if exited != -1 {
 		t.Errorf("agreement must not exit, got %d", exited)
@@ -685,5 +685,33 @@ edits   = [{ path = "dependencies[\"openssl.org\"]", set = "^3" }]
 	}
 	if strings.Contains(buf.String(), "provides") {
 		t.Errorf("a key the entry inherits was read as missing:\n%s", buf.String())
+	}
+}
+
+// TestRunAgainstPantryRefusesAnOverrideDirectoryThatHoldsNothing. The empty
+// OVERLAY has been a refusal since the beginning; the sibling input was read
+// the same way and reported nothing.
+//
+// Measured 2026-09-28, the same two trees twice: run from go-pkgx/packages,
+// where the default `overrides` resolves, 26 projects disagree and the gate
+// passes; run one directory away it is 175, and 149 of those are our own
+// openssl pin reported as drift. A gate whose answer depends on the shell's
+// working directory is not a gate.
+func TestRunAgainstPantryRefusesAnOverrideDirectoryThatHoldsNothing(t *testing.T) {
+	pantry, overlay := twoHalves(t)
+	for _, dir := range []string{"overrides", t.TempDir()} {
+		var buf bytes.Buffer
+		if code := runAgainstPantry(pantry, overlay, dir, &buf); code != 2 {
+			t.Errorf("%s: code = %d, want 2\n%s", dir, code, buf.String())
+		}
+		if !strings.Contains(buf.String(), "read UNOVERRIDDEN") {
+			t.Errorf("%s: the report must say what it would have compared:\n%s", dir, buf.String())
+		}
+	}
+	// An EMPTY name is the one honest way to ask for none, and the control
+	// above depends on it staying that way.
+	var buf bytes.Buffer
+	if code := runAgainstPantry(pantry, overlay, "", &buf); code == 2 {
+		t.Errorf("an explicit none must not be refused:\n%s", buf.String())
 	}
 }
