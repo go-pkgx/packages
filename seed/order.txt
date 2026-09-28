@@ -1,0 +1,87 @@
+lz4.org
+tukaani.org/xz
+zlib.net
+curl.se/ca-certs
+nghttp2.org
+freedesktop.org/pkg-config
+github.com/besser82/libxcrypt
+gnu.org/m4
+gnu.org/make
+perl.org
+openssl.org
+curl.se
+gnu.org/bison
+gnu.org/gmp
+gnu.org/mpfr
+gnu.org/mpc
+bytereef.org/mpdecimal
+invisible-island.net/ncurses
+gnu.org/readline
+libexpat.github.io
+sourceware.org/bzip2
+sourceware.org/libffi
+nixos.org/patchelf
+sqlite.org
+github.com/google/brotli
+libpng.org
+freetype.org
+x.org/util-macros
+x.org/protocol
+x.org/xau
+x.org/xdmcp
+gnu.org/patch
+x.org/protocol/xcb
+x.org/xcb
+gnu.org/sed
+x.org/xtrans
+x.org/x11
+x.org/exts
+gnu.org/wget
+info-zip.org/zip
+tcl-lang.org
+python.org
+doxygen.nl
+gnome.org/libxml2
+gnu.org/gettext
+github.com/westes/flex
+gnu.org/gcc
+gnu.org/texinfo
+gnu.org/binutils
+gnu.org/gcc/libstdcxx
+cmake.org
+ninja-build.org
+facebook.com/zstd
+libssh2.org
+libgit2.org
+gnu.org/autoconf
+gnu.org/automake
+gnu.org/tar
+kernel.org/linux-headers
+# gnu.org/libidn2 exists in the closure only through OUR override of
+# rsync.samba.org. `bk closure --build` could not see it until go-pkgx/bk#232:
+# with --overlay it read the pantry half UNOVERRIDDEN, and rsync is one of the
+# six projects the overlay does not carry. Measured 2026-09-28 on a fresh
+# pantry: 77 projects with the fix, 76 without, and this is the one.
+gnu.org/libidn2
+rsync.samba.org
+# llvm.org BEFORE rust: `bk closure --check-order` (go-pkgx/bk) found this
+# as an edge out of order OUTSIDE any cycle — llvm sits in the 27-project
+# component, rust/cargo/semverator in their own, so nothing forced it. It is
+# the seed failure of 2026-09-28: `cargo: resolve deps: GET
+# dist.pkgx.dev/llvm.org/linux/s390x/versions.txt: Not Found`.
+llvm.org
+rust-lang.org
+rust-lang.org/cargo
+crates.io/semverator
+gnu.org/coreutils
+gnu.org/diffutils
+gnu.org/findutils
+gnu.org/gawk
+pcre.org/v2
+gnu.org/grep
+gnu.org/glibc
+gnu.org/bash
+gnu.org/libtool
+cpanmin.us
+gnu.org/help2man
+gnu.org/gzip
