@@ -4,7 +4,6 @@ why     = "converted from gnutls.org-darwin-crau-attribute.patch; the reason is 
 edits = [
   {
     path = "build.env.darwin.CFLAGS"
-    from = "nt"
-    to   = "nt -Wno-unused-parameter -DCRAU_MAYBE_UNUSED="
+    set = "$CFLAGS -Wno-implicit-int -Wno-unused-parameter -DCRAU_MAYBE_UNUSED="
   },
 ]

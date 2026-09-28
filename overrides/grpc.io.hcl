@@ -4,134 +4,23 @@ why     = "This recipe pins openssl to a 1.x line. Our registry holds no 1.x bot
 edits = [
   {
     path = "build.env.COMMON_ARGS"
-    from = "={{prefix}}"
-    to   = "=\"{{prefix}};@loader_path/../../..;@loader_path/../../../..;@loader_path/../../../../..;@loader_path/../../../../../..;@loader_path/../../../../../../..\""
+    set = [
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_INSTALL_PREFIX=\"{{prefix}}\"",
+      "-DCMAKE_INSTALL_RPATH=\"{{prefix}};@loader_path/../../..;@loader_path/../../../..;@loader_path/../../../../..;@loader_path/../../../../../..;@loader_path/../../../../../../..\"",
+      "-DBUILD_SHARED_LIBS=ON",
+    ]
+    expect = [
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_INSTALL_PREFIX=\"{{prefix}}\"",
+      "-DCMAKE_INSTALL_RPATH={{prefix}}",
+      "-DBUILD_SHARED_LIBS=ON",
+    ]
   },
   {
     path = "build.script"
-    set = [
-      {
-        "run" = "git submodule update --init --recursive"
-        "working-directory" = "../.."
-      },
-      {
-        "if" = ">=1.63<1.66.2"
-        "prop" = <<EOT
---- CMakeLists.txt.orig	2024-05-16 01:01:03.000000000 +0000
-+++ CMakeLists.txt
-@@ -3682,6 +3682,7 @@ target_include_directories(upb_json_lib
- )
- target_link_libraries(upb_json_lib
-   $${_gRPC_ALLTARGETS_LIBRARIES}
-+  grpc++_unsecure
-   utf8_range_lib
-   upb_message_lib
- )
-@@ -3883,6 +3884,7 @@ target_include_directories(upb_textforma
- )
- target_link_libraries(upb_textformat_lib
-   $${_gRPC_ALLTARGETS_LIBRARIES}
-+  grpc++_unsecure
-   utf8_range_lib
-   upb_message_lib
- )
-EOT
-        "run" = <<EOT
-if test "{{hw.platform}}" = "darwin"; then
-  patch -i $PROP || true
-fi
-EOT
-        "working-directory" = "../.."
-      },
-      "cmake $COMMON_ARGS $ARGS ../..",
-      "make install",
-      {
-        "if" = "darwin"
-        "run" = [
-          "cmake $COMMON_ARGS $CLI_ARGS ../..",
-          "make grpc_cli",
-          "cp grpc_cli \"{{prefix}}/bin\"",
-          "cp libgrpc++_test_config.* \"{{prefix}}/lib\"",
-        ]
-      },
-      {
-        "if" = "darwin"
-        "run" = <<EOT
-for f in bin/* lib/libgrpc++_test_config*.dylib; do
-  test -f $f || continue
-  for rp in @loader_path/../lib @loader_path/../../..; do
-    # Compare the PATH FIELD, not the end of the line. otool prints
-    #     path @loader_path/../../.. (offset 12)
-    # so an anchored match never fired, install_name_tool was called
-    # for an rpath the file already had, and it exits non-zero:
-    #     option "-add_rpath @loader_path/../../.." would duplicate
-    #     path, file already has LC_RPATH for: @loader_path/../../..
-    # which failed the whole build. grpc_cli already carries that one.
-    otool -l $f | awk '$1=="path"{print $2}' | grep -qxF "$rp" ||
-      install_name_tool -add_rpath $rp $f
-  done
-done
-EOT
-        "working-directory" = "{{prefix}}"
-      },
-    ]
-    expect = [
-      {
-        "run" = "git submodule update --init --recursive"
-        "working-directory" = "../.."
-      },
-      {
-        "if" = ">=1.63<1.66.2"
-        "prop" = <<EOT
---- CMakeLists.txt.orig	2024-05-16 01:01:03.000000000 +0000
-+++ CMakeLists.txt
-@@ -3682,6 +3682,7 @@ target_include_directories(upb_json_lib
- )
- target_link_libraries(upb_json_lib
-   $${_gRPC_ALLTARGETS_LIBRARIES}
-+  grpc++_unsecure
-   utf8_range_lib
-   upb_message_lib
- )
-@@ -3883,6 +3884,7 @@ target_include_directories(upb_textforma
- )
- target_link_libraries(upb_textformat_lib
-   $${_gRPC_ALLTARGETS_LIBRARIES}
-+  grpc++_unsecure
-   utf8_range_lib
-   upb_message_lib
- )
-EOT
-        "run" = <<EOT
-if test "{{hw.platform}}" = "darwin"; then
-  patch -i $PROP || true
-fi
-EOT
-        "working-directory" = "../.."
-      },
-      "cmake $COMMON_ARGS $ARGS ../..",
-      "make install",
-      {
-        "if" = "darwin"
-        "run" = [
-          "cmake $COMMON_ARGS $CLI_ARGS ../..",
-          "make grpc_cli",
-          "cp grpc_cli \"{{prefix}}/bin\"",
-          "cp libgrpc++_test_config.* \"{{prefix}}/lib\"",
-        ]
-      },
-      {
-        "if" = "darwin"
-        "run" = <<EOT
-for f in bin/* lib/libgrpc++_test_config.dylib; do
-  if test -f $f && ! otool -l $f | grep @loader_path/../lib; then
-    install_name_tool -add_rpath @loader_path/../lib $f
-  fi
-done
-EOT
-        "working-directory" = "{{prefix}}"
-      },
-    ]
+    from = "lib/libgrpc++_test_config.dylib; do\n  if test -f $f && ! otool -l $f | grep @loader_path/../lib; then\n    install_name_tool -add_rpath @loader_path/../lib $f\n  fi"
+    to   = "lib/libgrpc++_test_config*.dylib; do\n  test -f $f || continue\n  for rp in @loader_path/../lib @loader_path/../../..; do\n    # Compare the PATH FIELD, not the end of the line. otool prints\n    #     path @loader_path/../../.. (offset 12)\n    # so an anchored match never fired, install_name_tool was called\n    # for an rpath the file already had, and it exits non-zero:\n    #     option \"-add_rpath @loader_path/../../..\" would duplicate\n    #     path, file already has LC_RPATH for: @loader_path/../../..\n    # which failed the whole build. grpc_cli already carries that one.\n    otool -l $f | awk '$1==\"path\"{print $2}' | grep -qxF \"$rp\" ||\n      install_name_tool -add_rpath $rp $f\n  done"
   },
   {
     path = "dependencies[\"openssl.org\"]"

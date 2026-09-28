@@ -11,7 +11,6 @@ edits = [
   },
   {
     path = "distributable.url"
-    from = "official_releases"
-    to   = "archive"
+    set = "https://download.qt.io/archive/qt/{{version.marketing}}/{{version}}/single/qt-everywhere-opensource-src-{{version}}.tar.xz"
   },
 ]

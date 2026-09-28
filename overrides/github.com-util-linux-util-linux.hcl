@@ -4,7 +4,6 @@ why     = "converted from github.com-util-linux-util-linux-gettext-v1.patch; the
 edits = [
   {
     path = "dependencies[\"gnu.org/gettext\"]"
-    from = "0"
-    to   = "1"
+    set = "^1"
   },
 ]

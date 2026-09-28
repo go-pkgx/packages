@@ -4,7 +4,6 @@ why     = "converted from freedesktop.org-poppler-qt5-gettext-v1.patch; the reas
 edits = [
   {
     path = "dependencies[\"gnu.org/gettext\"]"
-    from = "0"
-    to   = "1"
+    set = "^1"
   },
 ]

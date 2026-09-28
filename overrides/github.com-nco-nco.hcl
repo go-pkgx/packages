@@ -4,7 +4,6 @@ why     = "converted from github.com-nco-nco-gettext-v1.patch; the reason is in 
 edits = [
   {
     path = "dependencies.darwin[\"gnu.org/gettext\"]"
-    from = "0"
-    to   = "1"
+    set = "^1"
   },
 ]

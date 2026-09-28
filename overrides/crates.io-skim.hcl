@@ -4,79 +4,12 @@ why     = "`cargo install` without --locked ignores the Cargo.lock the release s
 edits = [
   {
     path = "build.script"
-    set = [
-      {
-        "run" = "ln -sf {{deps.rust-lang.org/rustup.prefix}}/bin/rustup rustup"
-        "working-directory" = "$HOME/.cargo/bin"
-      },
-      {
-        "if" = "<1.3"
-        "run" = "rustup default stable"
-      },
-      {
-        "if" = ">=1.3<2"
-        "run" = "rustup default nightly"
-      },
-      {
-        "if" = ">=2"
-        "run" = "rustup default \"$(sed -n 's/^channel = \"\\(.*\\)\".*/\\1/p' $SRCROOT/rust-toolchain.toml)\""
-      },
-      {
-        "run" = "ln -sf $HOME/.rustup/toolchains/*/bin/* ."
-        "working-directory" = "$HOME/.cargo/bin"
-      },
-      {
-        "if" = "<0.11.10 || >=1<1.3 || >=3.4"
-        "run" = "cargo install --path . --root {{prefix}} --locked"
-      },
-      {
-        "if" = ">=0.11.10<1"
-        "run" = "cargo install --locked --path skim --root {{prefix}}"
-      },
-      {
-        "if" = ">=1.3<3.4"
-        "run" = "cargo install --locked --path . --root {{prefix}} --features nightly-frizbee"
-      },
-      "cp bin/sk-tmux {{prefix}}/bin",
-      "mkdir -p {{prefix}}/share",
-      "cp -a shell man {{prefix}}/share/",
-    ]
-    expect = [
-      {
-        "run" = "ln -sf {{deps.rust-lang.org/rustup.prefix}}/bin/rustup rustup"
-        "working-directory" = "$HOME/.cargo/bin"
-      },
-      {
-        "if" = "<1.3"
-        "run" = "rustup default stable"
-      },
-      {
-        "if" = ">=1.3<2"
-        "run" = "rustup default nightly"
-      },
-      {
-        "if" = ">=2"
-        "run" = "rustup default \"$(sed -n 's/^channel = \"\\(.*\\)\".*/\\1/p' $SRCROOT/rust-toolchain.toml)\""
-      },
-      {
-        "run" = "ln -sf $HOME/.rustup/toolchains/*/bin/* ."
-        "working-directory" = "$HOME/.cargo/bin"
-      },
-      {
-        "if" = "<0.11.10 || >=1<1.3 || >=3.4"
-        "run" = "cargo install --path . --root {{prefix}} --locked"
-      },
-      {
-        "if" = ">=0.11.10<1"
-        "run" = "cargo install --path skim --root {{prefix}}"
-      },
-      {
-        "if" = ">=1.3<3.4"
-        "run" = "cargo install --path . --root {{prefix}} --features nightly-frizbee"
-      },
-      "cp bin/sk-tmux {{prefix}}/bin",
-      "mkdir -p {{prefix}}/share",
-      "cp -a shell man {{prefix}}/share/",
-    ]
+    from = "install --path skim"
+    to   = "install --locked --path skim"
+  },
+  {
+    path = "build.script"
+    from = "cargo install --path . --root {{prefix}} --features"
+    to   = "cargo install --locked --path . --root {{prefix}} --features"
   },
 ]

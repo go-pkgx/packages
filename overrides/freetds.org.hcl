@@ -8,8 +8,7 @@ edits = [
   },
   {
     path = "build.env.darwin.LDFLAGS"
-    from = "-"
-    to   = "$LDFLAGS -"
+    set = "$LDFLAGS -liconv"
   },
   {
     path = "dependencies[\"openssl.org\"]"

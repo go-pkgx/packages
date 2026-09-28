@@ -480,3 +480,92 @@ func TestCloneCmd(t *testing.T) {
 		t.Errorf("the clone is empty: %v", err)
 	}
 }
+
+// An override that compounds on a second pass must be refused. 24 real
+// operations across 22 projects did exactly that before go-pkgx/bk#229, and
+// the migration this tool exists for depends on both formats being applied to
+// the same recipe at once.
+//
+// The fixture is a patch whose RESULT CONTAINS THE ORIGINAL — `make install`
+// becoming `make -j4 make install` — because that is the only shape where a
+// substitution can both reproduce the patch and survive its own replacement.
+func TestRunRefusesAnOverrideThatAppliesTwice(t *testing.T) {
+	const recipe = "build:\n  script: make install\nprovides:\n  - bin/acme\n"
+	const patch = `diff --git a/projects/acme.org/package.yml b/projects/acme.org/package.yml
+index 1111111..2222222 100644
+--- a/projects/acme.org/package.yml
++++ b/projects/acme.org/package.yml
+@@ -1,4 +1,4 @@
+ build:
+-  script: make install
++  script: make -j4 make install
+ provides:
+   - bin/acme
+`
+	pantry := gitPantry(t, map[string]string{"acme.org": recipe})
+	dir := overrideDir(t, map[string]string{"acme.org-duplicate.patch": patch})
+
+	// Derived honestly this is an assignment, because no run survives. Forced
+	// to a substitution, it reproduces the patch and then compounds.
+	old := deriveFn
+	t.Cleanup(func() { deriveFn = old })
+	deriveFn = func(_, _ map[string]any, why string) []logical.Op {
+		p, _ := logical.ParsePath("build.script")
+		return []logical.Op{{Why: why, Path: p, Substitute: true, From: "make", To: "make -j4 make"}}
+	}
+	var buf bytes.Buffer
+	if code := run(dir, pantry, false, &buf); code != 1 {
+		t.Fatalf("code = %d\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "not redundant") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+
+	// Left honest, it converts and is idempotent.
+	deriveFn = old
+	buf.Reset()
+	if code := run(dir, pantry, false, &buf); code != 0 {
+		t.Fatalf("code = %d\n%s", code, buf.String())
+	}
+}
+
+// The other arm: the second pass does not merely re-apply, it FAILS. A
+// substitution that DELETES text cannot report "already reads the new way",
+// because there is no new way to read — so once the text is gone its premise
+// is gone with it.
+func TestRunRefusesAnOverrideThatCannotRunTwice(t *testing.T) {
+	const recipe = "build:\n  script: make install extra\nprovides:\n  - bin/acme\n"
+	const patch = `diff --git a/projects/acme.org/package.yml b/projects/acme.org/package.yml
+index 1111111..2222222 100644
+--- a/projects/acme.org/package.yml
++++ b/projects/acme.org/package.yml
+@@ -1,4 +1,4 @@
+ build:
+-  script: make install extra
++  script: make install
+ provides:
+   - bin/acme
+`
+	pantry := gitPantry(t, map[string]string{"acme.org": recipe})
+	dir := overrideDir(t, map[string]string{"acme.org-trim.patch": patch})
+
+	old := deriveFn
+	t.Cleanup(func() { deriveFn = old })
+	deriveFn = func(_, _ map[string]any, why string) []logical.Op {
+		p, _ := logical.ParsePath("build.script")
+		return []logical.Op{{Why: why, Path: p, Substitute: true, From: " extra", To: ""}}
+	}
+	var buf bytes.Buffer
+	if code := run(dir, pantry, false, &buf); code != 1 {
+		t.Fatalf("code = %d\n%s", code, buf.String())
+	}
+	if !strings.Contains(buf.String(), "applying it twice") {
+		t.Errorf("report:\n%s", buf.String())
+	}
+}
+
+func TestNotIdempotentOnNothing(t *testing.T) {
+	if why, ok := notIdempotent(nil, map[string]any{"a": "x"}); !ok {
+		t.Errorf("no operations move nothing: %q", why)
+	}
+}

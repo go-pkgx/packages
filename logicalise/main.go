@@ -142,6 +142,21 @@ func run(dir, pantry string, write bool, out io.Writer) int {
 			bad++
 			continue
 		}
+		// And AGAIN, to the result. An override must be safe to apply to a
+		// recipe that already has it, or nothing may ever apply one twice —
+		// not a re-run, not two tools, and not the two formats side by side
+		// while one replaces the other.
+		//
+		// This is not hypothetical. Derived without the rule, the cargo
+		// --locked fix came out as `"l --"` → `"l --locked --"`, and "l --" is
+		// still there afterwards inside "install --locked": 24 operations
+		// across 22 projects compounded on a second pass, and the coexistence
+		// this migration depends on would have corrupted them.
+		if why, ok := notIdempotent(reparsed.Ops, after); !ok {
+			fmt.Fprintf(out, "✗ %-34s applying it twice is not the same as once: %s\n", proj, why)
+			bad++
+			continue
+		}
 		converted++
 		if write {
 			if err := osWriteFile(filepath.Join(dir, slug(proj)+".hcl"), src, 0o644); err != nil {
@@ -167,6 +182,27 @@ func run(dir, pantry string, write bool, out io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// notIdempotent applies the operations to a document that already has them and
+// reports whether anything moved. Every outcome must be Redundant: an override
+// that reports Applied the second time is one that would compound.
+func notIdempotent(ops []logical.Op, done map[string]any) (string, bool) {
+	again := deepCopy(done)
+	res, err := logical.Apply(again, ops)
+	if err != nil {
+		return err.Error(), false
+	}
+	for _, r := range res {
+		if r.Outcome != logical.Redundant {
+			return fmt.Sprintf("%s reports %q, not redundant", r.Op.Path, r.Outcome), false
+		}
+	}
+	// No document comparison after that loop: Redundant is DEFINED as having
+	// changed nothing, and every verb that reports it returns before touching
+	// the document. A comparison here could not fail, and a check that cannot
+	// fail is not a check.
+	return "", true
 }
 
 // slug turns a project name into a filename, matching the convention the patch
