@@ -1,0 +1,41 @@
+diff --git a/projects/rust-lang.org/cargo/package.yml b/projects/rust-lang.org/cargo/package.yml
+index a73d132..01520ed 100644
+--- a/projects/rust-lang.org/cargo/package.yml
++++ b/projects/rust-lang.org/cargo/package.yml
+@@ -112,12 +112,30 @@ build:
+ 
+     - run: |
+         set -eu
+-        case "$(uname -s)-$(uname -m)" in
+-          Linux-x86_64)   BT=x86_64-unknown-linux-gnu;  SUM=9853db03d68578a30972e2755c89c66aec035fec641cf8f3a7117c81eec2578d ;;
+-          Linux-aarch64)  BT=aarch64-unknown-linux-gnu; SUM=bd8d1da6fe88ea7e29338f24277c22156267447adbfc47d690467ad32d02c2a7 ;;
+-          Darwin-x86_64)  BT=x86_64-apple-darwin;       SUM=b2fa21c8fed854775e379bb4617145abd047d1be729e8383148139ba1d05c88f ;;
+-          Darwin-arm64)   BT=aarch64-apple-darwin;      SUM=17a4410a27bf7dad4765f3809265c225f25f8b009da3d4b76cd0927acdae04b5 ;;
+-          *) echo "no pinned bootstrap cargo for $(uname -s)-$(uname -m)" >&2; exit 1 ;;
++        # {{hw.target}} renders the same triples static.rust-lang.org names its
++        # archives by — x86_64/aarch64-unknown-linux-gnu,
++        # s390x-unknown-linux-gnu, x86_64/aarch64-apple-darwin — so there is no
++        # table mapping one naming to the other, and no chance of the two
++        # drifting apart. It replaces `case "$(uname -s)-$(uname -m)"`, which
++        # spawned two processes to learn something bk had already resolved AND
++        # had no s390x arm at all, so the seed for that architecture stopped at
++        # "no pinned bootstrap cargo".
++        #
++        # It is NOT a cross-build fix, and saying so would be false: bk's
++        # Target.Triple is the triple of the machine bk RUNS on for every
++        # non-windows target — `BREWKIT_TARGET=linux/s390x bk target` on a Mac
++        # prints aarch64-apple-darwin — so this is right here only because the
++        # factory builds each platform natively or under emulation, where the
++        # two coincide. A genuine cross build would need Target.Triple fixed
++        # first, not this recipe changed.
++        BT="{{hw.target}}"
++        case "$BT" in
++          x86_64-unknown-linux-gnu)  SUM=9853db03d68578a30972e2755c89c66aec035fec641cf8f3a7117c81eec2578d ;;
++          aarch64-unknown-linux-gnu) SUM=bd8d1da6fe88ea7e29338f24277c22156267447adbfc47d690467ad32d02c2a7 ;;
++          s390x-unknown-linux-gnu)   SUM=468ace270ee4edac0a10185ea876ea555e41bacc0137ff08985d2155fe8cc777 ;;
++          x86_64-apple-darwin)       SUM=b2fa21c8fed854775e379bb4617145abd047d1be729e8383148139ba1d05c88f ;;
++          aarch64-apple-darwin)      SUM=17a4410a27bf7dad4765f3809265c225f25f8b009da3d4b76cd0927acdae04b5 ;;
++          *) echo "no pinned bootstrap cargo for $BT" >&2; exit 1 ;;
+         esac
+         T="cargo-1.90.0-$BT.tar.xz"
+         curl -fsSLo "$T" "https://static.rust-lang.org/dist/$T"

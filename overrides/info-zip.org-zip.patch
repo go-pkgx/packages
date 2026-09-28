@@ -30,7 +30,7 @@ index fa7bf4b..d32e1e6 100644
 +    - patch -p1 < patch/debian/patches/08-hardening-build-fix-1.patch
 +    - patch -p1 < patch/debian/patches/09-hardening-build-fix-2.patch
 +    - patch -p1 < patch/debian/patches/10-remove-build-date.patch
-+    - make -f unix/Makefile CC="{{deps.gnu.org/gcc.prefix}}/bin/gcc -std=gnu17" generic
++    - make -f unix/Makefile CC="{{deps.gnu.org/gcc.prefix}}/bin/gcc -std=gnu17 -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion" generic
      - make -f unix/Makefile BINDIR={{prefix}}/bin MANDIR={{prefix}}/man/man1 install
  
  provides:
