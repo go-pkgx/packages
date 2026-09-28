@@ -416,6 +416,35 @@ jobs:
             fi
           fi
 
+          # WHAT IS HOLDING THE DISK, here and not in the post-mortem step.
+          #
+          # `disk and memory after` carries always() and prints exactly this,
+          # and on 2026-09-28 it did not run: llvm.org filled the filesystem
+          # during `ninja install`, the runner died writing its OWN diagnostic
+          # log — `No space left on device: .../Worker_….log` — and always()
+          # cannot save a step from a process that is gone. The inventory of
+          # what fills the disk was therefore printed only on the runs where
+          # the disk did not fill.
+          #
+          # bk removes a build tree once its bottle is PUBLISHED, so what is
+          # here is what FAILED, kept on purpose. That day it was 4.2 GiB of
+          # rust-lang.org from two earlier runs, against 13 GiB for the llvm
+          # tree being built and 19 GiB free when the run started.
+          root="$HOME/.local/share/brewkit"
+          if [ -d "$root" ]; then
+            echo "build trees retained (bk keeps only what FAILED):"
+            du -sm "$root"/*/*/ 2>/dev/null | sort -rn | head -10 |
+              while read -r mb path; do printf '  %6s MiB  %s\n' "$mb" "${path#$root/}"; done
+            biggest=$(du -sm "$root"/*/*/ 2>/dev/null | sort -rn | head -1 | cut -f1)
+            freemb=$(df --output=avail -m "$HOME" | tail -1 | tr -d ' ')
+            # Not an invented threshold: free space measured against the
+            # largest tree already on disk. Below it, this machine cannot
+            # afford to rebuild the biggest thing it has built.
+            if [ -n "$biggest" ] && [ "$freemb" -lt "$biggest" ]; then
+              echo "::warning::$freemb MiB free, and the largest retained build tree is $biggest MiB — this machine cannot afford another build that size"
+            fi
+          fi
+
       - name: build + publish this chunk
         env:
           PLATFORM: ${{ matrix.platform }}
