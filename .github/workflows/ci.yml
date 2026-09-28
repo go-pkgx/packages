@@ -48,13 +48,17 @@ jobs:
       - name: both halves of a new project agree
         run: go run ./overlaycheck
 
-      # A patch stops applying when upstream edits the lines its context hangs
-      # on, or when one of ours does. Nothing about the build says so
-      # afterwards: the recipe is merely the unpatched one, and it fails for
-      # whatever the patch existed to remove. 3 of 231 overrides had stopped on
+      # The overrides are HCL now, and say WHAT they change rather than where
+      # the lines are — so "it stopped applying" has become three answers
+      # instead of one: the recipe needed it, upstream has caught up (delete
+      # it), or what it edits is gone (an error). The last two were spelled the
+      # same by a unified diff, and 3 of 231 had silently stopped on
       # 2026-09-24, among them the -Werror switch mozilla.org/nss needs, whose
       # absence cost two rebuilds and a duplicate fix for a defect that was
       # already fixed.
+      #
+      # Eight *.patch files remain and are a different thing entirely: they
+      # CREATE a project, so they are recipes of ours, not overrides.
       #
       # `bk overrides` uses the applier the BUILDER uses — overrides.Apply, on
       # go-gitdiff — and that is the whole point of running it rather than
@@ -98,22 +102,29 @@ jobs:
       # applying on 2026-09-24, and one that `git apply --check` accepted was
       # refused by the builder and merged broken on 2026-09-27.
       #
-      # Both formats are present while the builder is taught to read the new
-      # one. This is what makes that safe: it derives the operations from each
-      # *.patch, writes them out, READS THEM BACK, applies them to a pristine
-      # recipe, and demands the same document the patch produced. Anything that
-      # differs is named with the key it differs at.
+      # The conversion is done, so this now reports "nothing to convert" and
+      # passes. It stays because it is the net under the next unified diff
+      # anybody adds: it derives the operations from the patch, writes them
+      # out, READS THEM BACK, applies them to a pristine recipe, and demands
+      # the same document the patch produced — and demands that applying them
+      # TWICE changes nothing, which is the property 24 operations across 22
+      # projects failed before go-pkgx/bk#229.
       #
       # It clones its own pantry rather than reusing the one above, which by
-      # this point has the patches applied to it.
-      - name: the two override formats agree
+      # this point has been patched.
+      - name: any unified diff left is convertible, and the conversion is faithful
         run: go run ./logicalise
 
       - name: the half a consumer resolves from agrees
         run: |
           rm -rf "$RUNNER_TEMP/overlay"
           git clone --depth 1 https://github.com/go-pkgx/pantry-overlay "$RUNNER_TEMP/overlay"
-          go run ./overlaycheck --pantry "$RUNNER_TEMP/pantry" --overlay "$RUNNER_TEMP/overlay"
+          # --overrides, because the pantry on disk is no longer the recipe
+          # the factory builds: the logical overrides are applied as a recipe
+          # is READ and change nothing on the filesystem. Without it this
+          # compared the overlay against an UNOVERRIDDEN recipe and reported
+          # 180 disagreements, every one of them ours.
+          go run ./overlaycheck --pantry "$RUNNER_TEMP/pantry" --overlay "$RUNNER_TEMP/overlay" --overrides overrides
 
       - name: test + 100% coverage gate
         run: |
