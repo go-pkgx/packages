@@ -342,6 +342,34 @@ jobs:
             --pkgx "$(command -v pkgx)" \
             --container
 
+      # What the machine HAS, in a step of its own.
+      #
+      # It was written inside the build step first, which is a number nobody
+      # can read for the three hours that step runs — and the whole reason it
+      # exists is that llvm.org died with
+      #   c++: fatal error: Killed signal terminated program cc1plus
+      # and the log held no figure at all. A measurement you cannot see until
+      # the end is barely a measurement.
+      #
+      # It also computes the job cap, because a heavy LLVM translation unit
+      # wants on the order of 2 GB in cc1plus and the s390x lane asked for four
+      # at once without ever checking there were eight. Computed here rather
+      # than written per machine: a number written down is what is wrong the
+      # day the VM is resized.
+      - name: what this machine has
+        run: |
+          echo "disk:   $(df -h "$HOME" | tail -1)"
+          if [ -r /proc/meminfo ]; then
+            memkb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
+            avail=$(awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo)
+            echo "memory: $((memkb/1024)) MiB total, $avail MiB available"
+            cap=$(( memkb / 2097152 ))   # one job per 2 GiB
+            [ "$cap" -lt 1 ] && cap=1
+            echo "cpus:   $(nproc 2>/dev/null || echo '?')"
+            echo "MEM_JOBS=$cap" >> "$GITHUB_ENV"
+            echo "memory fits $cap concurrent compile job(s)"
+          fi
+
       - name: build + publish this chunk
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -413,31 +441,13 @@ jobs:
             rm -rf "$HOME/.local/share/brewkit"
           fi
           echo "disk before:"; df -h "$HOME" | tail -1
-          # MEMORY, for the same reason as disk, and it cost a run to learn.
-          # llvm.org died at 4297 of 7967 objects with
-          #   c++: fatal error: Killed signal terminated program cc1plus
-          # which is the OOM killer's signature, and the runner went down with
-          # it. Nothing in the log said how much memory the machine had or how
-          # much was left, so the only evidence was a SIGKILL.
-          #
-          # And the job count is CAPPED by what is there. A heavy LLVM
-          # translation unit wants on the order of 2 GB in cc1plus, so four at
-          # once needs eight; the s390x lane asked for four without ever
-          # checking. Computed at run time rather than guessed per machine,
-          # because the guess is what is wrong the day the VM is resized.
-          if [ -r /proc/meminfo ]; then
-            memkb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo)
-            echo "memory: $((memkb/1024)) MiB total, $(awk '/^MemAvailable:/{print int($2/1024)}' /proc/meminfo) MiB available"
-            cap=$(( memkb / 2097152 ))   # one job per 2 GiB
-            [ "$cap" -lt 1 ] && cap=1
-            if [ -n "$JOBS" ] && [ "$JOBS" -gt "$cap" ]; then
-              echo "jobs: $JOBS asked for, $cap fits in memory — using $cap"
-              JOBS="$cap"
-              # It came from the step's `env:`, so it is already exported and
-              # the assignment reaches bk — said out loud because relying on
-              # that silently is how a cap becomes decorative.
-              export JOBS
-            fi
+          # The cap this run will use was computed and printed by the step
+          # above, which finishes in a second so the number is readable while
+          # this one runs for hours.
+          if [ -n "$MEM_JOBS" ] && [ -n "$JOBS" ] && [ "$JOBS" -gt "$MEM_JOBS" ]; then
+            echo "jobs: $JOBS asked for, $MEM_JOBS fits in memory — using $MEM_JOBS"
+            JOBS="$MEM_JOBS"
+            export JOBS
           fi
           du -sh "$HOME/.local/share/brewkit" 2>/dev/null || echo "  (no build root yet)"
           MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
