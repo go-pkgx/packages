@@ -253,8 +253,12 @@ jobs:
           CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
+      # --depth 1 of a moving branch, so WHICH pantry is a property of the
+      # minute the run started and of nothing that is written down. Say it.
       - name: clone pantry
-        run: git clone --depth 1 https://github.com/pkgxdev/pantry
+        run: |
+          git clone --depth 1 https://github.com/pkgxdev/pantry
+          echo "pantry $(git -C pantry rev-parse HEAD)"
 
       # The overlay is the half a CONSUMER resolves from, and it declares edges
       # upstream does not: perl.org NEEDs libcrypt.so.1, our overlay names the
@@ -267,7 +271,9 @@ jobs:
       # It does NOT change what is compiled: `bk factory` still builds the
       # pantry's recipe with the overrides applied. It widens the closure.
       - name: clone the pantry overlay
-        run: git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+        run: |
+          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+          echo "overlay $(git -C overlay rev-parse HEAD)"
 
       # The sovereign path: a rootfs assembled from OUR bottles, entered with
       # chroot. The host then contributes three static Go binaries and a mount
@@ -660,6 +666,45 @@ jobs:
             echo "platform:  ${PLATFORM:-?}"
             echo "runner:    $(uname -srm)"
             echo "distro:    $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || echo unknown)"
+            echo
+            # The commit above this file is only ONE of the run's inputs. The
+            # pantry and the overlay are cloned --depth 1 from a moving branch
+            # and bk is installed @main, so three of the four inputs to a build
+            # were, until this block, decided at run time and written nowhere.
+            #
+            # On 2026-09-29 two runs an hour apart at the SAME packages commit
+            # disagreed about whether an override applied. Answering "did the
+            # pantry move?" meant querying GitHub's API afterwards — which
+            # worked only because the history was short and public, and would
+            # not have worked at all a month later. A run has to be able to say
+            # what it read.
+            #
+            # An input that cannot be read is recorded as unread, never as
+            # absent: "(unread)" is a different claim from a repository that
+            # was not cloned, and a reader must not have to guess which.
+            echo "== the inputs that were not pinned =="
+            printf '%-10s %s\n' packages "${GITHUB_SHA:-(unread)}"
+            for d in pantry overlay; do
+              if [ -d "$d/.git" ]; then
+                printf '%-10s %s\n' "$d" "$(git -C "$d" rev-parse HEAD 2>/dev/null || echo '(unread)')"
+              else
+                printf '%-10s %s\n' "$d" "(not cloned)"
+              fi
+            done
+            # go version -m reads the module version STAMPED INTO the binary,
+            # which is the one thing here that cannot drift from what ran.
+            #
+            # Taken through a variable rather than inlined in the printf: a
+            # binary that is there but carries no stamp makes the pipeline
+            # print NOTHING and succeed, and an empty field beside a label
+            # reads as an answer. Ask whether it is empty, and say so.
+            bkver=""
+            bkbin=$(command -v bk 2>/dev/null || true)
+            if [ -n "$bkbin" ]; then
+              bkver=$(go version -m "$bkbin" 2>/dev/null |
+                awk '$1=="mod" && $2=="github.com/go-pkgx/bk" {print $3}')
+            fi
+            printf '%-10s %s\n' bk "${bkver:-(unread)}"
             echo
             echo "== host tools that stood in for bottles =="
             # Each of these can be what --bootstrap fell back to. Recording the
