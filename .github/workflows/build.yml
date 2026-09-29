@@ -170,7 +170,11 @@ jobs:
           # darwin arches are little-endian, so every recipe with a byte-order
           # bug has been invisible until now. That is the point of the lane and
           # also where its cost will be — not in this matrix entry.
-          SELFZ='{"runner":["self-hosted","linux","s390x"],"platform":"linux/s390x","slug":"linux-s390x","container":"","jobs":"4"}'
+          # jobs "" — this lane asks the MACHINE. It is the one lane whose host
+          # is a VM we resize, and "4" was written for it while the machine had
+          # 2 cores. An empty value means the build step takes the cap the
+          # census computed: min(nproc, min(MemTotal, cgroup)/2 GiB).
+          SELFZ='{"runner":["self-hosted","linux","s390x"],"platform":"linux/s390x","slug":"linux-s390x","container":"","jobs":""}'
           X64=$SELF; ARM=$SELFARM
           if [ "${{ github.event.inputs.runner }}" = github ]; then X64=$GH64; ARM=$GHARM; fi
           # `arch` drops one half of the pair. jq gets it as a string and
@@ -416,6 +420,35 @@ jobs:
             fi
           fi
 
+          # WHAT IS HOLDING THE DISK, here and not in the post-mortem step.
+          #
+          # `disk and memory after` carries always() and prints exactly this,
+          # and on 2026-09-28 it did not run: llvm.org filled the filesystem
+          # during `ninja install`, the runner died writing its OWN diagnostic
+          # log — `No space left on device: .../Worker_….log` — and always()
+          # cannot save a step from a process that is gone. The inventory of
+          # what fills the disk was therefore printed only on the runs where
+          # the disk did not fill.
+          #
+          # bk removes a build tree once its bottle is PUBLISHED, so what is
+          # here is what FAILED, kept on purpose. That day it was 4.2 GiB of
+          # rust-lang.org from two earlier runs, against 13 GiB for the llvm
+          # tree being built and 19 GiB free when the run started.
+          root="$HOME/.local/share/brewkit"
+          if [ -d "$root" ]; then
+            echo "build trees retained (bk keeps only what FAILED):"
+            du -sm "$root"/*/*/ 2>/dev/null | sort -rn | head -10 |
+              while read -r mb path; do printf '  %6s MiB  %s\n' "$mb" "${path#$root/}"; done
+            biggest=$(du -sm "$root"/*/*/ 2>/dev/null | sort -rn | head -1 | cut -f1)
+            freemb=$(df --output=avail -m "$HOME" | tail -1 | tr -d ' ')
+            # Not an invented threshold: free space measured against the
+            # largest tree already on disk. Below it, this machine cannot
+            # afford to rebuild the biggest thing it has built.
+            if [ -n "$biggest" ] && [ "$freemb" -lt "$biggest" ]; then
+              echo "::warning::$freemb MiB free, and the largest retained build tree is $biggest MiB — this machine cannot afford another build that size"
+            fi
+          fi
+
       - name: build + publish this chunk
         env:
           PLATFORM: ${{ matrix.platform }}
@@ -490,7 +523,17 @@ jobs:
           # The cap this run will use was computed and printed by the step
           # above, which finishes in a second so the number is readable while
           # this one runs for hours.
-          if [ -n "$MEM_JOBS" ] && [ -n "$JOBS" ] && [ "$JOBS" -gt "$MEM_JOBS" ]; then
+          if [ -z "$JOBS" ] && [ -n "$MEM_JOBS" ]; then
+            # The lane asked the MACHINE. "Computed here rather than written
+            # per machine: a number written down is what is wrong the day the
+            # VM is resized" — the census step says that about the cap, and the
+            # lane's own number was written down anyway. The s390x VM was
+            # resized twice in one day: 4 was written for it, the machine had
+            # 2 cores, and the replacement has 8.
+            echo "jobs: none asked for, $MEM_JOBS fits this machine — using $MEM_JOBS"
+            JOBS="$MEM_JOBS"
+            export JOBS
+          elif [ -n "$MEM_JOBS" ] && [ -n "$JOBS" ] && [ "$JOBS" -gt "$MEM_JOBS" ]; then
             echo "jobs: $JOBS asked for, $MEM_JOBS fits in memory — using $MEM_JOBS"
             JOBS="$MEM_JOBS"
             export JOBS
