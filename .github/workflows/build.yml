@@ -58,6 +58,10 @@ on:
         description: "`1` builds WITHOUT bk's base toolchain in the environment, taking those tools from the host. The base toolchain is a cycle with no entry point — every build is handed all fifteen of its members as bottles — so on an architecture with no bottles at all, nothing can be built first. Use it ONLY with seed_dist, and only for the first generation: rebuild everything inside the sovereign rootfs afterwards."
         required: false
         default: ""
+      test_only:
+        description: "`1` builds NOTHING: run each named project's own `test:` block against the version already in the registry, and record the outcome in tests.txt. The factory tests a bottle when it publishes it and never again, so this is the only way to notice one that STOPPED working — a dependency whose signature went bad takes every consumer down silently (go-pkgx/bk#250)."
+        required: false
+        default: ""
       mirror_from:
         description: "copy the bottles from this upstream dist instead of building them, e.g. https://dist.pkgx.dev — republished signed + attested (used for the glibc sweep)."
         required: false
@@ -103,6 +107,27 @@ jobs:
       # which had done nothing wrong, for a contradiction stated in the inputs.
       # `sovereign` is not flipped silently: an input that quietly means
       # something else is worse than one that is refused.
+      # Refused rather than reinterpreted, for the reason the note above
+      # gives. --test-only compiles nothing, so it wants a staged toolchain as
+      # little as mirroring does — and builder/sovereign-build.sh does not
+      # pass the flag through, so that lane would quietly BUILD what the
+      # operator asked only to test.
+      #
+      # Deciding the lane from this input instead would have meant testing it
+      # here as `= 1` while bk reads it through envBool, which also accepts
+      # `true`. Two readings of one value, disagreeing on exotic input, is
+      # the silent divergence this repository keeps finding.
+      - name: a test-only dispatch stages no toolchain
+        env:
+          TEST_ONLY: ${{ github.event.inputs.test_only }}
+          SOVEREIGN: ${{ github.event.inputs.sovereign }}
+        run: |
+          [ -n "$TEST_ONLY" ] || exit 0
+          [ "$SOVEREIGN" = 0 ] || {
+            echo "::error::test_only=$TEST_ONLY builds nothing, so the sovereign rootfs would be staged for a run that compiles nothing — and sovereign-build.sh does not pass --test-only through, so it would BUILD instead. Pass sovereign=0 with it."
+            exit 1
+          }
+
       - name: a bootstrap dispatch states its two companions
         env:
           BOOTSTRAP: ${{ github.event.inputs.bootstrap }}
@@ -490,6 +515,13 @@ jobs:
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
           VERSIONS: ${{ github.event.inputs.versions }}
           BOOTSTRAP: ${{ github.event.inputs.bootstrap }}
+          # A VARIABLE bk reads through envBool, never
+          # ${TEST_ONLY:+--test-only} on the command line below: `:+` tests
+          # for non-empty and "0" is not empty, so that form turns the flag
+          # ON when a dispatch said off. envBool exists because FORCE=0 had
+          # to mean off (go-pkgx/bk#251), and this joins FORCE, NO_CLOSURE
+          # and PIN_TO_DEPENDENTS in reading it that way.
+          TEST_ONLY: ${{ github.event.inputs.test_only }}
           JOBS: ${{ matrix.jobs }}
           QEMU_RESERVED_VA: ${{ matrix.qemu_va }}
         run: |
