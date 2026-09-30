@@ -690,14 +690,31 @@ jobs:
       # in for bottles, and the state of the seed registry when the run ended.
       # Without this the only trace of WHICH gcc compiled the first s390x
       # toolchain is a runner that will be reimaged.
-      - name: record what the seed was built from
-        if: always() && github.event.inputs.bootstrap == '1'
+      # EVERY run, not only a bootstrap. The gate was `bootstrap == '1'`
+      # because the host-tool census was written for a seed generation — and
+      # it took the "== the inputs that were not pinned ==" block with it,
+      # which is the part that is about ANY run.
+      #
+      # Found by needing it: a --test-only sweep chased the same question
+      # twice — which bk did this run install? — and the only trace was the
+      # module cache's tar warnings, which name whatever versions are on
+      # disk rather than the one that ran.
+      #
+      # The census stays for every run too. `command -v` twenty times and a
+      # catalogue listing cost nothing next to a build, and a run that used
+      # the host's gcc is worth recording whether or not it was the first.
+      - name: record what this run read
+        if: always()
         env:
           SEED_DIST: ${{ github.event.inputs.seed_dist }}
         run: |
           : > seed-provenance.txt
           {
-            echo "seed provenance — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            # The file keeps its name. It is written for every run now, not
+            # only a seed's, and renaming it would break whatever anybody has
+            # pointed at `seed-provenance-*` — so the correction goes in the
+            # first line, where a reader meets it.
+            echo "run provenance (any run; the name is historical) — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "platform:  ${PLATFORM:-?}"
             echo "runner:    $(uname -srm)"
             echo "distro:    $(. /etc/os-release 2>/dev/null && echo "$PRETTY_NAME" || echo unknown)"
@@ -786,7 +803,7 @@ jobs:
           cat seed-provenance.txt
 
       - name: upload seed provenance
-        if: always() && github.event.inputs.bootstrap == '1'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: seed-provenance-${{ matrix.slug }}-${{ matrix.chunk }}
