@@ -160,6 +160,21 @@ jobs:
       # that day — `cargo: resolve deps: GET .../llvm.org/.../versions.txt: Not
       # Found` — with two more cascading from it, and the file had been edited
       # by hand for weeks with nothing able to say so.
+      # The seed reached 77 of 77 on 2026-09-29 and was not a usable
+      # toolchain: the first build on top of it without --bootstrap died on
+      # `no version of gnu.org/gawk satisfies "~5.3"`. The seed had built
+      # 5.4.1 — the newest — and bk pins ~5.3 on purpose, because 5.4.1
+      # mishandles autoconf's option-resolution scripts. The order named
+      # projects and not versions, so it took the latest and nothing said
+      # otherwise. "Every project published" was true and answered the wrong
+      # question.
+      #
+      # The constraint is READ FROM bk (build.BaseToolchain), never copied:
+      # a second "~5.3" in this repository would be right until bk moved and
+      # then wrong silently, which is the same defect one layer up.
+      - name: the seed order builds the toolchain the toolchain wants
+        run: go run ./seedpins --order seed/order.txt
+
       - name: the seed order honours every edge outside a cycle
         run: |
           GOPROXY=direct go run github.com/go-pkgx/bk/cmd/bk@main closure --build \
