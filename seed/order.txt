@@ -7,7 +7,7 @@ freedesktop.org/pkg-config
 github.com/besser82/libxcrypt
 gnu.org/m4
 gnu.org/make
-perl.org
+perl.org@~5.44
 openssl.org
 curl.se
 gnu.org/bison
@@ -76,7 +76,7 @@ crates.io/semverator
 gnu.org/coreutils
 gnu.org/diffutils
 gnu.org/findutils
-gnu.org/gawk
+gnu.org/gawk@~5.3
 pcre.org/v2
 gnu.org/grep
 gnu.org/glibc
