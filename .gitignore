@@ -4,3 +4,4 @@ failures.txt
 /closure/closure
 cov.out
 failures-detail.txt
+tests.txt

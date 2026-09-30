@@ -590,7 +590,10 @@ jobs:
             # remaining trace is the job log — which is exactly the evidence a
             # campaign needs to tell a broken recipe from a broken factory.
             cp -r "$RUNNER_TEMP/rootfs/dist" dist 2>/dev/null || true
-            for f in failures.txt failures-detail.txt; do
+            # tests.txt joins them: go-pkgx/bk#248 has the factory record
+            # each published package's own test: block, and a record written
+            # inside the rootfs is a record nobody reads.
+            for f in failures.txt failures-detail.txt tests.txt; do
               cp "$RUNNER_TEMP/rootfs/$f" "$f" 2>/dev/null || true
             done
           else
@@ -785,4 +788,18 @@ jobs:
         with:
           name: failures-detail-${{ matrix.slug }}-${{ matrix.chunk }}
           path: failures-detail.txt
+          if-no-files-found: ignore
+
+      # What each published package's OWN test: block said — four states, one
+      # line each (go-pkgx/bk#248). Separate from failures.txt on purpose: a
+      # failing test is not a failing build, and the factory's exit status is
+      # untouched by it. Of 12 test failures measured over 120 packages only 2
+      # were a bottle nobody can run, which is why this is a record and not a
+      # gate.
+      - name: upload the test record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: tests-${{ matrix.slug }}-${{ matrix.chunk }}
+          path: tests.txt
           if-no-files-found: ignore
