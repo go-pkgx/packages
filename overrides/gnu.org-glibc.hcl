@@ -3,6 +3,27 @@ why     = "bk exports `MAKEFLAGS=… AUTOCONF=true …` so a stale timestamp can
 
 edits = [
   {
+    # The recipe's test keys $LDSO by architecture — x86-64 and aarch64 —
+    # and s390x is not among them, so on the LinuxONE lane the test runs
+    #
+    #   test -f "$LIBDIR/"      -> false
+    #   echo "missing "         -> a name nobody can look up
+    #
+    # and gnu.org/glibc was one of seven failures in the s390x seed's first
+    # --test-only sweep (go-pkgx/bk#250). The bottle is fine; the test does
+    # not know the architecture.
+    #
+    # ld64.so.1 is s390x's loader, taken from OUR OWN artefacts rather than
+    # from memory: 362 occurrences of `ld64.so.1 is NEEDED` across this
+    # lane's logs, and not one ld-linux-*.so.
+    #
+    # `set` deep-merges a mapping, so x86-64 and aarch64 keep theirs; and
+    # the path's missing parents are created, so this does not depend on
+    # test.env.s390x already existing.
+    path = "test.env.s390x.LDSO"
+    set  = "ld64.so.1"
+  },
+  {
     path = "build.script"
     from = "make --jobs"
     to   = "make AUTOCONF=no --jobs"
