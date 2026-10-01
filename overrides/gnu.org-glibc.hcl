@@ -3,6 +3,38 @@ why     = "bk exports `MAKEFLAGS=… AUTOCONF=true …` so a stale timestamp can
 
 edits = [
   {
+    # bk exports LDFLAGS="-Wl,-rpath,$PKGX_DIR" into every linux build, and
+    # on linux that is the ONLY thing it puts there (buildscript/wrapper.go,
+    # the `case "linux"` of wrapFlags). For a libc it is poison: glibc's own
+    # loader asserts that the objects it processes carry NEITHER rpath tag —
+    #
+    #   get-dynamic-info.h:134  Assertion `info[DT_RPATH]   == NULL' failed!
+    #   get-dynamic-info.h:133  Assertion `info[DT_RUNPATH] == NULL' failed!
+    #
+    # — and we met both in turn: the bottle shipped DT_RPATH, go-pkgx/bk#262
+    # made SetRunpath write DT_RUNPATH as its name always claimed, and the
+    # rebuilt bottle failed one assertion EARLIER. Modernising the tag walks
+    # the failure up a line and no further, which is how we learned the
+    # loader refuses the entry rather than the spelling.
+    #
+    # A libc has no use for one anyway: its objects sit beside each other and
+    # the loader resolves them by absolute path. Clearing LDFLAGS drops the
+    # rpath and nothing else on this platform, and fixup tolerates an ELF
+    # with no slot to rewrite (rewriteRunpath treats ErrNoRunpath as a skip),
+    # so the build is unaffected.
+    #
+    # It costs the sovereign lane's sysroot flags if glibc were ever built
+    # with --libc=pkgx — which would be circular, and is not how this bottle
+    # is made. Said here rather than discovered later.
+    #
+    # Why it matters beyond one bottle: gnu.org/glibc provides bin/ldd and
+    # bottle puts glibc in EVERY linux closure, so a loader that aborts takes
+    # `ldd` down for everything we publish — gnu.org/readline and
+    # gnu.org/gcc/libstdcxx fail their tests on nothing but that.
+    path = "build.env.LDFLAGS"
+    set  = ""
+  },
+  {
     # The recipe's test keys $LDSO by architecture — x86-64 and aarch64 —
     # and s390x is not among them, so on the LinuxONE lane the test runs
     #
