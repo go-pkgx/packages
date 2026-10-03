@@ -73,6 +73,24 @@ edits = [
     set  = "ld64.so.1"
   },
   {
+    # bk runs every script through mvdan.cc/sh, which does not honour
+    # quoting of `(` in a case pattern — it stays a metacharacter and the
+    # branch silently never fires. Real bash matches; ours does not
+    # (go-pkgx/bk#268, measured in isolation both ways). The test then
+    # printed its own evidence and contradicted it:
+    #
+    #   bin/iconv --version: iconv (GNU libc) 2.44
+    #   FAIL: expected (GNU libc) 2.44 … got: iconv (GNU libc) 2.44
+    #
+    # Escaping the parens matches under BOTH shells, verified, so this is a
+    # portability fix rather than an accommodation of one interpreter. The
+    # real repair is upstream in mvdan.cc/sh; two recipes in the pantry are
+    # affected and the other one is a BUILD.
+    path = "test.script"
+    from = "*\"(GNU libc) {{version.marketing}}\"*)"
+    to   = "*\\(GNU\\ libc\\)\\ {{version.marketing}}*)"
+  },
+  {
     path = "build.script"
     from = "make --jobs"
     to   = "make AUTOCONF=no --jobs"
