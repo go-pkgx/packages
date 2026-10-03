@@ -56,6 +56,23 @@ edits = [
     set  = "ld64.so.1"
   },
   {
+    # And the BUILD env keys $LDSO the same way, which I missed when fixing
+    # the test one. The script does
+    #
+    #   ln -sf ../lib/glibc-{{version.marketing}}/$LDSO ld.so
+    #
+    # so on s390x it ran with $LDSO EMPTY and made bin/ld.so a symlink to the
+    # directory:
+    #
+    #   bin/ld.so -> ../lib/glibc-2.44/
+    #
+    # The recipe's own test checks `test -L bin/ld.so`, which a dangling link
+    # passes — so the test that exists for this said nothing. Measured on the
+    # runner, not inferred.
+    path = "build.env.s390x.LDSO"
+    set  = "ld64.so.1"
+  },
+  {
     path = "build.script"
     from = "make --jobs"
     to   = "make AUTOCONF=no --jobs"
