@@ -3,8 +3,8 @@ module github.com/go-pkgx/packages
 go 1.26.4
 
 require (
-	github.com/go-pkgx/bk v0.0.0-20260928111145-81e66cc79328
-	github.com/go-pkgx/bottle v0.23.1-0.20260927210538-5e8776a0c8ef
+	github.com/go-pkgx/bk v0.0.0-20261003204509-cdb007644913
+	github.com/go-pkgx/bottle v0.23.1-0.20260930003605-b3ce81385ca1
 	github.com/hashicorp/hcl/v2 v2.25.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -29,7 +29,7 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v1.2.0 // indirect
-	github.com/klauspost/compress v1.20.0 // indirect
+	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.3.0 // indirect
 	github.com/mitchellh/go-wordwrap v1.0.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
