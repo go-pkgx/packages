@@ -62,6 +62,25 @@ Each of these was found by running the thing, not by reading code:
 | `make: cmp: No such file or directory` | recipes' own test steps call `cmp`: added `gnu.org/diffutils` |
 | `ls-remote …/openssl: context deadline exceeded` | github's ref advertisement for a big repository stalls under HTTP/2, like the big ghcr blobs did — bk now uses HTTP/1.1 (bk#28) |
 
+Bringing up **linux/s390x** added these, 2026-10-04. The first one is the same
+SYMPTOM as `mkdir: libc.so.6` above and a different CAUSE, which is the reason
+this table is a list and not a lookup:
+
+| symptom | fix |
+|---|---|
+| `mkdir: libc.so.6: cannot open shared object file`, again | the glibc bottle puts libc.so.6 in `lib/glibc-2.44/` and `lib/` holds nothing else, so `eval "$(pkgx +…)"` exported a directory with no shared object in it. `pkgx -- cmd` was right all along because it hands `bottle.LibPath` to OUR loader (pkgx#60). The fix is **conditional**: exporting our glibc on a distribution pairs it with the HOST's `ld.so` and breaks a private contract — `undefined symbol: __pointer_chk_guard` (pkgx#62) |
+| `bottle: … is unsigned (no signature referrer)` while staging | the loopback seed registry answers **404** on `/v2/<repo>/referrers/<digest>`: it does not serve the Referrers API, so bk signs and has nowhere to put it. `PKGX_VERIFY=0` for that registry — and it must travel through `sudo --preserve-env` with `PKGX_DIST`, or staging sees it and the chroot does not |
+| `no s390x loader (ld64.so.1) in the staged glibc` | `bottle.LoaderNameFor` had no entry. s390x's loader is **not** named after its architecture — the neighbours read `ld-linux-<arch>.so.N` and extending that pattern gives a file that does not exist (bottle#105) |
+| `builder: 42 packages` and nothing installed | a self-hosted runner reuses `$RUNNER_TEMP`, and `InstallFor` reads an existing `<project>/v<ver>` as "already present". A tree left by a run that died is inherited in silence. Remove it before staging — with `sudo`, since the chroot wrote it as root. `bk builder` now says when it is reusing (bk#277) |
+| `mkdir`, then `sed`, want `libselinux.so.1` | their configure AUTO-DETECTS the builder's SELinux (`with_selinux=maybe` in gnulib's `m4/selinux-selinux-h.m4`). `--without-selinux` in the override. Do not find these one failed build at a time: `bk builder` reports every NEEDED soname the tree lacks, with who asks (bk#276) |
+| `no libcxx.llvm.org for linux/s390x` | bk appends `+libcxx.llvm.org` to the dependency eval of **every** `--libc pkgx` build, and pkgx refuses the whole eval when one spec cannot resolve — so an absent libcxx takes down C builds too. It belongs in `seed/order.txt` |
+
+Before dispatching anything on a new architecture, `bk builder --dry-run
+--platform <target> --toolchain builder/toolchain.txt` names every root that
+cannot resolve — all of them, not the first — and tells a CONFLICT between
+roots apart from a missing bottle. It is necessary and not sufficient: a bottle
+that resolves may still fail to unpack.
+
 Several toolchain packages (gawk, m4, bison, texinfo, autoconf, libtool) had no
 **linux** bottle in our registry at all — only darwin ones. `bk factory
 --mirror-from https://dist.pkgx.dev` filled them.
