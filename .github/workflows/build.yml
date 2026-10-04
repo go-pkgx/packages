@@ -659,6 +659,38 @@ jobs:
             ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
           fi
 
+      # A NAMED dispatch that built nothing is a failed dispatch.
+      #
+      # A chunk of fifty is best-effort on purpose: one recipe that genuinely
+      # does not build must not paint the whole lot red. That reasoning does
+      # not reach a dispatch that names its recipes and produces no bottle at
+      # all — there the green tick says the opposite of what happened.
+      #
+      # Measured on 2026-10-04: `recipes=kernel.org/linux-headers
+      # versions==7.2.8` ended
+      #   ❌ BUILD FAIL kernel.org/linux-headers 7.2.8: run: exit status 127
+      #   === summary (linux/x86-64): 0 built, 0 skipped, 1 failed ===
+      # and the job was GREEN. The next step was to merge a toolchain pin that
+      # depended on that bottle existing.
+      #
+      # Deliberately narrow: 0 built AND something failed. A named dispatch
+      # where some built and some failed keeps the best-effort posture, and
+      # one that built nothing because there was nothing to build (force=0,
+      # already published) has no failure and stays green.
+      - name: a named dispatch that built nothing
+        if: always() && github.event.inputs.recipes != ''
+        run: |
+          built=0
+          [ -d dist ] && built=$(find dist -type f | wc -l | tr -d ' ')
+          failed=0
+          [ -s failures.txt ] && failed=$(grep -cvE '^[[:space:]]*$' failures.txt)
+          echo "$built file(s) in dist, $failed failure(s)"
+          if [ "$built" -eq 0 ] && [ "$failed" -gt 0 ]; then
+            echo "::error::this dispatch named its recipes, published nothing and recorded $failed failure(s) — see failures-detail.txt"
+            cat failures.txt
+            exit 1
+          fi
+
       # AFTER, and `always()`, because the number matters most on the run
       # that just failed. A step that only reports on success reports the
       # disk of every run except the one that filled it.
