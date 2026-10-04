@@ -87,13 +87,38 @@ means by "thrown away once the sovereign rebuild replaces it". Nothing built
 against a host distribution reaches ghcr in either generation.
 
 **Pilot with one package.** The sovereign path on s390x had never run at all
-until 2026-10-04, and its first attempt died in 22 seconds on a toolchain pin —
-`kernel.org/linux-headers@~7.1` against a seed that holds only 7.2.8. That is
-the price of a staging, not of seventy builds.
+until 2026-10-04. It took **ten** dispatches to get one package through, and
+the sequence is worth keeping because it is what bringing up a generation
+actually looks like:
 
-Before dispatching anything, `bk builder --dry-run --platform linux/s390x
---toolchain builder/toolchain.txt` answers "does this architecture have the
-bottles" without taking a runner. It is a necessary condition, not a sufficient
-one: a bottle that is listed may still fail to unpack.
+| it died on | because |
+|---|---|
+| resolving the toolchain | a pin written for a stale mirror (`~7.1`) against a seed that holds only 7.2.8 |
+| staging the rootfs | the seed's bottles are unsigned and verification was on |
+| posing the loader | `bottle.LoaderNameFor` had no s390x entry — its loader is `ld64.so.1`, not `ld-linux-s390x.so.1` |
+| installing, three times over | `$RUNNER_TEMP` is reused on a self-hosted runner and `InstallFor` reads an existing directory as "already installed", so a half-written tree was inherited in silence |
+| the first `mkdir` | `coreutils` linked the builder's `libselinux`, which no bottle provides |
+| `make install` | `sed` did too |
+| the dependency eval | `libcxx.llvm.org` was never in the seed, and bk hands it to **every** `--libc pkgx` build |
+
+Each was invisible until the previous was lifted. A one-package pilot costs a
+staging; the same sequence found seventy builds in would have cost a day.
+
+**Two tools came out of it, and they are the reason the list above is short.**
+`bk builder --dry-run` answers "does this architecture have the bottles"
+without taking a runner, naming **every** blocked root rather than the first —
+and telling a conflict between roots apart from a missing bottle. After
+staging, `bk builder` reports every `NEEDED` soname the tree does not contain,
+**with who asks**: that turned "one contaminated package per failed build"
+into five names at once.
+
+Neither is sufficient. A bottle that resolves may still fail to unpack, and a
+census is not a worklist — of the five sonames, `lldb` and texinfo's `info`
+are on no build path at all, and the second generation rebuilds them clean
+inside a rootfs where the host libraries do not exist.
+
+**What generation 1 is for.** Once it runs, every failure is a report about
+generation 0: what the Ubuntu builder lent it. That is the point of the lane,
+not a defect in it.
 
 [botch]: https://manpages.debian.org/testing/botch/botch.1.en.html
