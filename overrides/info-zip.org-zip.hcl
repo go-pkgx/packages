@@ -1,5 +1,5 @@
 project = "info-zip.org/zip"
-why     = "Upstream carries no recipe for info-zip's zip, so this is ours: a local recipe-override layer lets a fix be validated here before it is offered upstream."
+why     = "Upstream's recipe builds zip 3.0 (2008) against Debian's 3.0-11 patch series with a bare CC, and clang 16+ refuses the K&R C that remains; it also downloads over PLAIN HTTP from SourceForge, and this is the only seed package that does."
 
 edits = [
   {
@@ -40,5 +40,36 @@ edits = [
       "make -f unix/Makefile CC={{deps.gnu.org/gcc.prefix}}/bin/gcc generic",
       "make -f unix/Makefile BINDIR={{prefix}}/bin MANDIR={{prefix}}/man/man1 install",
     ]
+  },
+  {
+    #
+    # http:// -> https://, because this is a SEED package and the seed is the
+    # foundation the sovereign generation is built on.
+    #
+    # Census over the pantry's 1874 distributables: 1716 https, 138 git+https,
+    # 19 http, 1 ftp. Of the 23 projects fetched in the clear, exactly ONE is
+    # in seed/order.txt, and this is it.
+    #
+    # It matters more than the count suggests. bk DOES verify a source
+    # checksum when the recipe gives one, but 1 recipe of 904 gives one --
+    # openssl.org, whose `sha` is a sibling `.sha256` on the SAME host, so it
+    # catches corruption and not substitution (go-pkgx/bk#282). For everything
+    # else TLS is the only control there is, and here there was none at all.
+    # The tarball is then extracted as root inside the chroot, and
+    # go-pkgx/bottle#107 is a traversal in that extractor.
+    #
+    # Measured before changing it, because a URL change that also changes the
+    # content is a different defect: the same path over http and over https
+    # returns byte-identical content,
+    #   f0e8bb1f9b7eb0b01285495a2699df3a4b766784c1765a8f1aeedf63c0806369
+    #   1118845 bytes, both
+    # so this changes the transport and nothing else.
+    #
+    # A substitution rather than a `set`: if upstream fixes its own URL, this
+    # reports PremiseGone instead of silently pinning a URL nobody maintains.
+    #
+    path = "distributable.url"
+    from = "http://downloads.sourceforge.net/"
+    to   = "https://downloads.sourceforge.net/"
   },
 ]
