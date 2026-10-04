@@ -8,24 +8,35 @@
 
 llvm.org                    # clang, lld, compiler-rt — the compiler itself
 gnu.org/glibc               # libc, crt objects and the dynamic loader
-kernel.org/linux-headers@~7.1
+kernel.org/linux-headers@~7.2
                             # glibc's own headers include <linux/limits.h>, and
                             # a scratch image has no /usr/include to fall back on.
                             #
-                            # PINNED because the two arches are not level.
-                            # Unpinned, staging resolves 7.2.1 and dies with
-                            #   no bottle for kernel.org/linux-headers v7.2.1
-                            #   (linux/x86-64)
-                            # and no mirror can fix it: dist.pkgx.dev stops at
-                            # 7.1.12 for x86-64 while carrying 7.2.1 and 7.2.2
-                            # for aarch64 (checked in versions.txt, 2026-08-28).
-                            # ~7.1 (major.minor, so 7.1.x only), NOT ^7.1:
-                            # caret allows minor bumps, so ^7.1 is satisfied
-                            # by 7.2.1 and pins nothing at all here.
-                            # This is the newest range both arches can
-                            # actually be given, and holds them on the SAME
-                            # headers.
-                            # Lift it once we build 7.2.x for x86-64 ourselves.
+                            # PINNED so every architecture stages the SAME
+                            # headers. That is the invariant; the version is
+                            # whatever all of them can be given.
+                            #
+                            # ~7.2 (major.minor, so 7.2.x only), NOT ^7.2:
+                            # caret allows minor bumps and would pin nothing.
+                            #
+                            # It was ~7.1, and that was a MIRROR's limit wearing
+                            # the invariant's clothes: dist.pkgx.dev stopped at
+                            # 7.1.12 for x86-64 while carrying 7.2.x for
+                            # aarch64, so 7.1 was the newest both could be
+                            # given. The old note said to lift it "once we
+                            # build 7.2.x for x86-64 ourselves" — which is what
+                            # happened here.
+                            #
+                            # What forced the question: the s390x lane builds
+                            # everything itself and therefore holds exactly ONE
+                            # linux-headers, 7.2.8. The first sovereign s390x
+                            # build died in 22 seconds with
+                            #   builder: resolve closure: no version of
+                            #   kernel.org/linux-headers satisfies "~7.1"
+                            #   (available: 1)
+                            # A pin written for a stale mirror had become the
+                            # thing stopping the architecture that needs no
+                            # mirror at all.
 gnu.org/binutils            # ar/ranlib: the llvm bottle ships llvm-ar, not `ar`
 
 gnu.org/make                # the build driver most recipes use

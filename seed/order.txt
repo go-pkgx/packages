@@ -56,7 +56,7 @@ libgit2.org
 gnu.org/autoconf
 gnu.org/automake
 gnu.org/tar
-kernel.org/linux-headers
+kernel.org/linux-headers@~7.2
 # gnu.org/libidn2 exists in the closure only through OUR override of
 # rsync.samba.org. `bk closure --build` could not see it until go-pkgx/bk#232:
 # with --overlay it read the pantry half UNOVERRIDDEN, and rsync is one of the
@@ -70,6 +70,25 @@ rsync.samba.org
 # the seed failure of 2026-09-28: `cargo: resolve deps: GET
 # dist.pkgx.dev/llvm.org/linux/s390x/versions.txt: Not Found`.
 llvm.org
+# libcxx.llvm.org is NOT optional on the sovereign path, and it is not a
+# member of the toolchain either — it is what every `--libc pkgx` build is
+# handed. bk's Wrap appends `+libcxx.llvm.org` to the dependency eval of
+# EVERY recipe in that mode, because the bare llvm.org bottle omits the C++
+# runtime and a C++ recipe must link libc++ rather than the container's
+# libstdc++.
+#
+# The seed built 77 projects without it and the second generation died on the
+# first recipe it tried:
+#   no libcxx.llvm.org for linux/s390x: neither oci://127.0.0.1:5000/seed nor
+#   https://dist.pkgx.dev publishes it
+#   bk: the dependency environment failed
+# — pkgx refuses the WHOLE eval when one spec cannot resolve, so it takes
+# every build down, not only the C++ ones. lz4.org is C.
+#
+# AFTER llvm.org, which it builds against, and after cmake.org (51),
+# ninja-build.org (52) and python.org (42), which it builds WITH. All three
+# were already here.
+libcxx.llvm.org
 rust-lang.org
 rust-lang.org/cargo
 crates.io/semverator
