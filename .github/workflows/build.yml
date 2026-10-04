@@ -868,6 +868,42 @@ jobs:
               else
                 echo "(catalog unreadable)"
               fi
+              # Does this registry hold SIGNATURES at all?
+              #
+              # The second generation died staging its rootfs on "zlib.net
+              # v1.3.2 (linux/s390x) is unsigned (no signature referrer)",
+              # and the seed run HAS $SIGNING_KEY — bk signs whenever it is
+              # set. So either the registry cannot store a referrer or the
+              # push fails quietly, and nothing on the runner said which.
+              #
+              # One probe, on one real bottle, so the next run answers it for
+              # free instead of leaving a note that says "unknown". A 404 or
+              # an empty manifest list is the registry saying it does not
+              # serve the Referrers API; an index with entries means the
+              # signature IS there and the verifier is looking elsewhere.
+              echo "-- referrers API --"
+              probe=$(echo "$repos" | tr ',' '\n' | sed -n 's/.*"\([^"]*\)".*/\1/p' |
+                      grep -vx repositories | sort -u | head -1)
+              if [ -n "$probe" ]; then
+                tag=$(curl -fsS -m 20 "http://$host/v2/$probe/tags/list" 2>/dev/null |
+                      tr ',' '\n' | sed -n 's/.*"\([0-9][^"]*\)".*/\1/p' |
+                      grep -v -- '--' | sort -Vu | tail -1)
+                dig=$(curl -fsS -m 20 -o /dev/null -D- \
+                        -H 'Accept: application/vnd.oci.image.index.v1+json' \
+                        -H 'Accept: application/vnd.oci.image.manifest.v1+json' \
+                        "http://$host/v2/$probe/manifests/$tag" 2>/dev/null |
+                      tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: *//p')
+                if [ -n "$dig" ]; then
+                  code=$(curl -fsS -m 20 -o /tmp/ref.json -w '%{http_code}' \
+                           "http://$host/v2/$probe/referrers/$dig" 2>/dev/null || echo 000)
+                  n=$(tr ',' '\n' < /tmp/ref.json 2>/dev/null | grep -c artifactType || true)
+                  echo "$probe@$tag -> HTTP $code, $n referrer(s)"
+                else
+                  echo "$probe: no content digest for tag ${tag:-(none)}"
+                fi
+              else
+                echo "(no repository to probe)"
+              fi
             else
               echo "(no seed_dist)"
             fi
