@@ -91,6 +91,36 @@ edits = [
     to   = "*\\(GNU\\ libc\\)\\ {{version.marketing}}*)"
   },
   {
+    # ldd reports EVERY ELF as "not a dynamic executable", because its
+    # RTLDLIST names a loader that does not exist here:
+    #
+    #   ours    RTLDLIST="…"/lib/glibc-2.44/ld.so.1
+    #   ubuntu  RTLDLIST="/lib/ld.so.1 /lib/ld64.so.1"
+    #
+    # Two entries upstream, one here — and the one we kept is the 31-bit
+    # name. glibc's own sysdeps/…/s390/ldd-rewrite.sed turns the single
+    # path into that biarch pair, and it matches a libdir ending in `lib`.
+    # Ours is `lib/glibc-{{version.marketing}}`, so the rewrite never fired
+    # and the 31-bit default stayed.
+    #
+    # We ship only ld64.so.1, so the correct list here is the 64-bit one
+    # alone. $LDSO already holds it per architecture, and the anchored
+    # pattern is a no-op everywhere else: x86-64's RTLDLIST ends in
+    # ld-linux-x86-64.so.2 and aarch64's in ld-linux-aarch64.so.1.
+    #
+    # It corrects the ARTEFACT, not the cause — the cause is our libdir
+    # defeating an upstream sed, and changing the libdir is a far larger
+    # decision than this bottle. go-pkgx/bk#265.
+    #
+    # Why it reaches past glibc: gnu.org/glibc provides bin/ldd and bottle
+    # puts glibc in every linux closure, so `ldd` is broken for everything
+    # we publish here. gnu.org/readline and gnu.org/gcc/libstdcxx fail
+    # their tests on nothing else.
+    path = "build.script"
+    from = "test -f $s || continue"
+    to   = "test -f $s || continue\nsed -i \"s|/ld\\.so\\.1$|/$LDSO|\" $s"
+  },
+  {
     path = "build.script"
     from = "make --jobs"
     to   = "make AUTOCONF=no --jobs"
