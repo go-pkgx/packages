@@ -42,10 +42,10 @@ github.com/go-git/go-git-fixtures/v4 v4.3.2-0.20231010084843-55a94097c399 h1:eMj
 github.com/go-git/go-git-fixtures/v4 v4.3.2-0.20231010084843-55a94097c399/go.mod h1:1OCfN199q1Jm3HZlxleg+Dw/mwps2Wbk9frAWm+4FII=
 github.com/go-git/go-git/v5 v5.19.2 h1:wkfn7vOlUBu8ivAWKBWisTiwJK4jYHzTF8Ndv1LyGqY=
 github.com/go-git/go-git/v5 v5.19.2/go.mod h1:QqCBE1EFN5ddFmrliLQ3/ntRCUjZU3EJuwuB/jWEHjk=
-github.com/go-pkgx/bk v0.0.0-20261004090415-52a43e9fb42c h1:j7V/ke/TFkXn9DLfVPViyISHIjZu081j+5iT0pLZIMI=
-github.com/go-pkgx/bk v0.0.0-20261004090415-52a43e9fb42c/go.mod h1:v3sgfAFlLvlW+2wnaFrQZqgnvgazqBtPdDZuDJMsKho=
-github.com/go-pkgx/bottle v0.23.1-0.20260930003605-b3ce81385ca1 h1:Wz6p6Zzmcu8rPDE23AMwzxxzDz8aHu6dcABbo+xd28o=
-github.com/go-pkgx/bottle v0.23.1-0.20260930003605-b3ce81385ca1/go.mod h1:UI42Tfyka87AhVCQGMlKwgbw2zUET8eRxuqwouwoxYY=
+github.com/go-pkgx/bk v0.1.0 h1:CH5vzz80Sy76GF785QnkEj7RcWegJNRvjDA19+xovOQ=
+github.com/go-pkgx/bk v0.1.0/go.mod h1:cb0g0PMTOecq4MKtzbzT2YE+IfKwqoolAN6lCmipAMc=
+github.com/go-pkgx/bottle v0.24.2 h1:5H05PNtopWbPTVdTBG98sX9Z06FpfAre7dYj4KXnWGk=
+github.com/go-pkgx/bottle v0.24.2/go.mod h1:UI42Tfyka87AhVCQGMlKwgbw2zUET8eRxuqwouwoxYY=
 github.com/go-test/deep v1.0.3 h1:ZrJSEWsXzPOxaZnFteGEfooLba+ju3FYIbOrS+rQd68=
 github.com/go-test/deep v1.0.3/go.mod h1:wGDj63lr65AM2AQyKZd/NYHGb0R+1RLqB8NKt3aSFNA=
 github.com/go-versions/semver v0.2.0 h1:Gr+nA8vpqOJ9QfzjQ4zLB5XBxwR6jYIuKWay4MqBwMA=
