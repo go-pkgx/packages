@@ -366,12 +366,15 @@ jobs:
             # after the toolchain had resolved (42 packages) and before a line
             # was compiled.
             #
-            # STILL OPEN, and worth saying rather than burying: the seed run
-            # HAS $SIGNING_KEY and bk signs whenever it is set, so why the
-            # bottles carry no referrer is unknown. Either the throwaway
-            # registry cannot hold one or the push is failing quietly. This
-            # does not depend on the answer — the loopback argument stands on
-            # its own — but the answer is still owed.
+            # ANSWERED, 2026-10-04, by the probe in `record what this run
+            # read`: the registry returns HTTP 404 on
+            # /v2/<repo>/referrers/<digest>. It does not serve the Referrers
+            # API at all, so bk signs and has nowhere to put the signature.
+            # Not a push that fails quietly, and not a bk defect.
+            #
+            # Which makes this setting the right one for a second reason, not
+            # only the loopback argument: a registry that cannot HOLD a
+            # signature cannot be verified against, whatever one wishes.
             #
             # Exactly scoped: this is the branch where ghcr is neither read nor
             # written, so nothing signed is being accepted unchecked.
@@ -921,7 +924,12 @@ jobs:
                         "http://$host/v2/$probe/manifests/$tag" 2>/dev/null |
                       tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: *//p')
                 if [ -n "$dig" ]; then
-                  code=$(curl -fsS -m 20 -o /tmp/ref.json -w '%{http_code}' \
+                  # NO -f: this probe WANTS the status, and -f makes curl
+                  # exit non-zero on a 404 — so `%{http_code}` and the `|| echo
+                  # 000` fallback both wrote and the first run reported
+                  # "HTTP 404000". Readable by luck, because 404 is
+                  # unmistakable; a 200 would have come out "200000".
+                  code=$(curl -sS -m 20 -o /tmp/ref.json -w '%{http_code}' \
                            "http://$host/v2/$probe/referrers/$dig" 2>/dev/null || echo 000)
                   n=$(tr ',' '\n' < /tmp/ref.json 2>/dev/null | grep -c artifactType || true)
                   echo "$probe@$tag -> HTTP $code, $n referrer(s)"
