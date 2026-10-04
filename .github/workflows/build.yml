@@ -393,6 +393,23 @@ jobs:
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
         run: |
           CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/pkgm@main
+          # A SELF-HOSTED runner reuses $RUNNER_TEMP between jobs, and
+          # bottle.InstallFor treats the mere EXISTENCE of <project>/v<ver> as
+          # "already present":
+          #
+          #   if st, err := os.Stat(prefix); err == nil && st.IsDir() {
+          #       return false, nil // already present
+          #   }
+          #
+          # So a tree left half-written by a run that died mid-install is
+          # indistinguishable from a complete one, and every later job
+          # inherits it in silence. Measured on the s390x lane: four
+          # successive pilots staged a gnu.org/glibc whose lib/glibc-2.44 held
+          # TWO files — a real one has two hundred — because the first of them
+          # died at `install zlib.net` and left that behind.
+          #
+          # The GitHub-hosted runners never showed it: their _temp is fresh.
+          rm -rf "$RUNNER_TEMP/rootfs"
           # Resolve first, and do not stop at the first gap. Staging refuses
           # on the first root it cannot resolve, which is right for a build
           # and useless for bringing an architecture up: each run then names
