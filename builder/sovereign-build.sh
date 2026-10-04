@@ -41,11 +41,32 @@ log="${SOVEREIGN_LOG:-${RUNNER_TEMP:-/tmp}/bk.log}"
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
+# PKGX_VERIFY travels with PKGX_DIST, and the two are one decision.
+#
+# A seed registry is a throwaway on loopback and its bottles are unsigned, so
+# build.yml turns verification off for it. That is set in the JOB's
+# environment — and the build happens on the far side of a `sudo … chroot`,
+# which carries only what this list names. PKGX_DIST was here; PKGX_VERIFY
+# was not.
+#
+# So staging, which runs OUTSIDE the chroot, saw the variable and worked,
+# while every build INSIDE it verified again and died on the first dependency
+# it had to install:
+#
+#   pkgx: verify zlib.net v1.3.2 (linux/s390x): bottle: … is unsigned
+#   bk: the tool environment failed: /usr/local/bin/pkgx +…
+#
+# Measured on the first full second-generation run (2026-10-04): 2 of 78
+# built. The two that passed, lz4.org and tukaani.org/xz, are the only ones
+# in the order with NO build dependencies — so they needed no eval, and the
+# boundary never bit them. A variable set on one side of a boundary and not
+# carried across is the same defect as a fact encoded twice.
+#
 # --preserve-env, never a command line: the token and the signing key must not
 # become argv anybody can read out of /proc.
 # shellcheck disable=SC2016  # the inner script is deliberately literal: it runs
 # in the new namespace, where these variables are the ones that matter.
-$SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_PANTRY_OVERLAY \
+$SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_VERIFY,PKGX_PANTRY_OVERLAY \
   unshare --mount --pid --fork "$(command -v bash)" -euxc '
     r="$1"; pantry="$2"; overrides="$3"; overlay="$4"; shift 4
     for d in null zero full random urandom tty; do
