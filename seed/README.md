@@ -66,4 +66,34 @@ them is refused in `setup`, before a runner is taken. It also pins
 `tcl-lang.org@=9.0.4`, because that recipe enumerates SourceForge *directories*
 and `Tcl/9.1.0/` exists holding nothing but a release candidate (#262).
 
+## The second generation
+
+`sovereign=0` buys exactly one thing: a first generation on an architecture
+that has no bottles at all. It takes the compiler, `make` and the shell from
+the runner's distribution because there is nothing else to take them from.
+**That licence ends the moment the seed exists.**
+
+```
+RECIPES="lz4.org" ./seed/dispatch-gen1.sh   one package, to prove the rootfs
+./seed/dispatch-gen1.sh                     all of order.txt, sovereign
+```
+
+It differs from `dispatch-seed.sh` in two inputs: `bootstrap` is empty (the
+toolchain is bottles now) and `sovereign=1` (`bk builder` stages a rootfs
+**from the seed registry** and the build happens inside it, under `chroot`).
+`seed_dist` stays, and `--to` follows `PKGX_DIST` on purpose: generation 1
+replaces generation 0 in the same throwaway registry, which is what build.yml
+means by "thrown away once the sovereign rebuild replaces it". Nothing built
+against a host distribution reaches ghcr in either generation.
+
+**Pilot with one package.** The sovereign path on s390x had never run at all
+until 2026-10-04, and its first attempt died in 22 seconds on a toolchain pin —
+`kernel.org/linux-headers@~7.1` against a seed that holds only 7.2.8. That is
+the price of a staging, not of seventy builds.
+
+Before dispatching anything, `bk builder --dry-run --platform linux/s390x
+--toolchain builder/toolchain.txt` answers "does this architecture have the
+bottles" without taking a runner. It is a necessary condition, not a sufficient
+one: a bottle that is listed may still fail to unpack.
+
 [botch]: https://manpages.debian.org/testing/botch/botch.1.en.html
