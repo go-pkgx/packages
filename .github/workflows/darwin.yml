@@ -120,7 +120,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
-        with: { go-version: stable }
+        with: { go-version: '1.27.1' }
 
       # OUR pkgx, not upstream's — the same choice build.yml makes, and for the
       # same reason. Upstream resolves from its own bundled pantry and its own
