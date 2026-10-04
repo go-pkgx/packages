@@ -409,7 +409,17 @@ jobs:
           # died at `install zlib.net` and left that behind.
           #
           # The GitHub-hosted runners never showed it: their _temp is fresh.
-          rm -rf "$RUNNER_TEMP/rootfs"
+          #
+          # SUDO, because the tree is not ours to delete: the build runs under
+          # `sudo unshare … chroot`, so everything it installed into the
+          # rootfs's /pkgx belongs to root. A plain rm reported
+          #   rm: cannot remove '…/rootfs/pkgx/lz4.org/v1.10.0/lib/liblz4.so':
+          #   Permission denied
+          # and `bash -e` ended the step before `bk builder` ran at all —
+          # trading a silent stale tree for a loud refusal, which is better
+          # but still not staging anything.
+          SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
+          $SUDO rm -rf "$RUNNER_TEMP/rootfs"
           # Resolve first, and do not stop at the first gap. Staging refuses
           # on the first root it cannot resolve, which is right for a build
           # and useless for bringing an architecture up: each run then names
