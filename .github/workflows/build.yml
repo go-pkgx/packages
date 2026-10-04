@@ -369,6 +369,19 @@ jobs:
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
         run: |
           CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/pkgm@main
+          # Resolve first, and do not stop at the first gap. Staging refuses
+          # on the first root it cannot resolve, which is right for a build
+          # and useless for bringing an architecture up: each run then names
+          # one missing package and the next is only visible once that one is
+          # built. --dry-run names EVERY blocked root in the same seconds, and
+          # prints it immediately above the refusal that follows.
+          #
+          # `|| true`: this is diagnosis, not the gate. The staging below is
+          # the verdict, and a pre-flight that could fail a job the real step
+          # would have passed is a second opinion nobody asked for.
+          bk builder --dry-run \
+            --platform "${{ matrix.platform }}" \
+            --toolchain builder/toolchain.txt || true
           bk builder \
             --out "$RUNNER_TEMP/rootfs" \
             --platform "${{ matrix.platform }}" \
