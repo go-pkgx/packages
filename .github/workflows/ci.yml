@@ -172,8 +172,17 @@ jobs:
       # The constraint is READ FROM bk (build.BaseToolchain), never copied:
       # a second "~5.3" in this repository would be right until bk moved and
       # then wrong silently, which is the same defect one layer up.
+      #
+      # TWO lists, because the same defect happened again on 2026-10-04 in the
+      # other one. builder/toolchain.txt pinned kernel.org/linux-headers@~7.1;
+      # the order named the project with no version, so the seed built 7.2.8,
+      # and the first sovereign s390x build died in 22 seconds on
+      #   no version of kernel.org/linux-headers satisfies "~7.1"
+      # — exactly the shape this step refuses, which passed because it was
+      # reading bk's list alone. A check aimed at one of two sources is worse
+      # than none: it reports agreement.
       - name: the seed order builds the toolchain the toolchain wants
-        run: go run ./seedpins --order seed/order.txt
+        run: go run ./seedpins --order seed/order.txt --builder-toolchain builder/toolchain.txt
 
       - name: the seed order honours every edge outside a cycle
         run: |

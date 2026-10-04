@@ -21,6 +21,24 @@
 // The constraint is READ FROM bk, never copied. A second copy of "~5.3" in
 // this repository would be right until bk moved, and then wrong silently,
 // which is the same failure one layer up.
+//
+// # Two sources of constraints, and this check only read one
+//
+// The same defect happened again on 2026-10-04, one toolchain over. The
+// SOVEREIGN rootfs is staged from builder/toolchain.txt, which pinned
+// kernel.org/linux-headers@~7.1. The seed order names the project with no
+// version, built 7.2.8 — the newest — and the first sovereign build on s390x
+// died in 22 seconds:
+//
+//	builder: resolve closure: no version of kernel.org/linux-headers
+//	satisfies "~7.1" (available: 1)
+//
+// Exactly the shape this command exists to refuse, and it passed, because it
+// compared the order against bk's base toolchain alone. builder/toolchain.txt
+// is the other list a seed has to satisfy and nothing was reading it.
+//
+// So both are read, and each refusal names WHICH list asks. A check aimed at
+// one of two sources is worse than none: it reports agreement.
 package main
 
 import (
@@ -44,22 +62,81 @@ func main() {
 	// twice would otherwise redefine a registered flag and panic.
 	fs := flag.NewFlagSet("seedpins", flag.ContinueOnError)
 	order := fs.String("order", "seed/order.txt", "the seed build order")
+	builderTC := fs.String("builder-toolchain", "builder/toolchain.txt",
+		"the sovereign rootfs toolchain list; \"\" to check bk's alone")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		osExit(2)
 		return
 	}
-	osExit(run(*order, build.BaseToolchain(), os.Stdout, os.Stderr))
+	sources := []toolchainSource{{"bk's base toolchain", build.BaseToolchain()}}
+	if *builderTC != "" {
+		specs, err := readBuilderToolchain(*builderTC)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "seedpins:", err)
+			osExit(2)
+			return
+		}
+		sources = append(sources, toolchainSource{*builderTC, specs})
+	}
+	osExit(run(*order, sources, os.Stdout, os.Stderr))
+}
+
+// toolchainSource is a list of pkgspecs and the name to blame when one of
+// them disagrees with the order. The name is in the message because the two
+// lists are maintained by different people for different reasons, and
+// "the toolchain asks for ~7.1" sends the reader to the wrong file half the
+// time.
+type toolchainSource struct {
+	name  string
+	specs []string
+}
+
+// readBuilderToolchain parses builder/toolchain.txt into pkgspecs.
+//
+// That file's form is `project[@constraint]  # why it is here`, one per line,
+// with comments that run to the end of the line AND onto lines of their own.
+// bk's base toolchain writes the pkgspec form instead (`gnu.org/gawk~5.3`),
+// so the `@` comes off here and the rest of this command compares one shape.
+func readBuilderToolchain(path string) ([]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return parseBuilderToolchain(f, path)
+}
+
+// parseBuilderToolchain is readBuilderToolchain over an open reader, for the
+// same reason parseOrder exists: a scanner error that went unchecked would
+// turn a truncated toolchain into a shorter one, and this check into
+// agreement.
+func parseBuilderToolchain(r io.Reader, path string) ([]string, error) {
+	var out []string
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		line := sc.Text()
+		if i := strings.IndexByte(line, '#'); i >= 0 {
+			line = line[:i]
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		out = append(out, strings.Replace(line, "@", "", 1))
+	}
+	if err := sc.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("%s names no package — an empty toolchain agrees with everything", path)
+	}
+	return out, nil
 }
 
 // run takes the toolchain rather than fetching it, for the same reason
 // constrainedToolchain does: the refusal below is about a malformed entry,
 // and a refusal that cannot be reached is one nobody has read.
-func run(orderPath string, toolchain []string, stdout, stderr io.Writer) int {
-	pinned, err := constrainedToolchain(toolchain)
-	if err != nil {
-		fmt.Fprintln(stderr, "seedpins:", err)
-		return 2
-	}
+func run(orderPath string, sources []toolchainSource, stdout, stderr io.Writer) int {
 	named, err := readOrder(orderPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "seedpins:", err)
@@ -67,8 +144,33 @@ func run(orderPath string, toolchain []string, stdout, stderr io.Writer) int {
 	}
 
 	var wrong []string
-	for _, proj := range sortedKeys(pinned) {
-		want := pinned[proj]
+	total := 0
+	// askedBy records which source first constrained a project, so two lists
+	// demanding different versions of one package is itself reported. It
+	// cannot happen today — bk constrains gawk and perl, builder/toolchain.txt
+	// constrains linux-headers — and it is the next thing to go wrong when
+	// someone pins the same package twice, in two files, for two reasons.
+	askedBy := map[string]toolchainSource{}
+	want := map[string]string{}
+	for _, src := range sources {
+		pinned, err := constrainedToolchain(src.specs)
+		if err != nil {
+			fmt.Fprintf(stderr, "seedpins: %s: %v\n", src.name, err)
+			return 2
+		}
+		total += len(pinned)
+		for _, proj := range sortedKeys(pinned) {
+			if prev, dup := want[proj]; dup && prev != pinned[proj] {
+				wrong = append(wrong, fmt.Sprintf("  %s is constrained twice and differently: %s asks for %q, %s asks for %q",
+					proj, askedBy[proj].name, proj+prev, src.name, proj+pinned[proj]))
+				continue
+			}
+			want[proj], askedBy[proj] = pinned[proj], src
+		}
+	}
+
+	for _, proj := range sortedKeys(want) {
+		w := want[proj]
 		got, present := named[proj]
 		switch {
 		case !present:
@@ -76,9 +178,9 @@ func run(orderPath string, toolchain []string, stdout, stderr io.Writer) int {
 			// (a machine may already have one). It is only wrong to build a
 			// member and build a version the toolchain refuses.
 			continue
-		case got != want:
-			wrong = append(wrong, fmt.Sprintf("  %s is in the order as %q and bk's base toolchain asks for %q\n    write: %s",
-				proj, spec(proj, got), proj+want, spec(proj, want)))
+		case got != w:
+			wrong = append(wrong, fmt.Sprintf("  %s is in the order as %q and %s asks for %q\n    write: %s",
+				proj, spec(proj, got), askedBy[proj].name, proj+w, spec(proj, w)))
 		}
 	}
 	if len(wrong) > 0 {
@@ -88,7 +190,8 @@ func run(orderPath string, toolchain []string, stdout, stderr io.Writer) int {
 		}
 		return 1
 	}
-	fmt.Fprintf(stdout, "%d constrained base-toolchain member(s), every one the order builds is pinned as bk asks\n", len(pinned))
+	fmt.Fprintf(stdout, "%d constrained toolchain member(s) across %d list(s), every one the order builds is pinned as asked\n",
+		total, len(sources))
 	return 0
 }
 
