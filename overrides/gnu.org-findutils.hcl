@@ -1,15 +1,7 @@
-project = "gnu.org/sed"
-why     = "sed links libintl on darwin and never said so, and on linux its configure auto-detects the builder's SELinux. gettext is in bk's base toolchain, so it is always present while this is BUILT and the closure a consumer installs has a hole in it."
+project = "gnu.org/findutils"
+why     = "find auto-detects the builder's SELinux and links a library no bottle provides, so it cannot start in a FROM-scratch tree."
 
 edits = [
-  {
-    path = "dependencies"
-    set = {
-      "darwin" = {
-        "gnu.org/gettext" = "*"
-      }
-    }
-  },
   {
     #
     # Same cause as gnu.org/coreutils: gnulib's m4/selinux-selinux-h.m4
