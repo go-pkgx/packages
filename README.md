@@ -109,8 +109,21 @@ pantry, then runs `bk factory` — one pure-Go command (no bash, no curl/jq, no 
 - **skips any `(project, version, platform)` already in ghcr**, so shared deps build
   once and the catalog is populated progressively.
 
-Per-recipe failures are logged (`failures.txt`) but never fail the run. `recipes.txt`
-holds 1900 candidate projects, **1576 of them published**; the front is the other 324.
+Per-recipe failures are logged (`failures.txt`) but never fail the run.
+
+Measured 2026-10-04 with `go run ./catalog`, and with the two sets named
+because the previous figure conflated them:
+
+| | |
+|---|---|
+| `recipes.txt` roots | 1902 |
+| …of those, published | **1508** — the front is the other 394 |
+| projects in the registry | 1585 |
+| …published but NOT a root | 77 — dependencies the closure pulled in, which is by design |
+
+A registry count is dated to the HOUR, not the day: the same probe reported 25
+of 25 s390x toolchain roots unresolvable at 11:45 and 21 of 25 at 17:03 the
+same afternoon, because another session was publishing while it ran.
 
 ## IBM Z, and why its runner is ours to build
 
@@ -119,6 +132,26 @@ holds 1900 candidate projects, **1576 of them published**; the front is the othe
 absent from the blank matrix, built only when a dispatch names
 `arch: s390x`. Adding an architecture with no bottles to every nightly buys a
 matrix of failures nobody reads.
+
+### The second generation runs (2026-10-04)
+
+`sovereign=0` buys exactly one thing — a first generation on an architecture
+that has no bottles — and that licence ends the moment the seed exists.
+`seed/dispatch-gen1.sh` spends it: `bk builder` stages a rootfs **from the
+seed registry**, and everything is rebuilt inside it under `chroot`.
+
+The first package through end to end was `pass lz4.org 1.10.0 linux/s390x`,
+and it took ten dispatches to get there. `seed/README.md` has the sequence;
+the short version is that the first four obstacles were broken tooling and the
+rest were generation 0 showing what the Ubuntu builder had lent it —
+`libselinux` in `coreutils`, then in `sed`, then a `libcxx` that was never
+built. **Once the lane runs, every failure is a report about generation 0.
+That is the point of the lane, not a defect in it.**
+
+Two tools came out of it and both are in `bk`: `builder --dry-run`, which says
+whether an architecture has the bottles without taking a runner, and the
+staged-tree soname census, which names every library the tree lacks **and who
+asks for it** — five at once, where before each cost a failed build.
 
 The runner is ours to build because `actions/runner` does not build for s390x
 out of the box — it is .NET, and `linux-s390x` is a community-supported target
