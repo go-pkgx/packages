@@ -677,8 +677,12 @@ jobs:
       # where some built and some failed keeps the best-effort posture, and
       # one that built nothing because there was nothing to build (force=0,
       # already published) has no failure and stays green.
+      # NOT always(): if the build step itself failed the job is already red,
+      # and a second error under it only competes with the first. Both the
+      # sovereign path (SOVEREIGN_STRICT=0 for a chunk) and `bk factory`
+      # exit 0 on a recipe failure, which is exactly the case this catches.
       - name: a named dispatch that built nothing
-        if: always() && github.event.inputs.recipes != ''
+        if: github.event.inputs.recipes != ''
         run: |
           built=0
           [ -d dist ] && built=$(find dist -type f | wc -l | tr -d ' ')
