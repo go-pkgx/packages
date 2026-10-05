@@ -19,7 +19,25 @@ edits = [
       "patch -p1 < patch/debian/patches/08-hardening-build-fix-1.patch",
       "patch -p1 < patch/debian/patches/09-hardening-build-fix-2.patch",
       "patch -p1 < patch/debian/patches/10-remove-build-date.patch",
-      "make -f unix/Makefile CC=\"{{deps.gnu.org/gcc.prefix}}/bin/gcc -std=gnu17 -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion\" generic",
+      # ${CC:-…} rather than the bottle's gcc outright.
+      #
+      # bk exports CC with the SOVEREIGN SYSROOT in pkgx-libc mode —
+      #
+      #   export CC="${CC:-clang --sysroot=… -isystem …}"
+      #
+      # — and naming an absolute compiler threw all of it away. That is why
+      # the second sovereign generation failed here with
+      #
+      #   unix/osdep.h:30:10: fatal error: sys/types.h: No such file or directory
+      #
+      # the same shape as go-pkgx/bk#296, where a test sandbox lost the
+      # sysroot by naming a compiler instead of using the one bk had set.
+      #
+      # The fallback keeps the DISTRIBUTION path byte-for-byte what it was:
+      # off the sovereign lane nothing exports CC and the bottle's gcc is
+      # still what runs. `expect` below is untouched, because what upstream
+      # ships has not moved.
+      "make -f unix/Makefile CC=\"$${CC:-{{deps.gnu.org/gcc.prefix}}/bin/gcc} -std=gnu17 -Wno-implicit-function-declaration -Wno-implicit-int -Wno-int-conversion\" generic",
       "make -f unix/Makefile BINDIR={{prefix}}/bin MANDIR={{prefix}}/man/man1 install",
     ]
     expect = [
