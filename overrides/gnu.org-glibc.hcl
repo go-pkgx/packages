@@ -1,133 +1,51 @@
 project = "gnu.org/glibc"
-why     = "bk exports `MAKEFLAGS=… AUTOCONF=true …` so a stale timestamp cannot send make off to re-run autotools (bk build/build.go). For every autotools project that is a harmless no-op, and for glibc it DESTROYS the source: its rule is `$(AUTOCONF) $(ACFLAGS) $< > $@.new` followed by `mv -f $@.new $@`, so `true` writes an EMPTY file over each sysdeps/*/preconfigure. The second configure — the one make itself triggers through Makeconfig:103 to regenerate config.status — then loads empty fragments, $machine stays `s390x` instead of becoming `s390/s390-64`, and it dies on `configure: error: The s390x is not supported.` while the FIRST configure, minutes earlier in the same log, had listed sysdeps/s390 quite happily. glibc's own Makefile wraps that whole rule in `ifneq ($(AUTOCONF),no)`, so `no` is the value it documents for exactly this. It has to reach make as a COMMAND-LINE assignment: measured on 2026-09-29, an entry later in MAKEFLAGS wins (no) and a command-line assignment wins (no), but the environment does NOT — `AUTOCONF=no make -e` still saw `true`, so setting it in build.env would have looked right and changed nothing."
+why     = "the recipe's build.env names a dynamic loader for x86-64 and aarch64 and for no other architecture. On s390x $LDSO expands to nothing, so the `ld.so` convenience symlink points at a DIRECTORY and every wrapped bin/* execs one. bottle.LoaderNameFor has known s390x's loader is ld64.so.1 since the builder needed it; the recipe never learned."
+
+merge {
+  build {
+    env {
+      s390x {
+        # s390x's loader is NOT ld-linux-s390x.so.1 -- the name cannot be
+        # derived from the other two, which is half of why it was missed.
+        # The s390x ABI calls it ld64.so.1, glibc installs it as that, and
+        # bk's own bottle.LoaderNameFor already carries the same value for
+        # the builder's sake.
+        LDSO = "ld64.so.1"
+      }
+    }
+  }
+}
 
 edits = [
   {
-    # bk exports LDFLAGS="-Wl,-rpath,$PKGX_DIR" into every linux build, and
-    # on linux that is the ONLY thing it puts there (buildscript/wrapper.go,
-    # the `case "linux"` of wrapFlags). For a libc it is poison: glibc's own
-    # loader asserts that the objects it processes carry NEITHER rpath tag —
+    # AND A GUARD, because the list above is the kind that is wrong again at
+    # the next architecture. Today riscv64, ppc64le and loong64 all have a
+    # published bk and no entry here, so the fourth one to be built would
+    # repeat this silently:
     #
-    #   get-dynamic-info.h:134  Assertion `info[DT_RPATH]   == NULL' failed!
-    #   get-dynamic-info.h:133  Assertion `info[DT_RUNPATH] == NULL' failed!
+    #   ln -sf ../lib/glibc-2.44/ ld.so      <- a symlink to a directory
+    #   exec "$libdir/" --library-path …     <- exec a directory
     #
-    # — and we met both in turn: the bottle shipped DT_RPATH, go-pkgx/bk#262
-    # made SetRunpath write DT_RUNPATH as its name always claimed, and the
-    # rebuilt bottle failed one assertion EARLIER. Modernising the tag walks
-    # the failure up a line and no further, which is how we learned the
-    # loader refuses the entry rather than the spelling.
+    # Neither fails where it happens. The symlink is created, the wrapper is
+    # written, `make install` is happy, and the bottle is published; the
+    # failure arrives much later in somebody else's build, wearing
+    # "No such file or directory" against a path that plainly exists.
     #
-    # A libc has no use for one anyway: its objects sit beside each other and
-    # the loader resolves them by absolute path. Clearing LDFLAGS drops the
-    # rpath and nothing else on this platform, and fixup tolerates an ELF
-    # with no slot to rewrite (rewriteRunpath treats ErrNoRunpath as a skip),
-    # so the build is unaffected.
-    #
-    # It costs the sovereign lane's sysroot flags if glibc were ever built
-    # with --libc=pkgx — which would be circular, and is not how this bottle
-    # is made. Said here rather than discovered later.
-    #
-    # Why it matters beyond one bottle: gnu.org/glibc provides bin/ldd and
-    # bottle puts glibc in EVERY linux closure, so a loader that aborts takes
-    # `ldd` down for everything we publish — gnu.org/readline and
-    # gnu.org/gcc/libstdcxx fail their tests on nothing but that.
-    path = "build.env.LDFLAGS"
-    set  = ""
-  },
-  {
-    # The recipe's test keys $LDSO by architecture — x86-64 and aarch64 —
-    # and s390x is not among them, so on the LinuxONE lane the test runs
-    #
-    #   test -f "$LIBDIR/"      -> false
-    #   echo "missing "         -> a name nobody can look up
-    #
-    # and gnu.org/glibc was one of seven failures in the s390x seed's first
-    # --test-only sweep (go-pkgx/bk#250). The bottle is fine; the test does
-    # not know the architecture.
-    #
-    # ld64.so.1 is s390x's loader, taken from OUR OWN artefacts rather than
-    # from memory: 362 occurrences of `ld64.so.1 is NEEDED` across this
-    # lane's logs, and not one ld-linux-*.so.
-    #
-    # `set` deep-merges a mapping, so x86-64 and aarch64 keep theirs; and
-    # the path's missing parents are created, so this does not depend on
-    # test.env.s390x already existing.
-    path = "test.env.s390x.LDSO"
-    set  = "ld64.so.1"
-  },
-  {
-    # And the BUILD env keys $LDSO the same way, which I missed when fixing
-    # the test one. The script does
-    #
-    #   ln -sf ../lib/glibc-{{version.marketing}}/$LDSO ld.so
-    #
-    # so on s390x it ran with $LDSO EMPTY and made bin/ld.so a symlink to the
-    # directory:
-    #
-    #   bin/ld.so -> ../lib/glibc-2.44/
-    #
-    # The recipe's own test checks `test -L bin/ld.so`, which a dangling link
-    # passes — so the test that exists for this said nothing. Measured on the
-    # runner, not inferred.
-    path = "build.env.s390x.LDSO"
-    set  = "ld64.so.1"
-  },
-  {
-    # bk runs every script through mvdan.cc/sh, which does not honour
-    # quoting of `(` in a case pattern — it stays a metacharacter and the
-    # branch silently never fires. Real bash matches; ours does not
-    # (go-pkgx/bk#268, measured in isolation both ways). The test then
-    # printed its own evidence and contradicted it:
-    #
-    #   bin/iconv --version: iconv (GNU libc) 2.44
-    #   FAIL: expected (GNU libc) 2.44 … got: iconv (GNU libc) 2.44
-    #
-    # Escaping the parens matches under BOTH shells, verified, so this is a
-    # portability fix rather than an accommodation of one interpreter. The
-    # real repair is upstream in mvdan.cc/sh; two recipes in the pantry are
-    # affected and the other one is a BUILD.
-    path = "test.script"
-    from = "*\"(GNU libc) {{version.marketing}}\"*)"
-    to   = "*\\(GNU\\ libc\\)\\ {{version.marketing}}*)"
-  },
-  {
-    # ldd reports EVERY ELF as "not a dynamic executable", because its
-    # RTLDLIST names a loader that does not exist here:
-    #
-    #   ours    RTLDLIST="…"/lib/glibc-2.44/ld.so.1
-    #   ubuntu  RTLDLIST="/lib/ld.so.1 /lib/ld64.so.1"
-    #
-    # Two entries upstream, one here — and the one we kept is the 31-bit
-    # name. glibc's own sysdeps/…/s390/ldd-rewrite.sed turns the single
-    # path into that biarch pair, and it matches a libdir ending in `lib`.
-    # Ours is `lib/glibc-{{version.marketing}}`, so the rewrite never fired
-    # and the 31-bit default stayed.
-    #
-    # We ship only ld64.so.1, so the correct list here is the 64-bit one
-    # alone. $LDSO already holds it per architecture, and the anchored
-    # pattern is a no-op everywhere else: x86-64's RTLDLIST ends in
-    # ld-linux-x86-64.so.2 and aarch64's in ld-linux-aarch64.so.1.
-    #
-    # It corrects the ARTEFACT, not the cause — the cause is our libdir
-    # defeating an upstream sed, and changing the libdir is a far larger
-    # decision than this bottle. go-pkgx/bk#265.
-    #
-    # Why it reaches past glibc: gnu.org/glibc provides bin/ldd and bottle
-    # puts glibc in every linux closure, so `ldd` is broken for everything
-    # we publish here. gnu.org/readline and gnu.org/gcc/libstdcxx fail
-    # their tests on nothing else.
+    # The test is on the FILE, not on the variable. An empty $LDSO and a
+    # misspelled one are the same defect from the consumer's side, and only
+    # one of the two is caught by `test -n`.
+    why  = "turn a silent empty LDSO into a build failure that names the architecture"
     path = "build.script"
-    from = "test -f $s || continue"
-    to   = "test -f $s || continue\nsed -i \"s|/ld\\.so\\.1$|/$LDSO|\" $s"
-  },
-  {
-    path = "build.script"
-    from = "make --jobs"
-    to   = "make AUTOCONF=no --jobs"
-  },
-  {
-    path = "build.script"
-    from = "make install"
-    to   = "make AUTOCONF=no install"
+    from = "ln -sf ../lib/glibc-{{version.marketing}}/$LDSO ld.so"
+    to   = <<EOT
+if [ -z "$LDSO" ] || [ ! -e "../lib/glibc-{{version.marketing}}/$LDSO" ]; then
+  echo "glibc: no dynamic loader named for {{hw.arch}}: LDSO=\"$LDSO\"" >&2
+  echo "glibc: add it to build.env in the recipe (or to this override)." >&2
+  echo "glibc: what make install actually left in the libdir:" >&2
+  ls -1 ../lib/glibc-{{version.marketing}}/ld*.so* >&2 || true
+  exit 1
+fi
+ln -sf ../lib/glibc-{{version.marketing}}/$LDSO ld.so
+EOT
   },
 ]
