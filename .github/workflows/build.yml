@@ -378,8 +378,43 @@ jobs:
             #
             # Exactly scoped: this is the branch where ghcr is neither read nor
             # written, so nothing signed is being accepted unchecked.
-            echo "verification off: a loopback throwaway registry is not a trust boundary"
-            echo "PKGX_VERIFY=0" >> "$GITHUB_ENV"
+            # …and the argument above is about LOOPBACK, so check for it.
+            #
+            # This read `if [ -n "$SEED_DIST" ]` and nothing else, so ANY
+            # seed_dist turned signature verification off — including a
+            # remote one, which is exactly the trust boundary the paragraph
+            # above argues does not exist. The reasoning was right and the
+            # condition did not implement it.
+            #
+            # Nothing has ever dispatched a non-loopback seed_dist; the input
+            # has carried `oci://127.0.0.1:5000/seed` every time. That is the
+            # kind of gap that stays harmless until someone reaches for the
+            # obvious next thing — a seed registry shared between two
+            # architectures, say — and silently loses verification doing it.
+            #
+            # Not an error: a remote seed registry is a reasonable thing to
+            # want. It simply has to EARN the bottles it serves, like ghcr
+            # does. If it cannot hold a signature it will say so at the first
+            # install, which is a better failure than a silent one.
+            # Host extraction, written out because two shapes break the
+            # one-liner that suggests itself. `[` opens a glob, so stripping
+            # it needs quoting; and `${h%%:*}` cuts at the FIRST colon, which
+            # for `[::1]:5000` is inside the brackets and leaves `[`.
+            seed_host=${SEED_DIST#*://}
+            seed_host=${seed_host%%/*}
+            case "$seed_host" in
+              "["*) seed_host=${seed_host#"["}; seed_host=${seed_host%%"]"*} ;;
+              *)    seed_host=${seed_host%%:*} ;;
+            esac
+            case "$seed_host" in
+              127.*|localhost|::1)
+                echo "verification off: a loopback throwaway registry is not a trust boundary"
+                echo "PKGX_VERIFY=0" >> "$GITHUB_ENV"
+                ;;
+              *)
+                echo "::notice::seed_dist host '$seed_host' is not loopback, so signature verification STAYS ON — the throwaway-registry argument does not reach it"
+                ;;
+            esac
             exit 0
           fi
           echo "PKGX_DIST=oci://ghcr.io/go-pkgx/packages" >> "$GITHUB_ENV"
