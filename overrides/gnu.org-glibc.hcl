@@ -1,7 +1,44 @@
 project = "gnu.org/glibc"
-why     = "the recipe's build.env names a dynamic loader for x86-64 and aarch64 and for no other architecture. On s390x $LDSO expands to nothing, so the `ld.so` convenience symlink points at a DIRECTORY and every wrapped bin/* execs one. bottle.LoaderNameFor has known s390x's loader is ld64.so.1 since the builder needed it; the recipe never learned."
+why     = "two faults that only show once the bottle MOVES. (1) build.env names a dynamic loader for x86-64 and aarch64 and for no other architecture, so on s390x $LDSO is empty and the `ld.so` symlink points at a DIRECTORY. (2) glibc compiles its gconv directory in at $libdir/gconv, which here is inside the `+brewing` prefix, so after the rename iconv can convert nothing and the recipe declares no runtime env to say otherwise."
 
 merge {
+  # GCONV_PATH, because glibc's charset modules are found by a path baked
+  # in AT BUILD TIME and this bottle does not stay where it was built.
+  #
+  # The recipe puts libdir at {{prefix}}/lib/glibc-<marketing> -- its own
+  # comment says "--libdir alone only affects gconv/audit plugins" -- so
+  # the compiled-in gconv dir is
+  #
+  #   <prefix>/lib/glibc-2.44/gconv
+  #
+  # with <prefix> the `+brewing` staging path. That directory is gone by
+  # the time anyone installs the bottle, and iconv silently falls back to
+  # the charsets built into libc. The second sovereign generation shows
+  # what that costs a consumer:
+  #
+  #   FAIL gnu.org/libidn2 2.3.8: exit status 1
+  #   idn2: libiconv required for non-UTF-8 character encoding: ANSI_X3.4-1968
+  #
+  # which reads as a MISSING LIBRARY and is a missing directory. libiconv
+  # is not required at all on glibc; iconv is in libc, and it is the gconv
+  # modules it cannot find.
+  #
+  # `runtime.env` is the mechanism pkgx already has for this -- gnu.org/
+  # guile uses it for GUILE_LOAD_PATH -- and glibc declared none at all.
+  # The modules ship in the bottle; only the pointer to them was missing.
+  #
+  # NOT caught by the recipe's own test, which asserts `bin/iconv
+  # --version` prints a version. A converter that can convert nothing
+  # still has a version.
+  runtime {
+    env {
+      # `$${` so HCL emits a literal `${`: the recipe language's
+      # `${{prefix}}` is a moustache preceded by a dollar, and HCL would
+      # otherwise read `${` as the start of its own interpolation.
+      GCONV_PATH = "$${{prefix}}/lib/glibc-{{version.marketing}}/gconv"
+    }
+  }
+
   build {
     env {
       s390x {
