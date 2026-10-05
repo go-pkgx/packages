@@ -5,6 +5,16 @@
 # and every entry says why it is here.
 #
 # Installed with:  pkgm install -s --prefix /usr -f builder/toolchain.txt
+#
+# This list now also exists as a SET, in the recipe format rather than beside
+# it: go-pkgx/pantry-overlay projects/go-pkgx/base-toolchain. A set is an
+# ordinary recipe carrying `members`, so it can be versioned, published,
+# installed and depended on — none of which a text file can be. Verified
+# equivalent: `bk closure go-pkgx/base-toolchain` resolves to the same 41
+# projects as naming these 25 by hand.
+#
+# Both are kept until the consumers move, and the set is the one to edit:
+# two copies of one list is the defect this repository keeps paying for.
 
 llvm.org                    # clang, lld, compiler-rt — the compiler itself
 gnu.org/glibc               # libc, crt objects and the dynamic loader
