@@ -14,7 +14,22 @@ edits = [
         "run" = [
           "make --jobs {{hw.concurrency}} binaries",
           "mkdir -p {{prefix}}/lib",
-          "cp libtcl9.0.* {{prefix}}/lib/",
+          # Derived, not typed. tcl released 9.1.0 between two sovereign
+          # generations four hours apart -- on the SAME pantry commit
+          # 2df061bd, because `versions:` asks GitHub for tags at RESOLVE
+          # time -- and this line stopped finding the library the build had
+          # just made:
+          #
+          #   07:44Z  ✅ OK          tcl-lang.org 9.0.4
+          #   11:14Z  ❌ BUILD FAIL  cp: cannot stat 'libtcl9.0.*'
+          #
+          # Three lines down the same number is already written as
+          # {{version.marketing}}. For 9.0.4 this renders byte-for-byte what
+          # was there, so the version that worked is untouched.
+          #
+          # `expect` below keeps the literal, because that is what UPSTREAM
+          # still says and the premise has to describe upstream.
+          "cp libtcl{{version.marketing}}.* {{prefix}}/lib/",
           "export LD_LIBRARY_PATH=\"{{prefix}}/lib:$LD_LIBRARY_PATH\"",
         ]
         "working-directory" = "unix"
