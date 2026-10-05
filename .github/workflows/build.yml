@@ -784,6 +784,39 @@ jobs:
             exit 1
           fi
 
+      # The CATALOGUE: what `pkgx ls` and <TAB> read.
+      #
+      # It exists because a registry cannot be enumerated. Measured against
+      # ghcr: /v2/_catalog answers 403 to an anonymous client and only a
+      # project's own tag list is served, so nothing can ask "what packages
+      # are there" (go-pkgx/bottle#114). The answer is an artefact in the
+      # registry, published as an ordinary bottle.
+      #
+      # ONE CHUNK, not every chunk. It is derived from the PANTRY, not from
+      # what this job built, so all 38 chunks of a nightly would push the
+      # same bytes. Chunk 0 and a named dispatch each publish it once.
+      #
+      # always(), because it describes what the pantry NAMES. A chunk that
+      # failed to build anything has still read a complete pantry, and a
+      # catalogue withheld on a red run is a catalogue that goes stale
+      # exactly when someone is looking for why.
+      #
+      # It follows PKGX_DIST like everything else here, so a seed run writes
+      # its catalogue into the seed registry and not into the real one.
+      - name: publish the catalogue
+        if: always() && (matrix.chunk == '0' || matrix.chunk == 'manual')
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          OCI_USERNAME: ${{ github.actor }}
+          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          bk catalog \
+            --pantry pantry \
+            --overlay overlay \
+            --platform "$PLATFORM" \
+            --publish
+
       # AFTER, and `always()`, because the number matters most on the run
       # that just failed. A step that only reports on success reports the
       # disk of every run except the one that filled it.
