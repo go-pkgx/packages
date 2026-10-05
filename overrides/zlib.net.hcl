@@ -28,10 +28,32 @@ edits = [
     #
     # `{{hw.target}}` is the BUILD TARGET's triple, so a cross build is keyed
     # correctly where `uname -m` would answer about the host.
+    #
+    # -march=z13 BESIDE -fzvector, added 2026-10-05 after the first fix was
+    # measured and found incomplete. -fzvector turns the vector language
+    # extensions ON; the BUILTINS still need the target feature, which comes
+    # from -march. The second sovereign generation said so in as many words,
+    # at a different line from the error this override was written for:
+    #
+    #   vecintrin.h:2625:10: error: '__builtin_s390_vupllf' needs target
+    #   feature vector
+    #
+    # z13 IS NOT A NEW FLOOR HERE, which is the only thing that made this a
+    # decision rather than a typo. Go has required z13 as the minimum machine
+    # level for s390x since Go 1.19, and every binary this project ships for
+    # the architecture -- bk, pkgx, pkgm, all CGO=0 Go -- therefore already
+    # refuses to run below it. The runner agrees: `go env` on the LinuxONE
+    # machine reports
+    #
+    #   GOGCCFLAGS='-fPIC -m64 -march=z13 …'
+    #
+    # z13 is also exactly where the vector facility appears, so the flag the
+    # builtins need and the floor the toolchain already imposes are the same
+    # number. Raising zlib to it costs nothing that was not already spent.
     path = "build.script"
     from = "./configure --prefix=\"{{prefix}}\""
     to   = <<EOT
-case "{{hw.target}}" in *s390x*) CFLAGS="$CFLAGS -fzvector" ;; esac
+case "{{hw.target}}" in *s390x*) CFLAGS="$CFLAGS -fzvector -march=z13" ;; esac
 ./configure --prefix="{{prefix}}"
 EOT
   },
