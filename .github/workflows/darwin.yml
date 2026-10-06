@@ -145,6 +145,15 @@ jobs:
       - name: clone pantry
         run: git clone --depth 1 https://github.com/pkgxdev/pantry
 
+      # For the CATALOGUE step at the end. The overlay names projects the
+      # upstream pantry does not, and a catalogue built from the pantry
+      # alone would complete onto a smaller world than this lane resolves
+      # against.
+      - name: clone the pantry overlay
+        run: |
+          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+          echo "overlay $(git -C overlay rev-parse HEAD)"
+
       - name: hide the host's libraries from the build
         # bk already strips Homebrew from PATH, CPATH, LIBRARY_PATH,
         # PKG_CONFIG_PATH, CMAKE_PREFIX_PATH and LD_LIBRARY_PATH — measured, 0
@@ -245,6 +254,39 @@ jobs:
             ${MAX_VERSIONS:+--max-versions "$MAX_VERSIONS"} \
             ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"} \
             ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
+
+      # The CATALOGUE for this platform: what `pkgx ls` and <TAB> read on a
+      # Mac. darwin had none at all, so a Mac asking what exists got either
+      # silence or linux's answer — and the two differ, which is the whole
+      # reason a catalogue is published per platform.
+      #
+      # ONE chunk, because the catalogue is derived from the PANTRY and not
+      # from what this job built, so every chunk would push the same bytes.
+      # always(), because it describes what the pantry NAMES: a chunk that
+      # built nothing has still read a complete pantry, and a catalogue
+      # withheld on a red run goes stale exactly when someone is looking.
+      #
+      # It runs BEFORE the libraries go back, since it compiles nothing and
+      # touches no host library — and after them would put it behind the
+      # `if: always()` restore, where a failure in either reads as a failure
+      # of the other.
+      - name: publish the catalogue
+        if: always() && (matrix.chunk == '0' || matrix.chunk == 'manual')
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          OCI_USERNAME: ${{ github.actor }}
+          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+        run: |
+          set -eu
+          bk catalog \
+            --pantry pantry \
+            --overlay overlay \
+            --overrides overrides \
+            --versions \
+            --platform "$PLATFORM" \
+            --publish
 
       - name: put the host's libraries back
         # Always, so a failed build does not leave the runner half-dismantled

@@ -803,17 +803,41 @@ jobs:
       #
       # It follows PKGX_DIST like everything else here, so a seed run writes
       # its catalogue into the seed registry and not into the real one.
+      #
+      # --overrides, because an override changes a recipe's DEPENDENCIES and
+      # the catalogue now carries them. Without it the published tree
+      # describes a factory that is not this one: the reader would be shown
+      # the upstream recipe's edges while every bottle beside them was built
+      # from the corrected ones.
+      #
+      # --versions, which is ~1900 requests. That is the price of being able
+      # to say "this exists but has no bottle for your platform" instead of
+      # listing a name with nothing beside it, and it is paid HERE — once, in
+      # CI, on one chunk — rather than on the machine of everyone who presses
+      # <TAB>. It is also why the catalogue is per-platform: the s390x lane
+      # has a fraction of what linux/x86-64 has, and one list would tell most
+      # readers that packages are available which, for them, are not.
+      #
+      # SIGNING_KEY, because a client with PKGX_VERIFY on — the default —
+      # refuses an unsigned catalogue (go-pkgx/bottle#118). The catalogue is
+      # the list of names a person then TYPES, so whoever decides its
+      # contents decides what <TAB> offers; it gets the same signature as any
+      # other bottle. A seed run has no key and says so in its own output.
       - name: publish the catalogue
         if: always() && (matrix.chunk == '0' || matrix.chunk == 'manual')
         env:
           PLATFORM: ${{ matrix.platform }}
           OCI_USERNAME: ${{ github.actor }}
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: |
           set -eu
           bk catalog \
             --pantry pantry \
             --overlay overlay \
+            --overrides overrides \
+            --versions \
             --platform "$PLATFORM" \
             --publish
 
