@@ -1,0 +1,91 @@
+# The catalogue, on its own schedule.
+#
+# `pkgx ls` and <TAB> read a catalogue; `pkgx catalog update` fetches one.
+# Nothing refreshes what is PUBLISHED except a factory run, and every
+# factory's cron has been off since 2026-08-12 — so a published catalogue
+# would age until somebody dispatched a build by hand, and every reader
+# would be told, truthfully and uselessly, "47 day(s) old".
+#
+# This is the floor under that. It builds nothing: `bk catalog` reads the
+# pantry and asks the registry which versions it carries, so six platforms'
+# catalogues cost six short jobs rather than a night of compiling. The
+# factories keep their own catalogue step, because a run that publishes new
+# bottles should say so immediately; this is what happens when none runs.
+#
+# ONE RUNNER FOR EVERY PLATFORM. `bk catalog --platform` takes the os/arch
+# explicitly and asks the registry about it; nothing here is compiled or
+# executed for the target. Verified before this file existed: the same
+# linux host produced 1907 projects for linux/s390x, darwin/aarch64 and
+# windows/x86-64 alike. So no macOS minutes and no self-hosted pool.
+name: catalogue
+
+on:
+  schedule:
+    # Monday, early. Before the factories' own crons (06:00 linux, 07:00
+    # darwin, 08:00 windows) so that if those are ever switched back on,
+    # this one has already run and theirs simply supersede it.
+    - cron: "0 5 * * 1"
+  workflow_dispatch:
+
+permissions: { contents: read, packages: write }
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/x86-64
+          - linux/aarch64
+          - linux/s390x
+          - darwin/aarch64
+          - darwin/x86-64
+          - windows/x86-64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.1' }
+
+      # GOPROXY=direct: current main from GitHub, not a stale proxy cache.
+      # A catalogue built by an old bk is the one thing this job must not
+      # publish, since the honesty of what it records lives in that code.
+      - name: install bk
+        run: |
+          GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: clone pantry and overlay
+        run: |
+          git clone --depth 1 https://github.com/pkgxdev/pantry
+          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+          echo "pantry  $(git -C pantry rev-parse HEAD)"
+          echo "overlay $(git -C overlay rev-parse HEAD)"
+
+      # --overrides, because an override changes a recipe's DEPENDENCIES and
+      # the catalogue carries them: without it the published tree describes
+      # a factory that is not this one.
+      #
+      # --versions, which is a tag listing per project plus a platform check
+      # each. That is the price of saying "this exists and has no bottle for
+      # you" instead of naming it bare, and it is paid here — once a week,
+      # in CI — rather than on the machine of everyone who presses <TAB>.
+      #
+      # SIGNING_KEY, because a client with PKGX_VERIFY on, the default,
+      # refuses an unsigned catalogue.
+      - name: publish the catalogue for ${{ matrix.platform }}
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          OCI_USERNAME: ${{ github.actor }}
+          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+        run: |
+          set -eu
+          bk catalog \
+            --pantry pantry \
+            --overlay overlay \
+            --overrides overrides \
+            --versions \
+            --platform "$PLATFORM" \
+            --publish
