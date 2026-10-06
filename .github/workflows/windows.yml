@@ -137,3 +137,52 @@ jobs:
           name: dist-windows-go-${{ matrix.chunk }}
           path: out
           if-no-files-found: ignore
+
+  # The CATALOGUE for windows/x86-64: what `pkgx ls` and <TAB> read on
+  # Windows. There was none, so a Windows user asking what exists got
+  # nothing — not "nothing is available", which would at least be an
+  # answer, but silence.
+  #
+  # Derived from the PANTRY, not from windows/go-projects.txt, because the
+  # pantry is what a Windows pkgx resolves against. Most of it will come
+  # back marked "no bottle here", and that is the point: naming a project
+  # and saying there is nothing for you tells somebody it exists and that
+  # building it is the thing to do next, where silence tells them it does
+  # not exist.
+  #
+  # Its own job rather than a step in the chunked one: the catalogue is
+  # derived from the pantry, so all N chunks would push the same bytes, and
+  # the build job's work is one long script that this has nothing to do
+  # with. always(), because a run that built nothing has still read a
+  # complete pantry.
+  catalogue:
+    needs: build
+    if: always()
+    runs-on: [self-hosted, incus, amd64]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.1' }
+      - name: install bk
+        run: |
+          GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: clone pantry and overlay
+        run: |
+          git clone --depth 1 https://github.com/pkgxdev/pantry
+          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+      - name: publish the catalogue
+        env:
+          OCI_USERNAME: ${{ github.actor }}
+          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+        run: |
+          set -eu
+          bk catalog \
+            --pantry pantry \
+            --overlay overlay \
+            --overrides overrides \
+            --versions \
+            --platform windows/x86-64 \
+            --publish
