@@ -62,11 +62,25 @@ if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 # boundary never bit them. A variable set on one side of a boundary and not
 # carried across is the same defect as a fact encoded twice.
 #
+# A LOCK is a FILE, and a path from the workspace means nothing inside the
+# rootfs. It is copied in and $LOCK rewritten to where it landed, before the
+# namespace exists — the same class of defect the paragraph above is about:
+# "a variable set on one side of a boundary and not carried across". Here it
+# would have been carried across and pointed at nothing, which reads as a
+# missing lock rather than as a missing mount.
+if [ -n "${LOCK:-}" ]; then
+  [ -r "$LOCK" ] || { echo "::error::no lock at $LOCK"; exit 1; }
+  echo "sovereign build locked by $LOCK ($(grep -c '= { version' "$LOCK") pin(s))"
+  $SUDO cp "$LOCK" "$root/lock.hcl"
+  LOCK=/lock.hcl
+  export LOCK
+fi
+
 # --preserve-env, never a command line: the token and the signing key must not
 # become argv anybody can read out of /proc.
 # shellcheck disable=SC2016  # the inner script is deliberately literal: it runs
 # in the new namespace, where these variables are the ones that matter.
-$SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_VERIFY,PKGX_PANTRY_OVERLAY \
+$SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,LOCK,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_VERIFY,PKGX_PANTRY_OVERLAY \
   unshare --mount --pid --fork "$(command -v bash)" -euxc '
     r="$1"; pantry="$2"; overrides="$3"; overlay="$4"; shift 4
     for d in null zero full random urandom tty; do

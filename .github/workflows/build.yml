@@ -18,6 +18,10 @@ on:
         description: "only consider versions matching this pkgx constraint, e.g. ^3 — the handle for an OLD line, which max_versions (newest-first) can never reach."
         required: false
         default: ""
+      lock:
+        description: "path to a `bk lock` file IN THIS REPOSITORY (e.g. locks/seed.lock.hcl). Builds exactly the versions it pins — every pin, not just its roots — and overrides `recipes`, the chunking and `versions`. A lock is the whole set: this is how a build is made to be the SAME build later, which plain re-dispatch is not. The same pantry commit 2df061bd resolved tcl to 9.0.4 and then to 9.1.0 four hours apart."
+        required: false
+        default: ""
       clean_build_root:
         description: "`1` removes the whole brewkit build root before starting. bk drops a tree once its bottle is published (go-pkgx/bk#217), but what a run INHERITS from earlier ones it cannot drop — and a seed on a small machine dies on that litter, reporting `no space left on device` against whichever project asked next. Destructive: a FAILED build's tree is kept on purpose, and this discards those too, so use it when the disk matters more than the last failure's evidence."
         required: false
@@ -628,7 +632,15 @@ jobs:
           QEMU_RESERVED_VA: ${{ matrix.qemu_va }}
         run: |
           FORCE=""
-          if [ "${{ matrix.chunk }}" = "manual" ]; then
+          # A LOCK wins over every other way of naming the set, and is passed
+          # to bk as a FILE rather than expanded here: bk reads it, and a
+          # second expansion in shell would be a second answer to the same
+          # question. See `bk factory --lock`.
+          if [ -n "${{ github.event.inputs.lock }}" ]; then
+            LOCK="${{ github.event.inputs.lock }}"
+            [ -r "$LOCK" ] || { echo "::error::no lock at $LOCK in this repository"; exit 1; }
+            echo "locked build from $LOCK ($(grep -c '= { version' "$LOCK") pin(s))"
+          elif [ "${{ matrix.chunk }}" = "manual" ]; then
             RECIPES="${{ github.event.inputs.recipes }}"
             # A manual dispatch rebuilds what it names by default — that is what
             # refreshing a stale bottle is. `force: 0` turns the same list into
@@ -645,8 +657,8 @@ jobs:
           fi
           # shellcheck disable=SC2086  # RECIPES is intentionally word-split to count projects
           echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects${FORCE:+ (FORCE rebuild)}"
-          # RECIPES / FORCE / MAX_VERSIONS / PLATFORM are read from the env by
-          # `bk factory` itself; the rest is passed explicitly.
+          # RECIPES / FORCE / MAX_VERSIONS / PLATFORM / LOCK are read from the
+          # env by `bk factory` itself; the rest is passed explicitly.
           # Disk, before and after, because a full one does not announce
           # itself — it arrives as somebody else's error. The s390x seed hit
           # it on the fifty-seventh project and reported
@@ -682,7 +694,7 @@ jobs:
           MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
           NO_CLOSURE="${{ github.event.inputs.no_closure }}"
           PIN_TO_DEPENDENTS="${{ github.event.inputs.pin_to_dependents }}"
-          export RECIPES FORCE MAX_VERSIONS NO_CLOSURE PIN_TO_DEPENDENTS
+          export RECIPES FORCE MAX_VERSIONS NO_CLOSURE PIN_TO_DEPENDENTS LOCK
           # A glibc-pinned build links the pkgx glibc bottle directly, which bakes
           # an ABSOLUTE PT_INTERP pointing into $PKGX_DIR. Under the default
           # ($HOME/.pkgx) that is the RUNNER's home — a path no consumer has, so
