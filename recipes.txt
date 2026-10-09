@@ -678,6 +678,10 @@ github.com/github/spec-kit
 github.com/glauth/glauth
 github.com/gmarcais/Jellyfish
 github.com/go-acme/lego
+github.com/go-authn/authnd
+github.com/go-authn/bridge
+github.com/go-authn/revocation
+github.com/go-authn/sshcert
 github.com/go-delve/delve
 github.com/gofireflyio/aiac
 github.com/goharbor/harbor-cli
