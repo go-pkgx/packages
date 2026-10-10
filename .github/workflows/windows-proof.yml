@@ -70,7 +70,7 @@ jobs:
       - uses: actions/checkout@v7
         with: { repository: go-pkgx/pkgx, path: pkgx }
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.1' }
+        with: { go-version: '1.27.2' }
       - name: Build pkgx.exe
         working-directory: pkgx
         env: { CGO_ENABLED: "0" }

@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.1' }
+        with: { go-version: '1.27.2' }
 
       # GOPROXY=direct: current main from GitHub, not a stale proxy cache.
       # A catalogue built by an old bk is the one thing this job must not
