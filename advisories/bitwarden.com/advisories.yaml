@@ -1,0 +1,41 @@
+schema-version: 1
+project: bitwarden.com
+advisories:
+  # Found by `bk vulnfetch` on 2026-10-11, through the npm identity this
+  # recipe's `versions:` block states.
+  #
+  # The advisory is a MALICIOUS PACKAGE report, not an ordinary defect: OSV's
+  # text says any machine with it installed "should be considered fully
+  # compromised". Three measurements decide whether that concerns us, and all
+  # three were taken on 2026-10-11:
+  #
+  #   which version is malicious   exactly 2026.4.0, one version, from the
+  #                                advisory's own `affected.versions`
+  #   what have we published       ghcr.io/go-pkgx/packages/bitwarden.com
+  #                                lists one version tag: 1.22.1
+  #   what would a rebuild pull    npm's dist-tags.latest is 2026.9.1, and
+  #                                registry.npmjs.org/@bitwarden/cli/-/cli-2026.4.0.tgz
+  #                                answers 404 — the release was withdrawn
+  #
+  # So no published bottle contains it and no rebuild can reach it. The VEX
+  # justification is `component_not_present`: the affected component is not
+  # included in the product.
+  #
+  # ⛔ This is recorded rather than re-derived because the sweep will return
+  # this finding on every run. A record is what stops a decided question from
+  # being asked again.
+  - id: MAL-2026-3020
+    aliases:
+      - GHSA-g98r-qjhg-4fmr
+    events:
+      - timestamp: 2026-10-11T10:29:00Z
+        type: detection
+        note: reported by OSV for npm:@bitwarden/cli
+      - timestamp: 2026-10-11T10:31:00Z
+        type: false-positive-determination
+        justification: component_not_present
+        note: >-
+          The advisory affects @bitwarden/cli 2026.4.0 alone. The only version
+          tag published for bitwarden.com is 1.22.1, and npm has withdrawn the
+          2026.4.0 tarball (404), so no bottle contains the malicious release
+          and no rebuild can fetch it.
