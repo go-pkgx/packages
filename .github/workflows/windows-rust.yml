@@ -135,9 +135,18 @@ jobs:
             printf 'provides:\n  - bin/%s\n' "$realbin" > "$GITHUB_WORKSPACE/out/$slug/package.yml"
             # Publish the same package to the signed OCI registry (best-effort:
             # a publish failure must not abort the chunk).
+            #
+            # ⛔ --advisories here is BEST-EFFORT like the rest of this publish,
+            # which the linux factory's is not: an advisory record that will not
+            # parse makes bk refuse, and that refusal lands in the "non-fatal"
+            # branch below. The net under it is ci.yml, which runs
+            # `bk advisories` on every pull request, plus `bk factory`'s own
+            # up-front check on linux — so a record that cannot be read does not
+            # reach main unnoticed, and is not FIRST noticed here.
             if SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
                bk publish --to oci://ghcr.io/go-pkgx/packages --project "$slug" \
                  --version "$ver" --platform windows/x86-64 "${SIGN_ARGS[@]}" \
+                 --advisories "$GITHUB_WORKSPACE/advisories" \
                  "$d/v$ver.tar.gz"; then
               echo "published $slug $ver → OCI"
             else

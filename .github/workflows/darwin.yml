@@ -245,9 +245,14 @@ jobs:
           # RECIPES, NO_CLOSURE and PLATFORM are read from the env by `bk factory` itself.
           NO_CLOSURE="${{ github.event.inputs.no_closure }}"
           export RECIPES NO_CLOSURE FORCE
+          # --advisories on EVERY lane, not just linux. A darwin bottle with no
+          # OpenVEX document beside its SBOM is a bottle whose consumer has to
+          # re-triage what we already decided — and a flag added to one lane is
+          # the half-a-pair defect this repository has paid for before.
           bk factory \
             --pantry pantry \
             --overrides overrides \
+            --advisories advisories \
             --to oci://ghcr.io/go-pkgx/packages \
             --bottles dist \
             ${VERSIONS:+--versions "$VERSIONS"} \
