@@ -12,7 +12,9 @@ of brewkit) and publishes **signed, attested packages** to
 Every package is pushed as an OCI artifact carrying, as **OCI referrers**:
 
 - a **CycloneDX SBOM** ([`go-attest/sbom`](https://github.com/go-attest/sbom)),
-- an in-toto **SLSA provenance** statement, and
+- an in-toto **SLSA provenance** statement,
+- an **OpenVEX document**, where this repository holds advisory records for the
+  project, and
 - a **cosign-style + minisign signature** ([`go-attest/sign`](https://github.com/go-attest/sign)).
 
 Signatures verify against the pinned public key
@@ -29,6 +31,33 @@ provenance now carries the source's SHA-256 (or a git checkout's commit) as a
 SLSA `resolvedDependency`, and where a recipe declares a `sha:` URL — the form
 the pantry format already had and nothing read — a mismatch fails the build
 instead of falling through to the next mirror.
+
+### `advisories/` — why a package was rebuilt
+
+A rebuild could not say why it existed. `bottle` names one (`3.5.8_1`, the same
+upstream source built again) and nothing in the artefact said what it fixed.
+
+`advisories/<project>/advisories.yaml` holds that, one file per project, as an
+ordered list of **timestamped events** — the shape Wolfi uses, because a single
+`status:` field cannot be superseded. `bk publish --advisories advisories`
+turns it into the OpenVEX referrer above, and `bk advisories` validates the
+tree on every pull request.
+
+The first record is a worked example of why the file exists rather than a
+re-derivation each time. `bk vulnfetch` reported `MAL-2026-3020`, *"Malicious
+code in @bitwarden/cli (npm)"*, against the npm identity `bitwarden.com`'s
+recipe states. Three measurements settle it:
+
+| | |
+|---|---|
+| which version is malicious | **exactly `2026.4.0`**, from the advisory's own `affected.versions` |
+| what we have published | `ghcr.io/go-pkgx/packages/bitwarden.com` lists one version tag: `1.22.1` |
+| what a rebuild would pull | npm's `dist-tags.latest` is `2026.9.1`, and the `2026.4.0` tarball answers **404** — withdrawn |
+
+So no published bottle contains it and no rebuild can reach it:
+`false-positive-determination`, with the OpenVEX justification
+`component_not_present`. The sweep will return that finding again on every run;
+the record is what stops a decided question from being re-asked.
 
 ## Trees upstream does not have
 

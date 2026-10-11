@@ -57,6 +57,26 @@ jobs:
       # and go-gitdiff does not, so the two disagree: on 2026-09-27 git passed
       # a patch the builder refused, and it was merged.
       #
+      # The advisory records are the factory's own answer to "why was this
+      # rebuilt?", and `bk publish --advisories` attaches them to the bottle as
+      # an OpenVEX document. A record that does not parse is therefore not a
+      # documentation problem: it STOPS a publish, in the middle of a factory
+      # run, hours in.
+      #
+      # It also catches the one mistake the format cannot defend itself
+      # against: a file copied from a neighbouring project and only half
+      # edited. `bk advisories` refuses a file whose `project:` disagrees with
+      # its directory, because nothing else in the record says which package it
+      # is about — and the findings would be attached, signed, to the wrong
+      # bottle.
+      #
+      # An EMPTY tree fails too, which is deliberate: a validator that cannot
+      # find its corpus reports the same "no problems" as one that read it all.
+      - name: every advisory record is usable
+        run: |
+          GOPROXY=direct go run github.com/go-pkgx/bk/cmd/bk@main advisories \
+            --dir advisories --list
+
       # A FRESH clone every time, because a patch already applied does not
       # apply twice.
       - name: every override still applies
