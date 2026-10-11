@@ -39,7 +39,29 @@ upstream source built again) and nothing in the artefact said what it fixed.
 
 `advisories/<project>/advisories.yaml` holds that, one file per project, as an
 ordered list of **timestamped events** — the shape Wolfi uses, because a single
-`status:` field cannot be superseded. `bk publish --advisories advisories`
+`status:` field cannot be superseded. **Every publishing lane passes it**, so a
+bottle built on any platform carries the same answer:
+
+| lane | how |
+|---|---|
+| `build.yml` (linux) | `bk factory --advisories advisories` |
+| `build.yml` sovereign chunk | `SOVEREIGN_ADVISORIES`, bound in at `/advisories` |
+| `sovereign.yml` | the same variable |
+| `darwin.yml` | `bk factory --advisories advisories` |
+| `windows.yml`, `windows-rust.yml` | `bk publish --advisories "$GITHUB_WORKSPACE/advisories"` |
+
+The sovereign lane needs a **mount**, not a path: a workspace path means
+nothing inside the rootfs, and `--advisories advisories` without the bind would
+make `bk` refuse with "no advisories.yaml under advisories" — which reads as
+"the tree is empty" and means "the tree is on the other side of a namespace".
+
+`bk factory` validates the whole tree **once, before the first build**, because
+a record that does not parse stops a *publish* — and the fortieth bottle of a
+fifty-project chunk is six hours into the run. The Windows lanes' publish is
+best-effort by design, so there a refusal lands in the non-fatal branch; the net
+under that is this repository's own `bk advisories` check on every pull request.
+
+`bk publish --advisories advisories`
 turns it into the OpenVEX referrer above, and `bk advisories` validates the
 tree on every pull request.
 

@@ -4,6 +4,10 @@
 #
 # Usage:  builder/sovereign-build.sh <rootfs> <pantry> <overrides> [bk args...]
 #
+# $SOVEREIGN_ADVISORIES, when set, is the advisory tree bound in at /advisories
+# and passed as --advisories, so each published bottle carries the OpenVEX
+# document that says what is known about it.
+#
 # $SOVEREIGN_OVERLAY, when set, is a pantry-overlay checkout bound in as
 # /overlay and passed to `bk factory --overlay`. It does not change what is
 # BUILT — the factory still compiles the pantry's recipe — it widens the
@@ -31,8 +35,15 @@ set -euo pipefail
 
 root="${1:?rootfs}"; pantry="${2:?pantry}"; overrides="${3:?overrides}"; shift 3
 overlay="${SOVEREIGN_OVERLAY:-}"
+# $SOVEREIGN_ADVISORIES is the advisory tree whose records become each bottle's
+# OpenVEX referrer. Bound in like the overlay, and for the reason the LOCK
+# paragraph below gives in full: a path from the workspace means nothing inside
+# the rootfs. Passing `--advisories advisories` without the mount would make bk
+# refuse with "no advisories.yaml under advisories" — which reads as "the tree
+# is empty" and means "the tree is on the other side of a namespace".
+advisories="${SOVEREIGN_ADVISORIES:-}"
 
-mkdir -p "$root/pantry" "$root/overrides" "$root/overlay" "$root/dist" "$root/dev" "$root/proc" "$root/tmp" "$root/etc"
+mkdir -p "$root/pantry" "$root/overrides" "$root/overlay" "$root/advisories" "$root/dist" "$root/dev" "$root/proc" "$root/tmp" "$root/etc"
 chmod 1777 "$root/tmp"
 cp /etc/resolv.conf "$root/etc/resolv.conf"
 
@@ -82,7 +93,7 @@ fi
 # in the new namespace, where these variables are the ones that matter.
 $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,LOCK,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_VERIFY,PKGX_PANTRY_OVERLAY \
   unshare --mount --pid --fork "$(command -v bash)" -euxc '
-    r="$1"; pantry="$2"; overrides="$3"; overlay="$4"; shift 4
+    r="$1"; pantry="$2"; overrides="$3"; overlay="$4"; advisories="$5"; shift 5
     for d in null zero full random urandom tty; do
       [ -e "$r/dev/$d" ] || : > "$r/dev/$d"
       mount --bind "/dev/$d" "$r/dev/$d"
@@ -95,12 +106,17 @@ $SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,LOCK,FORCE,JO
       mount --bind "$overlay" "$r/overlay"
       ov=(--overlay /overlay)
     fi
+    ad=()
+    if [ -n "$advisories" ]; then
+      mount --bind "$advisories" "$r/advisories"
+      ad=(--advisories /advisories)
+    fi
     exec chroot "$r" /usr/local/bin/pkgx \
       +gnu.org/glibc +gnu.org/coreutils +gnu.org/make +llvm.org \
       -- /usr/local/bin/bk factory \
-           --pantry /pantry --overrides /overrides --libc pkgx "${ov[@]}" \
+           --pantry /pantry --overrides /overrides --libc pkgx "${ov[@]}" "${ad[@]}" \
            --to "${OCI_TO:-oci://ghcr.io/go-pkgx/packages}" --bottles /dist "$@"
-  ' bash "$root" "$pantry" "$overrides" "$overlay" "$@" 2>&1 | tee "$log"
+  ' bash "$root" "$pantry" "$overrides" "$overlay" "$advisories" "$@" 2>&1 | tee "$log"
 
 # `bk factory` is best-effort: it exits 0 with a per-recipe tally. That is right
 # for a 50-project chunk and useless as a signal on its own, so read the tally.

@@ -725,6 +725,7 @@ jobs:
             # paint the whole lot red. The proof job keeps the strict posture.
             export SOVEREIGN_STRICT=0
             SOVEREIGN_OVERLAY="$PWD/overlay" \
+            SOVEREIGN_ADVISORIES="$PWD/advisories" \
             builder/sovereign-build.sh \
               "$RUNNER_TEMP/rootfs" "$PWD/pantry" "$PWD/overrides" \
               ${GLIBC:+--glibc "$GLIBC"} \
@@ -747,10 +748,16 @@ jobs:
             # must not be able to disagree, and a seed pass that READ a
             # throwaway registry while PUBLISHING to the real one is exactly
             # the accident this lane exists to make impossible.
+            # --advisories: each published bottle carries an OpenVEX document
+            # saying which vulnerabilities were considered and what was decided.
+            # Validated ONCE before the first build — a record that does not
+            # parse stops a publish, and the fortieth bottle of a chunk is six
+            # hours into the run.
             bk factory \
               --pantry pantry \
               --overrides overrides \
               --overlay overlay \
+              --advisories advisories \
               --to "$PKGX_DIST" \
               --bottles dist \
               ${BOOTSTRAP:+--bootstrap} \

@@ -164,6 +164,7 @@ jobs:
           # already published": the whole chain ran and compiled nothing.
           FORCE: ${{ github.event.inputs.force || '1' }}
         run: |
+          SOVEREIGN_ADVISORIES="$PWD/advisories" \
           builder/sovereign-build.sh \
             "$RUNNER_TEMP/rootfs" "$PWD/pantry" "$PWD/overrides" \
             ${VERSIONS:+--versions "$VERSIONS"}
