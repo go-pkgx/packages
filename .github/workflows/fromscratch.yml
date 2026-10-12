@@ -27,6 +27,15 @@ on:
 permissions:
   contents: read
 
+env:
+  # Deps from the module proxy, OUR modules straight from GitHub. `GOPROXY=direct`
+  # alone made the bootstrap depend on every vanity-import host in the closure,
+  # and gopkg.in's hours of 502s on 2026-10-12 failed the darwin lane twice
+  # having built nothing. Measured, and kept uniform across the workflows, by
+  # ./goproxycheck.
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
+
 jobs:
   scratch:
     # Our own GARM/Incus pool: linux/x86-64, so the amd64 closures install and
@@ -34,10 +43,12 @@ jobs:
     # ghcr.io/go-pkgx/packages registry by pkgm, from inside the chroot.
     runs-on: [self-hosted, incus, amd64]
     steps:
-      # The pool's runner image is a plain debian cloud image: no git, and
-      # `GOPROXY=direct` shells out to it ("unable to resolve git version:
-      # exec: git: executable file not found"). jq and the chroot's unshare
-      # come from the base system; git does not.
+      # The pool's runner image is a plain debian cloud image: no git, and a
+      # DIRECT fetch shells out to it ("unable to resolve git version: exec:
+      # git: executable file not found"). Still required after 2026-10-12:
+      # GONOPROXY sends go-pkgx modules to their origin, which is a git clone,
+      # even though the dependencies now come from the proxy. jq and the
+      # chroot's unshare come from the base system; git does not.
       - name: base tools
         run: |
           SUDO=""; [ "$(id -u)" -eq 0 ] || SUDO="sudo"
@@ -51,12 +62,12 @@ jobs:
 
       # ONE static (CGO_ENABLED=0) pkgm binary serves both roles: the host
       # `pkgm image` that emits the Containerfile, and the `/pkgm` copied INTO the
-      # scratch image (it must run with no system libc). GOPROXY=direct pulls the
-      # current main straight from GitHub (the module proxy can serve a stale
-      # cached @main).
+      # scratch image (it must run with no system libc). GONOPROXY (workflow
+      # env:) pulls pkgm's current main straight from GitHub, since the module
+      # proxy can serve a stale cached @main.
       - name: install pkgm (static)
         run: |
-          CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/pkgm@main
+          CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: FROM-scratch coverage panel

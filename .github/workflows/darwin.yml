@@ -46,6 +46,13 @@ permissions:
 
 env:
   CHUNK: "50"
+  # Deps from the module proxy, OUR modules straight from GitHub. `GOPROXY=direct`
+  # alone made the bootstrap depend on every vanity-import host in the closure,
+  # and gopkg.in's hours of 502s on 2026-10-12 failed this lane twice having
+  # built nothing. Measured, and kept uniform across the workflows, by
+  # ./goproxycheck.
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
 
 jobs:
   setup:
@@ -134,12 +141,12 @@ jobs:
       # reported as successful.
       - name: install pkgx (bk sources its toolchain via `pkgx +deps`)
         run: |
-          GOPROXY=direct go install github.com/go-pkgx/pkgx@main
+          go install github.com/go-pkgx/pkgx@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: install bk
         run: |
-          GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
+          go install github.com/go-pkgx/bk/cmd/bk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: clone pantry

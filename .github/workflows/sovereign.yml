@@ -41,6 +41,15 @@ permissions:
   contents: read
   packages: write
 
+env:
+  # Deps from the module proxy, OUR modules straight from GitHub. `GOPROXY=direct`
+  # alone made the bootstrap depend on every vanity-import host in the closure,
+  # and gopkg.in's hours of 502s on 2026-10-12 failed the darwin lane twice
+  # having built nothing. Measured, and kept uniform across the workflows, by
+  # ./goproxycheck.
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
+
 jobs:
   sovereign:
     runs-on: ${{ github.event.inputs.arch == 'aarch64' && fromJSON('["self-hosted","incus","arm64"]') || fromJSON('["self-hosted","incus","amd64"]') }}
@@ -62,7 +71,7 @@ jobs:
       - name: build bk, pkgx and pkgm (static)
         run: |
           for m in bk/cmd/bk pkgx pkgm; do
-            CGO_ENABLED=0 GOPROXY=direct go install "github.com/go-pkgx/$m@main"
+            CGO_ENABLED=0 go install "github.com/go-pkgx/$m@main"
           done
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 

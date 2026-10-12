@@ -81,6 +81,13 @@ permissions:
 
 env:
   CHUNK: "50"   # projects per matrix job (chunked so the full pantry fans out)
+  # Deps from the module proxy, OUR modules straight from GitHub. `GOPROXY=direct`
+  # alone made the bootstrap depend on every vanity-import host in the closure,
+  # and gopkg.in's hours of 502s on 2026-10-12 failed the darwin lane twice
+  # having built nothing. Measured, and kept uniform across the workflows, by
+  # ./goproxycheck.
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
 
 jobs:
   # Split recipes.txt into CHUNK-sized slices and emit a matrix over both linux
@@ -271,15 +278,15 @@ jobs:
           # start there at all —
           #   /usr/local/bin/pkgx: error while loading shared libraries:
           #     libc.so.6: cannot open shared object file
-          CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/pkgx@main
+          CGO_ENABLED=0 go install github.com/go-pkgx/pkgx@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: install bk
-        # GOPROXY=direct: pull the current main straight from GitHub, else the
-        # module proxy serves a stale cached @main and CI runs an old bk.
+        # GONOPROXY (workflow env:): pull the current main straight from GitHub,
+        # else the module proxy serves a stale cached @main and CI runs an old bk.
         run: |
           # Static for the same reason as pkgx: bk is installed into the rootfs.
-          CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
+          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       # --depth 1 of a moving branch, so WHICH pantry is a property of the
@@ -434,7 +441,7 @@ jobs:
         env:
           PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
         run: |
-          CGO_ENABLED=0 GOPROXY=direct go install github.com/go-pkgx/pkgm@main
+          CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
           # A SELF-HOSTED runner reuses $RUNNER_TEMP between jobs, and
           # bottle.InstallFor treats the mere EXISTENCE of <project>/v<ver> as
           # "already present":
