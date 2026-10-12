@@ -14,6 +14,15 @@ on:
 
 permissions: { contents: read }
 
+env:
+  # Deps from the module proxy, OUR modules straight from GitHub. `GOPROXY=direct`
+  # alone made the bootstrap depend on every vanity-import host in the closure,
+  # and gopkg.in's hours of 502s on 2026-10-12 failed the darwin lane twice
+  # having built nothing. Measured, and kept uniform across the workflows, by
+  # ./goproxycheck.
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
+
 jobs:
   # A workflow that triggers on `pull_request` must NOT run on a self-hosted
   # runner. For that event GitHub runs the workflow file from the PR's HEAD, so
@@ -74,7 +83,7 @@ jobs:
       # find its corpus reports the same "no problems" as one that read it all.
       - name: every advisory record is usable
         run: |
-          GOPROXY=direct go run github.com/go-pkgx/bk/cmd/bk@main advisories \
+          go run github.com/go-pkgx/bk/cmd/bk@main advisories \
             --dir advisories --list
 
       # A FRESH clone every time, because a patch already applied does not
@@ -83,9 +92,9 @@ jobs:
         run: |
           rm -rf "$RUNNER_TEMP/pantry"
           git clone --depth 1 https://github.com/pkgxdev/pantry "$RUNNER_TEMP/pantry"
-          # GOPROXY=direct: a proxy-cached `@main` can be an older bk, and
-          # "unknown subcommand" is a confusing way to learn that.
-          GOPROXY=direct go run github.com/go-pkgx/bk/cmd/bk@main overrides \
+          # GONOPROXY (workflow env:): a proxy-cached `@main` can be an older
+          # bk, and "unknown subcommand" is a confusing way to learn that.
+          go run github.com/go-pkgx/bk/cmd/bk@main overrides \
             --dir overrides --pantry "$RUNNER_TEMP/pantry"
 
       # The step above leaves a pantry with every override applied — which is
@@ -206,7 +215,7 @@ jobs:
 
       - name: the seed order honours every edge outside a cycle
         run: |
-          GOPROXY=direct go run github.com/go-pkgx/bk/cmd/bk@main closure --build \
+          go run github.com/go-pkgx/bk/cmd/bk@main closure --build \
             --check-order seed/order.txt \
             --pantry "$RUNNER_TEMP/pantry" \
             --overlay "$RUNNER_TEMP/overlay" \

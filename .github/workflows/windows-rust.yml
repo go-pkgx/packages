@@ -15,6 +15,13 @@ on:
 permissions: { contents: read, packages: write }
 env:
   CHUNK: "6"   # cargo builds are heavy — smaller chunks stay under the 6h job cap
+  # Deps from the module proxy, OUR modules straight from GitHub. `GOPROXY=direct`
+  # alone made the bootstrap depend on every vanity-import host in the closure,
+  # and gopkg.in's hours of 502s on 2026-10-12 failed the darwin lane twice
+  # having built nothing. Measured, and kept uniform across the workflows, by
+  # ./goproxycheck.
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
   TRIPLE: "x86_64-pc-windows-gnu"
 
 jobs:
@@ -68,8 +75,9 @@ jobs:
           for d in "$HOME/.local/bin" /usr/local/bin; do
             [ -x "$d/pkgx" ] && { echo "$d" >> "$GITHUB_PATH"; break; }
           done
-          # GOPROXY=direct: pull current main from GitHub, not a stale proxy cache.
-          GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
+          # The proxy policy is the workflow-level env:, so it covers this and
+          # every other go invocation here, and ./goproxycheck keeps it level.
+          go install github.com/go-pkgx/bk/cmd/bk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Toolchain (rust + mingw)
         run: |

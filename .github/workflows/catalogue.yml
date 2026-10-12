@@ -29,6 +29,15 @@ on:
 
 permissions: { contents: read, packages: write }
 
+env:
+  # Deps from the module proxy, OUR modules straight from GitHub. `GOPROXY=direct`
+  # alone made the bootstrap depend on every vanity-import host in the closure,
+  # and gopkg.in's hours of 502s on 2026-10-12 failed the darwin lane twice
+  # having built nothing. Measured, and kept uniform across the workflows, by
+  # ./goproxycheck.
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -47,12 +56,13 @@ jobs:
       - uses: actions/setup-go@v7
         with: { go-version: '1.27.2' }
 
-      # GOPROXY=direct: current main from GitHub, not a stale proxy cache.
-      # A catalogue built by an old bk is the one thing this job must not
-      # publish, since the honesty of what it records lives in that code.
+      # GONOPROXY (workflow env:) keeps bk coming from GitHub rather than a
+      # stale proxy cache. A catalogue built by an old bk is the one thing this
+      # job must not publish, since the honesty of what it records lives in
+      # that code.
       - name: install bk
         run: |
-          GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main
+          go install github.com/go-pkgx/bk/cmd/bk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: clone pantry and overlay

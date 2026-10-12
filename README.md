@@ -385,6 +385,48 @@ over one of them in a build. They are at 0, and this is the daily crawl
 (04:00 UTC) that keeps them there. It is also why two dispatches of the same
 publishing workflow must never run at once.
 
+### How the lanes bootstrap their tools, and why it is one line per workflow
+
+Every publishing lane starts by installing `bk`, `pkgx` or `pkgm` from source,
+and all of them need the *current* `main` rather than whatever a module proxy
+has cached — a catalogue or a bottle built by an old `bk` is the one thing these
+jobs must not publish.
+
+That used to be written `GOPROXY=direct go install …@main`, at fourteen sites
+across eight workflows. `direct` applies to the **whole** module graph, not to
+the module named on the line, so the bootstrap depended on every vanity-import
+host in the closure being reachable. On 2026-10-12 `gopkg.in` answered 502 for
+hours and the darwin lane failed twice in ninety seconds, having built nothing:
+
+```text
+reading gopkg.in/yaml.v3/go.mod at revision v3.0.1: … exit status 128:
+fatal: unable to access 'https://gopkg.in/yaml.v3/': The requested URL returned error: 502
+```
+
+The policy is now stated once per workflow, in its top-level `env:`, which is
+the narrowest scope that covers every `go` invocation in a file — including one
+buried inside a longer script, and with no dependency on `actions/checkout`
+having run:
+
+```yaml
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
+```
+
+Dependencies come from the proxy, which is a cache that survives an upstream
+host going down; `go-pkgx` modules still go straight to GitHub, so `@main` is
+the commit it says. Measured both ways on one machine in one minute with a
+clean module cache — `GOPROXY=direct` exit 1, the configuration above exit 0 —
+and the narrowness proved by pointing `GOPROXY` at a dead address, where our
+modules still resolve and `gopkg.in/yaml.v3` does not.
+
+`go run ./goproxycheck` holds the eight copies level: it refuses any command
+line that sets the policy inline, and any workflow that installs a module by
+version without declaring it. It runs in CI as part of `go test ./...`, reads
+composite actions as well as workflows, and **exits 2 if it read no files at
+all** — a scan that could not reach its input must not report a clean tree.
+
 ## Two channels — every platform, both
 
 Every platform — linux, darwin **and** windows — publishes to **both** channels:
