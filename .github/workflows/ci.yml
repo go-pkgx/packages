@@ -24,6 +24,49 @@ env:
   GONOPROXY: github.com/go-pkgx/*
 
 jobs:
+  # ⛔ NOTHING HERE HAD EVER ASKED — about OUR OWN CODE. vulnscan.yml asks a
+  # database about the packages we PUBLISH; this asks about the Go in this
+  # repository, which is a different question and had no answer at all.
+  #
+  # Scanned by hand on 2026-10-18 with the toolchain the `go` directive then
+  # permitted -- go1.27.1 -- this module had 23 findings, NINE of them
+  # reachable:
+  #
+  #   GO-2026-6611 stdlib.Write       GO-2026-6603 stdlib.FlushError
+  #   GO-2026-6617 stdlib.Write       GO-2026-6613 stdlib.Get
+  #   GO-2026-6612 stdlib.ServeConn   GO-2026-6605 stdlib.Do
+  #   GO-2026-6610 stdlib.NewClientConn
+  #   GO-2026-6607 stdlib.Read        GO-2026-6608 stdlib.ReadMIMEHeader
+  #
+  # One more than its siblings, and `stdlib.ServeConn` says why: browsergw is
+  # an HTTP SERVER, so this tree has an inbound path the others do not.
+  #
+  # Raising the directive to 1.27.2 and golang.org/x/net to v0.60.0 took it
+  # to 1 — a notice with no released fix.
+  vuln:
+    name: govulncheck, judged by vulngate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.2' }
+      # ⛔ NO `set -o pipefail` and no bare exit status: govulncheck exits
+      # non-zero over findings it has decided are NOT called, and zero over
+      # some it has, which is the whole reason vulngate exists. The emptiness
+      # check is the other half — a scan that wrote nothing must not read as
+      # nothing found. Scanner @latest, judge pinned: the scanner should know
+      # about an advisory published this morning, the verdict should not
+      # change under the repository without a commit.
+      - name: govulncheck, judged by vulngate
+        run: |
+          set -eu
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/go-fleettools/fleettools/cmd/vulngate@v0.23.0
+          BIN="$(go env GOPATH)/bin"
+          "$BIN/govulncheck" -format json ./... > "$RUNNER_TEMP/vuln.json" || true
+          test -s "$RUNNER_TEMP/vuln.json" || { echo "::error::govulncheck wrote nothing at all"; exit 1; }
+          "$BIN/vulngate" -go "$(go env GOVERSION)" "$RUNNER_TEMP/vuln.json"
+
   # A workflow that triggers on `pull_request` must NOT run on a self-hosted
   # runner. For that event GitHub runs the workflow file from the PR's HEAD, so
   # a fork can add a job naming any label it likes and execute its code on our
