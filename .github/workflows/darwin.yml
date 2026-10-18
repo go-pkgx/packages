@@ -79,15 +79,33 @@ jobs:
       - name: jq
         run: command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends jq; }
       - uses: actions/checkout@v7
+      # ⛔ BOTH ARCHES ON ONE TOOLCHAIN GENERATION. aarch64 ran on `macos-14`
+      # and x86-64 on `macos-15-intel`, so "the two darwin arches" were also
+      # two Xcode generations, and a failure on one was as likely to be about
+      # the compiler as about the architecture (#198).
+      #
+      # What it cost, measured 2026-10-12: `nodejs.org` 26.8.1 and 24.20.0
+      # cannot be built for aarch64 at all —
+      #
+      #   deps/v8/src/base/memcopy.h:255: no member named 'atomic_ref' in namespace 'std'
+      #
+      # `std::atomic_ref` is C++20 library and macos-14's libc++ lacks it.
+      # x86-64 published 26.10.0 from the newer image while aarch64 was stuck
+      # on a 26.8.1 bottle that cannot even start (it links openssl v1, #330),
+      # so the gap had gone from delaying a publish to FREEZING a defect.
+      #
+      # Safe for consumers because the deployment target is set by the builder,
+      # not inherited from it: bk's wrapper exports MACOSX_DEPLOYMENT_TARGET=11.0
+      # on every darwin build, so a newer host still produces macOS 11 bottles.
       - id: gen
         run: |
           if [ -n "${{ github.event.inputs.recipes }}" ]; then
-            m='{"include":[{"runner":"macos-14","platform":"darwin/aarch64","slug":"darwin-aarch64","chunk":"manual"},{"runner":"macos-15-intel","platform":"darwin/x86-64","slug":"darwin-x86-64","chunk":"manual"}]}'
+            m='{"include":[{"runner":"macos-15","platform":"darwin/aarch64","slug":"darwin-aarch64","chunk":"manual"},{"runner":"macos-15-intel","platform":"darwin/x86-64","slug":"darwin-x86-64","chunk":"manual"}]}'
           else
             total=$(grep -vcE '^[[:space:]]*(#|$)' recipes.txt)
             n=$(( (total + CHUNK - 1) / CHUNK ))
             m=$(jq -cn --argjson n "$n" '{include: [range(0;$n) as $c
-              | ({runner:"macos-14",platform:"darwin/aarch64",slug:"darwin-aarch64"},
+              | ({runner:"macos-15",platform:"darwin/aarch64",slug:"darwin-aarch64"},
                  {runner:"macos-15-intel",platform:"darwin/x86-64",slug:"darwin-x86-64"})
               + {chunk:($c|tostring)}]}')
           fi
