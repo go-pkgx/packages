@@ -1,0 +1,136 @@
+# Ask a vulnerability database about the versions we actually publish.
+#
+# WHY IT EXISTS. The advisory tree is already READ on every pull request
+# (`bk advisories --list`, ci.yml) and already ATTACHED to every bottle as an
+# OpenVEX document (`bk publish --advisories`, on build/darwin/windows). What
+# has never run anywhere is `bk vulnfetch`: nothing in this repository has
+# ever ASKED a vulnerability database anything. So the tree can only contain
+# what somebody typed into it, and the signed VEX we ship says precisely as
+# much as the last person to look — which on 2026-10-18 was one project,
+# bitwarden.com.
+#
+# ⛔ IT ASKS AT THE PUBLISHED VERSION, which is what makes the answer usable.
+# Asked about each package as a whole, OSV returns every advisory the package
+# has ever carried: 748 findings across 21 projects over this pantry on
+# 2026-10-17, nearly all of them fixed long before anything we ship. Asked at
+# the version the catalogue says we publish, and skipping outright what a
+# platform does not carry:
+#
+#   linux/x86-64     133 asked, 1090 unanswerable, 448 not asked → 0 findings
+#   darwin/aarch64   137 asked, 1082 unanswerable, 452 not asked → 0 findings
+#
+# ("unanswerable" is an identity OSV is not keyed on — a repository or a CPE
+# rather than a package in an ecosystem. The three buckets add to 1671 on both
+# platforms, which is the check that none of them is a silent drop.)
+#
+# Both measured on 2026-10-18 from a laptop, before this file was written, and
+# that is the point: a gate whose first run is red is a gate people learn to
+# scroll past. versioncheck on the landing site spent eight days proving it.
+name: known vulnerabilities in what we publish
+
+on:
+  schedule:
+    # 05:37 UTC daily. catalogue.yml publishes at 05:00 on Mondays, so on the
+    # one day the catalogue changes this reads the new one rather than racing
+    # it. OSV costs one HTTP request per thousand identities and wants no API
+    # key, so the whole job is two requests and none of GitHub's budget.
+    - cron: '37 5 * * *'
+  workflow_dispatch:
+  # Not on pull_request. The answer depends on what the REGISTRY holds and on
+  # what OSV learned overnight, neither of which a pull request changes: it
+  # would be a check going red for reasons its author can neither see nor fix.
+
+permissions:
+  contents: read
+
+env:
+  # Deps from the module proxy, OUR modules straight from GitHub. `GOPROXY=direct`
+  # alone made the bootstrap depend on every vanity-import host in the closure,
+  # and gopkg.in's hours of 502s on 2026-10-12 failed the darwin lane twice
+  # having built nothing. Measured, and kept uniform across the workflows, by
+  # ./goproxycheck.
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.2' }
+
+      # @main, and GONOPROXY (workflow env:) keeps that honest against a stale
+      # proxy cache. Both tools are ours and both are moving: the question
+      # "what are we vulnerable to" should be answered by the code that
+      # answers it best today, not by whatever a tag froze.
+      - name: install bk and pkgx
+        run: |
+          go install github.com/go-pkgx/bk/cmd/bk@main
+          go install github.com/go-pkgx/pkgx@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: clone pantry
+        run: git clone --depth 1 https://github.com/pkgxdev/pantry "$RUNNER_TEMP/pantry"
+
+      # ⛔ PULL the published catalogue; do not rebuild one. `bk catalog
+      # --platform --versions` would also produce one, at a tag listing plus a
+      # platform check for each of ~1900 projects — per platform, daily. That
+      # is catalogue.yml's weekly job, not this one's. `pkgx catalog update`
+      # fetches the result as a single signed OCI pull, and PKGX_VERIFY is on
+      # by default, so a catalogue nobody signed stops the job here.
+      #
+      # ⛔ BOTH PLATFORMS, which `--platform` is what makes possible from one
+      # ubuntu runner (go-pkgx/pkgx#106, v0.18.0). The two catalogues are not
+      # the same document and do not even list the same projects — on
+      # 2026-10-18, 1407 of 1915 projects carried a linux/x86-64 bottle
+      # against 1373 of 1936 for darwin/aarch64 (`go run ./internal/catstat`
+      # in go-pkgx/pkgx) — so a linux-only scan would have reported "clean"
+      # about a platform it never asked about.
+      #
+      # It will also make their AGES visible, which nothing currently prints:
+      # on the day this was written the published linux/x86-64 catalogue was
+      # generated 2026-10-12 and the darwin/aarch64 one 2026-10-18.
+      - name: fetch both catalogues
+        env:
+          PKGX_DIR: ${{ runner.temp }}/pkgx
+        run: |
+          pkgx catalog update --platform linux/x86-64
+          pkgx catalog update --platform darwin/aarch64
+
+      # ⛔ -fail-on-new, NOT "fail on anything found". A finding already
+      # recorded in advisories/ has a decision behind it; one that is not is a
+      # question with an answer — rebuild, or record why the published version
+      # is not affected. Red on something NEW is actionable; red on everything
+      # is furniture.
+      #
+      # ⛔ No -write. This job REPORTS; it does not edit the tree. A scheduled
+      # job that recorded its own detections would need `contents: write` on a
+      # public repository, and would turn the record of what we decided into a
+      # record of what a robot found — which is the opposite of what a signed
+      # VEX document is for. The decision is a pull request, by a person.
+      #
+      # One step per platform, so a failure names which one and so the second
+      # still runs when the first is red.
+      - name: linux/x86-64
+        env:
+          PKGX_DIR: ${{ runner.temp }}/pkgx
+        run: |
+          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
+            -catalog "$PKGX_DIR/catalog/linux-x86-64.json" -fail-on-new
+
+      - name: darwin/aarch64
+        if: always()
+        env:
+          PKGX_DIR: ${{ runner.temp }}/pkgx
+        run: |
+          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
+            -catalog "$PKGX_DIR/catalog/darwin-aarch64.json" -fail-on-new
+
+      # ci.yml already lists the tree on every pull request. It is listed again
+      # here, and `if: always()`, so that this job's log answers "what do we
+      # currently claim?" on its own — a green run must not read as "nothing to
+      # triage" when an undecided detection is sitting in the tree.
+      - name: the advisory tree as it stands
+        if: always()
+        run: bk advisories -dir advisories -list
