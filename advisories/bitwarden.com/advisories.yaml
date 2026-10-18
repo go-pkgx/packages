@@ -28,11 +28,24 @@ advisories:
     aliases:
       - GHSA-g98r-qjhg-4fmr
     events:
+      # ⛔ `detected-version` is what keeps this determination attached to the
+      # artefact it was made about. Without it the OpenVEX document published
+      # with the bottle does not say `not_affected` at all: it says
+      # `under_investigation`, because a record that names no version says
+      # nothing about the one in hand (go-pkgx/bk#340). The prose below names
+      # 1.22.1 and always did — this is the machine-readable half of it.
+      #
+      # It is on BOTH events on purpose. The detection says which version was
+      # asked about; the determination says which version was decided. They
+      # happen to be the same here, and will not be the first time a decision
+      # is made about a version we published since.
       - timestamp: 2026-10-11T10:29:00Z
         type: detection
+        detected-version: 1.22.1
         note: reported by OSV for npm:@bitwarden/cli
       - timestamp: 2026-10-11T10:31:00Z
         type: false-positive-determination
+        detected-version: 1.22.1
         justification: component_not_present
         note: >-
           The advisory affects @bitwarden/cli 2026.4.0 alone. The only version
