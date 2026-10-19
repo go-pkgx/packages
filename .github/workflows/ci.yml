@@ -91,6 +91,19 @@ jobs:
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
 
+      # ⛔ NO WORKFLOW ASKS pkgx FOR A VERB THAT IS pkgs'S.
+      #
+      # go-pkgx/pkgx#113 moved nine verbs to a second binary. The sweep
+      # missed this repository, and vulnscan.yml went on running `pkgx
+      # catalog update` — caught five hours later by pkgx's own refusal, on
+      # the first scheduled run, in a job whose value is being believed when
+      # it is green.
+      #
+      # It reads comments too: this tree's workflows carry more explanation
+      # than command, and a stale comment teaches the old spelling.
+      - name: no workflow asks pkgx for a pkgs verb
+        run: go run ./verbcheck
+
       # The overrides are HCL now, and say WHAT they change rather than where
       # the lines are — so "it stopped applying" has become three answers
       # instead of one: the recipe needed it, upstream has caught up (delete

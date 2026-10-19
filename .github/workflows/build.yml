@@ -810,7 +810,7 @@ jobs:
             exit 1
           fi
 
-      # The CATALOGUE: what `pkgx ls` and <TAB> read.
+      # The CATALOGUE: what `pkgs ls` and <TAB> read.
       #
       # It exists because a registry cannot be enumerated. Measured against
       # ghcr: /v2/_catalog answers 403 to an anonymous client and only a

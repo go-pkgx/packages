@@ -1,6 +1,6 @@
 # The catalogue, on its own schedule.
 #
-# `pkgx ls` and <TAB> read a catalogue; `pkgx catalog update` fetches one.
+# `pkgs ls` and <TAB> read a catalogue; `pkgs catalog update` fetches one.
 # Nothing refreshes what is PUBLISHED except a factory run, and every
 # factory's cron has been off since 2026-08-12 — so a published catalogue
 # would age until somebody dispatched a build by hand, and every reader
