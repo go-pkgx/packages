@@ -30,6 +30,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -50,8 +51,17 @@ var verbs = []string{"ls", "search", "why", "store", "browse", "catalog", "env",
 // boundary is what keeps `pkgx lsof` and `pkgx envsubst` out.
 var pkgxVerb = regexp.MustCompile(`\bpkgx\s+(` + strings.Join(verbs, "|") + `)\b`)
 
-func main() {
-	dirs := os.Args[1:]
+var osExit = os.Exit
+
+func main() { osExit(run(os.Args[1:], os.Stdout, os.Stderr)) }
+
+// run is the testable entry point, in the shape ./goproxycheck already uses:
+// the exit code is returned rather than taken, so every arm of it — the
+// refusal, the complaint and the pass — is reachable from a test. The
+// repository's coverage gate is 100%, and a main() that walks a tree and
+// calls os.Exit cannot meet it.
+func run(args []string, stdout, stderr io.Writer) int {
+	dirs := args
 	if len(dirs) == 0 {
 		dirs = []string{filepath.Join(".github", "workflows")}
 	}
@@ -69,37 +79,38 @@ func main() {
 				return nil
 			}
 			files++
-			complaints += check(path)
+			complaints += check(path, stderr)
 			return nil
 		})
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "verbcheck:", err)
-			os.Exit(1)
+			fmt.Fprintln(stderr, "verbcheck:", err)
+			return 1
 		}
 	}
 	if files == 0 {
 		// ⛔ NOT SUCCESS. A scanner that read nothing reports the same "no
 		// problems" as one that read everything, and this defect was found
 		// by a sweep that returned zero because it could not see .github.
-		fmt.Fprintln(os.Stderr, "verbcheck: read no workflow at all — wrong directory?")
-		os.Exit(2)
+		fmt.Fprintln(stderr, "verbcheck: read no workflow at all — wrong directory?")
+		return 2
 	}
-	fmt.Printf("verbcheck: %d file(s), %d complaint(s)\n", files, complaints)
+	fmt.Fprintf(stdout, "verbcheck: %d file(s), %d complaint(s)\n", files, complaints)
 	if complaints > 0 {
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
 
-func check(path string) int {
+func check(path string, stderr io.Writer) int {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "verbcheck:", err)
+		fmt.Fprintln(stderr, "verbcheck:", err)
 		return 1
 	}
 	n := 0
 	for i, line := range strings.Split(string(b), "\n") {
 		for _, m := range pkgxVerb.FindAllStringSubmatch(line, -1) {
-			fmt.Fprintf(os.Stderr, "%s:%d: `pkgx %s` — that verb is pkgs's since go-pkgx/pkgx#113; write `pkgs %s`\n",
+			fmt.Fprintf(stderr, "%s:%d: `pkgx %s` — that verb is pkgs's since go-pkgx/pkgx#113; write `pkgs %s`\n",
 				path, i+1, m[1], m[1])
 			n++
 		}
