@@ -285,7 +285,7 @@ jobs:
             ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"} \
             ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
 
-      # The CATALOGUE for this platform: what `pkgx ls` and <TAB> read on a
+      # The CATALOGUE for this platform: what `pkgs ls` and <TAB> read on a
       # Mac. darwin had none at all, so a Mac asking what exists got either
       # silence or linux's answer — and the two differ, which is the whole
       # reason a catalogue is published per platform.

@@ -64,10 +64,20 @@ jobs:
       # proxy cache. Both tools are ours and both are moving: the question
       # "what are we vulnerable to" should be answered by the code that
       # answers it best today, not by whatever a tag froze.
-      - name: install bk and pkgx
+      # ⛔ pkgs, NOT pkgx, FOR THE CATALOGUE. go-pkgx/pkgx#113 moved the nine
+      # verbs to a second binary so that the first word after `pkgx` is a
+      # package again: a bare `ls` there now reaches gnu.org/coreutils. This
+      # job asked pkgx for `catalog`, and the scheduled run of 2026-10-19
+      # failed with
+      #
+      #   pkgx: "catalog" is a pkgs command, not a pkgx one: pkgs catalog
+      #
+      # which is that refusal doing its job: it caught the one caller the
+      # split forgot to sweep.
+      - name: install bk and pkgs
         run: |
           go install github.com/go-pkgx/bk/cmd/bk@main
-          go install github.com/go-pkgx/pkgx@main
+          go install github.com/go-pkgx/pkgx/cmd/pkgs@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: clone pantry
@@ -76,7 +86,7 @@ jobs:
       # ⛔ PULL the published catalogue; do not rebuild one. `bk catalog
       # --platform --versions` would also produce one, at a tag listing plus a
       # platform check for each of ~1900 projects — per platform, daily. That
-      # is catalogue.yml's weekly job, not this one's. `pkgx catalog update`
+      # is catalogue.yml's weekly job, not this one's. `pkgs catalog update`
       # fetches the result as a single signed OCI pull, and PKGX_VERIFY is on
       # by default, so a catalogue nobody signed stops the job here.
       #
@@ -95,8 +105,8 @@ jobs:
         env:
           PKGX_DIR: ${{ runner.temp }}/pkgx
         run: |
-          pkgx catalog update --platform linux/x86-64
-          pkgx catalog update --platform darwin/aarch64
+          pkgs catalog update --platform linux/x86-64
+          pkgs catalog update --platform darwin/aarch64
 
       # ⛔ -fail-on-new, NOT "fail on anything found". A finding already
       # recorded in advisories/ has a decision behind it; one that is not is a

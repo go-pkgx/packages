@@ -147,7 +147,7 @@ jobs:
           path: out
           if-no-files-found: ignore
 
-  # The CATALOGUE for windows/x86-64: what `pkgx ls` and <TAB> read on
+  # The CATALOGUE for windows/x86-64: what `pkgs ls` and <TAB> read on
   # Windows. There was none, so a Windows user asking what exists got
   # nothing — not "nothing is available", which would at least be an
   # answer, but silence.
