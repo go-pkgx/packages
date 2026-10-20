@@ -101,12 +101,40 @@ jobs:
       # It will also make their AGES visible, which nothing currently prints:
       # on the day this was written the published linux/x86-64 catalogue was
       # generated 2026-10-12 and the darwin/aarch64 one 2026-10-18.
-      - name: fetch both catalogues
+      # ⛔ EVERY PLATFORM WE PUBLISH, which until 2026-10-20 meant two of six.
+      # This step said "both catalogues" and asked about linux/x86-64 and
+      # darwin/aarch64 — while the registry carries four more, among them the
+      # LARGEST by bottle count. Measured that day with `bk vulnfetch` from a
+      # laptop, against the published catalogues:
+      #
+      #   platform        asked  unanswerable  not asked     Σ  findings
+      #   linux/aarch64     132          1104        437  1673         0
+      #   darwin/x86-64     137          1074        462  1673         0
+      #   windows/x86-64     94           461       1118  1673         0
+      #   linux/s390x         1            28       1644  1673         0
+      #
+      # All four clean, so this is a gap in COVERAGE and not an exposure —
+      # which is the only reason it can be closed by adding steps rather than
+      # by rebuilding anything. The three buckets add to 1673 on every one of
+      # them, the same check the two original platforms carry: none of them is
+      # a silent drop.
+      #
+      # ⛔ AND THE LIST IS STILL WRITTEN DOWN HERE, which is how these four
+      # were forgotten in the first place. The index knows: `pkgs catalog
+      # update --platform linux/nonsense` is refused with "platform not in
+      # index", so the registry can say which platforms exist and nothing can
+      # ask it. go-pkgx/pkgx#119 is for that; until it lands, a seventh
+      # platform is forgotten exactly as these four were.
+      - name: fetch every published catalogue
         env:
           PKGX_DIR: ${{ runner.temp }}/pkgx
         run: |
           pkgs catalog update --platform linux/x86-64
+          pkgs catalog update --platform linux/aarch64
           pkgs catalog update --platform darwin/aarch64
+          pkgs catalog update --platform darwin/x86-64
+          pkgs catalog update --platform windows/x86-64
+          pkgs catalog update --platform linux/s390x
 
       # ⛔ -fail-on-new, NOT "fail on anything found". A finding already
       # recorded in advisories/ has a decision behind it; one that is not is a
@@ -129,6 +157,14 @@ jobs:
           bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
             -catalog "$PKGX_DIR/catalog/linux-x86-64.json" -fail-on-new
 
+      - name: linux/aarch64
+        if: always()
+        env:
+          PKGX_DIR: ${{ runner.temp }}/pkgx
+        run: |
+          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
+            -catalog "$PKGX_DIR/catalog/linux-aarch64.json" -fail-on-new
+
       - name: darwin/aarch64
         if: always()
         env:
@@ -136,6 +172,33 @@ jobs:
         run: |
           bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
             -catalog "$PKGX_DIR/catalog/darwin-aarch64.json" -fail-on-new
+
+      - name: darwin/x86-64
+        if: always()
+        env:
+          PKGX_DIR: ${{ runner.temp }}/pkgx
+        run: |
+          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
+            -catalog "$PKGX_DIR/catalog/darwin-x86-64.json" -fail-on-new
+
+      - name: windows/x86-64
+        if: always()
+        env:
+          PKGX_DIR: ${{ runner.temp }}/pkgx
+        run: |
+          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
+            -catalog "$PKGX_DIR/catalog/windows-x86-64.json" -fail-on-new
+
+      # 39 bottles and one identity OSV can answer about, which is still a
+      # platform somebody can install from: a scan that skips the small ones
+      # is a scan whose coverage depends on how interesting they looked.
+      - name: linux/s390x
+        if: always()
+        env:
+          PKGX_DIR: ${{ runner.temp }}/pkgx
+        run: |
+          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
+            -catalog "$PKGX_DIR/catalog/linux-s390x.json" -fail-on-new
 
       # ci.yml already lists the tree on every pull request. It is listed again
       # here, and `if: always()`, so that this job's log answers "what do we

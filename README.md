@@ -81,6 +81,34 @@ So no published bottle contains it and no rebuild can reach it:
 `component_not_present`. The sweep will return that finding again on every run;
 the record is what stops a decided question from being re-asked.
 
+### Every platform we publish, which was two of six
+
+⛔ The daily lane had its platform list **written into the workflow**, and the
+list said `linux/x86-64` and `darwin/aarch64`. The registry carries six.
+Measured 2026-10-20 with `bk vulnfetch` against the published catalogues, the
+four nobody had ever asked about:
+
+| platform | asked | unanswerable | not asked | Σ | findings |
+|---|---|---|---|---|---|
+| `linux/aarch64` | 132 | 1104 | 437 | 1673 | **0** |
+| `darwin/x86-64` | 137 | 1074 | 462 | 1673 | **0** |
+| `windows/x86-64` | 94 | 461 | 1118 | 1673 | **0** |
+| `linux/s390x` | 1 | 28 | 1644 | 1673 | **0** |
+
+All four clean, so this was a gap in **coverage and not an exposure** — which
+is the only reason it could be closed by adding steps rather than by
+rebuilding anything. The three buckets add to **1673** on every one of them,
+the same arithmetic the two original platforms carry: none of them is a silent
+drop. `linux/aarch64` is the largest platform here by bottle count, and
+`linux/s390x` has 39 bottles — a scan that skips the small ones is a scan
+whose coverage depends on how interesting they looked.
+
+⛔ **And the list is still written down**, which is how those four were
+forgotten. The index knows — `pkgs catalog update --platform linux/nonsense`
+is refused with *"platform not in index"* — so the registry can say which
+platforms exist and nothing can ask it. go-pkgx/pkgx#119 is for that; until it
+lands, a seventh platform is forgotten exactly as these four were.
+
 ## Trees upstream does not have
 
 Most of what is here is a pkgx pantry recipe built differently. These are
