@@ -15,6 +15,17 @@ edits = [
   {
     path = "build.script"
     set = [
+      # ⛔ UPSTREAM'S LOCKSTEP GUARD, KEPT. Added to the recipe on 2026-10-20
+      # (pkgxdev/pantry): the facebook libraries release together, and a
+      # sibling resolved at another version — a weekly build racing its deps —
+      # must FAIL rather than link mixed ABIs. Our override replaces the whole
+      # of build.script, so leaving these out would not "not add" the guard,
+      # it would DELETE it, and the only symptom would be a bottle that links
+      # and misbehaves.
+      "test \"{{deps.github.com/facebookincubator/fizz.version}}\" = \"{{version}}\"",
+      "test \"{{deps.facebook.com/folly.version}}\" = \"{{version}}\"",
+      "test \"{{deps.facebook.com/wangle.version}}\" = \"{{version}}\"",
+      "test \"{{deps.facebook.com/mvfst.version}}\" = \"{{version}}\"",
       {
         "if" = "linux/aarch64"
         "run" = "sed -i 's/^static_assert(is_supported_integral_type<char>);/\\/\\/&/' object.h"
@@ -90,6 +101,14 @@ EOT
       },
     ]
     expect = [
+      # The four lines upstream added on 2026-10-20. `expect` is what this
+      # override claims the recipe currently says: without them `bk
+      # overrides` reports the premise as gone, which is exactly what it did
+      # — the check working, not failing.
+      "test \"{{deps.github.com/facebookincubator/fizz.version}}\" = \"{{version}}\"",
+      "test \"{{deps.facebook.com/folly.version}}\" = \"{{version}}\"",
+      "test \"{{deps.facebook.com/wangle.version}}\" = \"{{version}}\"",
+      "test \"{{deps.facebook.com/mvfst.version}}\" = \"{{version}}\"",
       {
         "if" = "linux/aarch64"
         "run" = "sed -i 's/^static_assert(is_supported_integral_type<char>);/\\/\\/&/' object.h"
