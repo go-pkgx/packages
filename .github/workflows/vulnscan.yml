@@ -58,7 +58,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.2' }
+        with: { go-version: '1.27.3' }
 
       # @main, and GONOPROXY (workflow env:) keeps that honest against a stale
       # proxy cache. Both tools are ours and both are moving: the question

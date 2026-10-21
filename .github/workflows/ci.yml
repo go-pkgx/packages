@@ -49,7 +49,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.2' }
+        with: { go-version: '1.27.3' }
       # ⛔ NO `set -o pipefail` and no bare exit status: govulncheck exits
       # non-zero over findings it has decided are NOT called, and zero over
       # some it has, which is the whole reason vulngate exists. The emptiness
@@ -86,7 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.2' }
+        with: { go-version: '1.27.3' }
       - run: go vet ./...
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
@@ -309,7 +309,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
-        with: { go-version: '1.27.2' }
+        with: { go-version: '1.27.3' }
       - name: build ${{ matrix.goos }}/${{ matrix.goarch }} (CGO=0)
         env:
           GOOS: ${{ matrix.goos }}
