@@ -119,86 +119,45 @@ jobs:
       # them, the same check the two original platforms carry: none of them is
       # a silent drop.
       #
-      # ⛔ AND THE LIST IS STILL WRITTEN DOWN HERE, which is how these four
-      # were forgotten in the first place. The index knows: `pkgs catalog
-      # update --platform linux/nonsense` is refused with "platform not in
-      # index", so the registry can say which platforms exist and nothing can
-      # ask it. go-pkgx/pkgx#119 is for that; until it lands, a seventh
-      # platform is forgotten exactly as these four were.
-      - name: fetch every published catalogue
-        env:
-          PKGX_DIR: ${{ runner.temp }}/pkgx
-        run: |
-          pkgs catalog update --platform linux/x86-64
-          pkgs catalog update --platform linux/aarch64
-          pkgs catalog update --platform darwin/aarch64
-          pkgs catalog update --platform darwin/x86-64
-          pkgs catalog update --platform windows/x86-64
-          pkgs catalog update --platform linux/s390x
-
+      # ⛔ AND THE LIST IS NO LONGER WRITTEN DOWN, which was the actual
+      # defect: adding the four by hand closed that day's gap and left the
+      # mechanism that caused it. `pkgs catalog platforms` (go-pkgx/pkgx#119,
+      # shipped) asks the registry, which has always known — a platform that
+      # is not published is refused with "platform not in index" — and
+      # ./vulnsweep fetches and scans every platform it names. A seventh is
+      # covered the day it is published, by nobody's decision.
+      #
+      # One step rather than six, so the per-platform naming that six steps
+      # gave for free has to be earned: vulnsweep prints a line per platform,
+      # keeps going after a red one (a sweep that stops at the first reports
+      # one problem and hides the rest), and names in its exit which
+      # platforms need attention.
+      #
+      # ⛔ AND IT REFUSES TO SWEEP NOTHING. An empty list, a list that is
+      # only noise, and a list it could not obtain are each exit 2 — never a
+      # clean zero, which is what this lane would otherwise print on the day
+      # the registry stops answering.
+      #
       # ⛔ -fail-on-new, NOT "fail on anything found". A finding already
-      # recorded in advisories/ has a decision behind it; one that is not is a
-      # question with an answer — rebuild, or record why the published version
-      # is not affected. Red on something NEW is actionable; red on everything
-      # is furniture.
+      # recorded in advisories/ has a decision behind it; one that is not is
+      # a question with an answer — rebuild, or record why the published
+      # version is not affected. Red on something NEW is actionable; red on
+      # everything is furniture.
       #
-      # ⛔ No -write. This job REPORTS; it does not edit the tree. A scheduled
-      # job that recorded its own detections would need `contents: write` on a
-      # public repository, and would turn the record of what we decided into a
-      # record of what a robot found — which is the opposite of what a signed
-      # VEX document is for. The decision is a pull request, by a person.
-      #
-      # One step per platform, so a failure names which one and so the second
-      # still runs when the first is red.
-      - name: linux/x86-64
+      # ⛔ No -write. This job REPORTS; it does not edit the tree. A
+      # scheduled job that recorded its own detections would need
+      # `contents: write` on a public repository, and would turn the record
+      # of what we decided into a record of what a robot found — the
+      # opposite of what a signed VEX document is for. The decision is a
+      # pull request, by a person.
+      - name: every published platform
         env:
           PKGX_DIR: ${{ runner.temp }}/pkgx
         run: |
-          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
-            -catalog "$PKGX_DIR/catalog/linux-x86-64.json" -fail-on-new
-
-      - name: linux/aarch64
-        if: always()
-        env:
-          PKGX_DIR: ${{ runner.temp }}/pkgx
-        run: |
-          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
-            -catalog "$PKGX_DIR/catalog/linux-aarch64.json" -fail-on-new
-
-      - name: darwin/aarch64
-        if: always()
-        env:
-          PKGX_DIR: ${{ runner.temp }}/pkgx
-        run: |
-          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
-            -catalog "$PKGX_DIR/catalog/darwin-aarch64.json" -fail-on-new
-
-      - name: darwin/x86-64
-        if: always()
-        env:
-          PKGX_DIR: ${{ runner.temp }}/pkgx
-        run: |
-          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
-            -catalog "$PKGX_DIR/catalog/darwin-x86-64.json" -fail-on-new
-
-      - name: windows/x86-64
-        if: always()
-        env:
-          PKGX_DIR: ${{ runner.temp }}/pkgx
-        run: |
-          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
-            -catalog "$PKGX_DIR/catalog/windows-x86-64.json" -fail-on-new
-
-      # 39 bottles and one identity OSV can answer about, which is still a
-      # platform somebody can install from: a scan that skips the small ones
-      # is a scan whose coverage depends on how interesting they looked.
-      - name: linux/s390x
-        if: always()
-        env:
-          PKGX_DIR: ${{ runner.temp }}/pkgx
-        run: |
-          bk vulnfetch -dir "$RUNNER_TEMP/pantry" -advisories advisories \
-            -catalog "$PKGX_DIR/catalog/linux-s390x.json" -fail-on-new
+          go run ./vulnsweep \
+            -pantry "$RUNNER_TEMP/pantry" \
+            -advisories advisories \
+            -store "$RUNNER_TEMP/pkgx"
 
       # ci.yml already lists the tree on every pull request. It is listed again
       # here, and `if: always()`, so that this job's log answers "what do we

@@ -103,11 +103,31 @@ drop. `linux/aarch64` is the largest platform here by bottle count, and
 `linux/s390x` has 39 bottles — a scan that skips the small ones is a scan
 whose coverage depends on how interesting they looked.
 
-⛔ **And the list is still written down**, which is how those four were
-forgotten. The index knows — `pkgs catalog update --platform linux/nonsense`
-is refused with *"platform not in index"* — so the registry can say which
-platforms exist and nothing can ask it. go-pkgx/pkgx#119 is for that; until it
-lands, a seventh platform is forgotten exactly as these four were.
+⛔ **And the list is no longer written down**, which was the actual defect:
+adding the four by hand closed that day's gap and left the mechanism that
+caused it in place. The index has always known — `pkgs catalog update
+--platform linux/nonsense` is refused with *"platform not in index"* — and
+since go-pkgx/pkgx#119 shipped, `pkgs catalog platforms` asks it:
+
+```console
+$ pkgs catalog platforms
+darwin/aarch64
+darwin/x86-64
+linux/aarch64
+linux/s390x
+linux/x86-64
+windows/x86-64
+```
+
+`./vulnsweep` fetches and scans every platform that names, so a **seventh is
+covered the day it is published**, by nobody's decision. It is one step where
+there were six, so the per-platform naming six steps gave for free has to be
+earned: it prints a line per platform, **keeps going after a red one** (a
+sweep that stops at the first reports one problem and hides the rest), and
+names in its exit which platforms need attention. ⛔ And it refuses to sweep
+nothing — an empty list, a list that is only noise, and a list it could not
+obtain are each exit 2, never the clean zero this lane would otherwise print
+on the day the registry stops answering.
 
 ## Trees upstream does not have
 
