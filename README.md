@@ -470,6 +470,37 @@ per-reference lines: it reported "64 unresolvable reference(s)" and named
 not one soname. A verdict with its evidence stripped is a line nobody can
 act on, and the flag is gone.
 
+### `./npmtag` — does the fixed version exist, and which is it?
+
+"Rebuild at a fixed version" needs that question answered first. The CVE
+lane found advisories against the `vitejs.dev` we publish (8.2.1); the
+affected range is `>= 8.2.0, < 8.2.4` — and the 8.3 line is affected too
+(`>= 8.3.0, < 8.3.3`), so *rebuild at the newest* without looking could
+have landed on 8.3.1 and stayed vulnerable.
+
+```console
+$ go run ./npmtag vite
+alpha        6.0.0-alpha.24
+beta         8.3.0-beta.1
+latest       8.3.5
+previous     6.4.5
+```
+
+8.3.5 is past both boundaries, which is what makes the rebuild the right
+answer rather than a hopeful one.
+
+⛔ **It prints; it does not judge.** Whether a version is fixed is a
+statement about an *advisory's* ranges, which are per release line — a flag
+here answering "is this fixed?" would be a second opinion beside OSV's, in
+a place nobody would think to check.
+
+⛔ **And it is a committed tool because the last one was not.** This check
+was first written as a throwaway in a scratchpad, and the note recording it
+said "tool: npmtag (20 lines of Go)" as though it existed. Two days later
+the same question came up for the same package and there was no `npmtag` —
+not on `PATH`, not in any repository — so the answer was re-derived with
+`curl`. The scratchpad is not durable; a repository is.
+
 ### How the lanes bootstrap their tools, and why it is one line per workflow
 
 Every publishing lane starts by installing `bk`, `pkgx` or `pkgm` from source,
