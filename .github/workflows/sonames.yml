@@ -102,6 +102,21 @@ jobs:
       # It exits 2 — not 0 — for every way of sweeping nothing: no
       # catalogue, no bottled project in it, an empty chunk, or a catalogue
       # for a platform this machine is not.
+      #
+      # ⛔ -out, AND NO BASELINE YET. The first live sweep (2026-10-23) found
+      # 64 unresolvable references in its first 100 projects, owned by
+      # python.org, tcl-lang.org, nodejs.org, kerberos.org, libgit2.org and
+      # curl.se among others. Against a backlog that size a gate that fails
+      # on ANY finding is red every week, and red on everything is furniture
+      # — vulnscan.yml carries the same note and the same -fail-on-new
+      # answer.
+      #
+      # So this run RECORDS. The fourteen files it uploads concatenate into
+      # `sonames/baseline.txt`; once that lands, this step gains
+      # `-baseline sonames/baseline.txt` and goes red only on a reference
+      # that is NOT in it. The baseline has to be measured before it can be
+      # committed, and a half-measured one would mark the other thirteen
+      # fourteenths as new.
       - name: chunk ${{ matrix.chunk }} of 14
         env:
           PKGX_DIR: ${{ runner.temp }}/pkgx
@@ -109,4 +124,16 @@ jobs:
           go run ./sonamesweep \
             -catalog "$RUNNER_TEMP/pkgx/catalog/linux-x86-64.json" \
             -chunk ${{ matrix.chunk }} \
-            -chunks "${{ inputs.chunks || '14' }}"
+            -chunks "${{ inputs.chunks || '14' }}" \
+            -out "$RUNNER_TEMP/chunk-${{ matrix.chunk }}.txt"
+
+      # if: always(), because the chunk that FAILS is the one whose findings
+      # are worth keeping. Without this the artefact exists only for the
+      # chunks that had nothing to report.
+      - name: keep this chunk's findings
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonames-chunk-${{ matrix.chunk }}
+          path: ${{ runner.temp }}/chunk-${{ matrix.chunk }}.txt
+          if-no-files-found: warn
