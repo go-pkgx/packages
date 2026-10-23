@@ -406,7 +406,7 @@ or pull a package directly:
 
 ## What CI watches between builds
 
-Two workflows exist to catch the failures that do not announce themselves.
+Three workflows exist to catch the failures that do not announce themselves.
 
 **`fromscratch.yml` — continuous proof that a published package runs with no
 system at all.** For each of twelve witness tools (`lz4.org`, `openssl.org`,
@@ -432,6 +432,26 @@ when it is not. 137 such entries had accumulated unnoticed, found by tripping
 over one of them in a build. They are at 0, and this is the daily crawl
 (04:00 UTC) that keeps them there. It is also why two dispatches of the same
 publishing workflow must never run at once.
+
+**`sonames.yml` — can what we publish actually load?** `bk unresolved` reads
+every ELF and Mach-O in an installed closure and reports each reference the
+store cannot answer. It was written and tested, and until 2026-10-23
+**nothing in this repository ran it** — a control that exists and is wired to
+nothing is not a control. What that cost: the published `python.org 3.14.7`
+for linux/x86-64 needs `libssl.so.1.1` and `libcrypto.so.1.1` in `_ssl` and
+`_hashlib`, and this registry publishes no openssl 1.x at all, so python's
+`ssl` could not load and every build that fetches over HTTPS died there. The
+same bottle for linux/aarch64 needs `libssl.so.3` — one project, one version,
+two platforms, one of them wrong. `overrides/python.org.hcl` had already
+moved the recipe's pin to `^3`; an override moves a *recipe*, and a
+`DT_NEEDED` compiled into a bottle published earlier does not move with it.
+
+`./sonamesweep` takes a **chunk** of the platform's bottled projects and says
+which — "clean for chunk 3 of 14 on linux/x86-64" is a sentence that cannot
+be read as a clean bill of health, and ~1400 closure installs per platform is
+not a thing to pretend to do weekly. It refuses a catalogue for a platform
+this host is not: `bk unresolved` installs for the **host**, so that answer
+would be this machine's bottles under another platform's name.
 
 ### How the lanes bootstrap their tools, and why it is one line per workflow
 

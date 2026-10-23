@@ -1,0 +1,112 @@
+# Can the bottles we publish actually load?
+#
+# ⛔ WHY IT EXISTS: THE TOOL WAS ALREADY WRITTEN AND NOTHING RAN IT.
+# `bk unresolved` reads every ELF and Mach-O in an installed closure and
+# reports each reference the store cannot answer. It is written and tested,
+# and on 2026-10-23 `git grep unresolved .github/workflows` in this
+# repository returned NOTHING. A control that exists and is not wired to
+# anything is not a control.
+#
+# What that cost, measured the same day. The published `python.org 3.14.7`
+# for linux/x86-64:
+#
+#   _ssl.cpython-314-x86_64-linux-gnu.so      NEEDED libssl.so.1.1 libcrypto.so.1.1
+#   _hashlib.cpython-314-x86_64-linux-gnu.so  NEEDED libcrypto.so.1.1
+#
+# and this registry publishes no openssl 1.x — every one of the 48 is 3.x or
+# 4.x. So python's `ssl` and `hashlib` could not load at all on that
+# platform, and every build that fetches over HTTPS died there. The same
+# bottle for linux/aarch64 needs `libssl.so.3`: one project, one version,
+# two platforms, one of them wrong.
+#
+# It surfaced because a user's `pkgx openstack user list` failed — the
+# longest possible way to learn it, through a package four layers above the
+# broken one.
+#
+# `overrides/python.org.hcl` had already retargeted the recipe's `^1.1` pin
+# to `^3`, and that fixed RESOLUTION. An override moves a recipe; a
+# DT_NEEDED compiled into a bottle published earlier does not move with it.
+# Nothing compared the two.
+name: can what we publish load
+
+on:
+  schedule:
+    # Sunday 03:00 UTC. catalogue.yml publishes Monday 05:00, so this reads
+    # a settled catalogue rather than racing one, and a finding is waiting
+    # on Monday morning rather than at the end of the week.
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      chunks:
+        description: "how many chunks to cut the project list into (the matrix below is fixed at 14; this is for a narrower manual run)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  # Deps from the module proxy, OUR modules straight from GitHub. `GOPROXY=direct`
+  # alone made the bootstrap depend on every vanity-import host in the closure,
+  # and gopkg.in's hours of 502s on 2026-10-12 failed the darwin lane twice
+  # having built nothing. Measured, and kept uniform across the workflows, by
+  # ./goproxycheck.
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
+
+jobs:
+  sweep:
+    # ⛔ ONE PLATFORM, SAID OUT LOUD. `bk unresolved` resolves and installs
+    # for the HOST — there is no --platform — so an ubuntu runner can only
+    # answer for linux/x86-64, and sonamesweep REFUSES another platform's
+    # catalogue rather than reporting this machine's bottles under its name.
+    # That is a gap in coverage and it is written here instead of being
+    # implied by a green tick: vulnscan.yml spent two months scanning two of
+    # six platforms because its coverage lived in a comment.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # ⛔ Bounded on purpose. Each project's closure is installed into its
+      # OWN store (a shared one rescues a missing reference by accident), so
+      # this is ~1400 closure installs per platform. Four at a time keeps a
+      # weekly audit from being the reason somebody's build waits — my own
+      # sweeps have starved this account's runners before.
+      max-parallel: 4
+      matrix:
+        chunk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+
+      # @main, and GONOPROXY (workflow env:) keeps that honest against a
+      # stale proxy cache: the question "can this load" should be answered
+      # by the code that answers it best today.
+      - name: install bk and pkgs
+        run: |
+          go install github.com/go-pkgx/bk/cmd/bk@main
+          go install github.com/go-pkgx/pkgx/cmd/pkgs@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      # PULL the published catalogue rather than build one: this audits what
+      # is PUBLISHED, so the list of subjects has to come from the registry
+      # and not from a pantry checkout that may be ahead of it. PKGX_VERIFY
+      # is on by default, so an unsigned catalogue stops the job here.
+      - name: the published catalogue for this host
+        env:
+          PKGX_DIR: ${{ runner.temp }}/pkgx
+        run: pkgs catalog update --platform linux/x86-64
+
+      # sonamesweep prints which chunk it swept and how many projects that
+      # was, so "clean" in this log is never mistaken for "clean overall".
+      # It exits 2 — not 0 — for every way of sweeping nothing: no
+      # catalogue, no bottled project in it, an empty chunk, or a catalogue
+      # for a platform this machine is not.
+      - name: chunk ${{ matrix.chunk }} of 14
+        env:
+          PKGX_DIR: ${{ runner.temp }}/pkgx
+        run: |
+          go run ./sonamesweep \
+            -catalog "$RUNNER_TEMP/pkgx/catalog/linux-x86-64.json" \
+            -chunk ${{ matrix.chunk }} \
+            -chunks "${{ inputs.chunks || '14' }}"
