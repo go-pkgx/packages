@@ -453,6 +453,23 @@ not a thing to pretend to do weekly. It refuses a catalogue for a platform
 this host is not: `bk unresolved` installs for the **host**, so that answer
 would be this machine's bottles under another platform's name.
 
+**The first live sweep says how big this is.** Chunk 0 — 100 of 1407 bottled
+projects — came back with **64 unresolvable references**, owned by
+`python.org`, `tcl-lang.org`, `nodejs.org`, `kerberos.org`, `libgit2.org`,
+`libssh2.org` and `curl.se` among others. Against a backlog that size a gate
+that fails on *any* finding is red every week, and red on everything is
+furniture. So the sweep **records**: `-out` writes each chunk's findings in
+the format `-baseline` reads, the fourteen files concatenate into
+`sonames/baseline.txt`, and the gate then goes red only on a reference that
+is **not** in it — `bk vulnfetch -fail-on-new` in the shape this measurement
+has. A baseline has to be measured before it can be committed; a
+half-measured one would mark the other thirteen fourteenths as new.
+
+⛔ That first run also went out with `-quiet`, which suppresses the
+per-reference lines: it reported "64 unresolvable reference(s)" and named
+not one soname. A verdict with its evidence stripped is a line nobody can
+act on, and the flag is gone.
+
 ### How the lanes bootstrap their tools, and why it is one line per workflow
 
 Every publishing lane starts by installing `bk`, `pkgx` or `pkgm` from source,

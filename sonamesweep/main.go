@@ -87,6 +87,8 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	catalog := fs.String("catalog", "", "the published catalogue to read the project list from (required)")
 	chunk := fs.Int("chunk", 0, "which chunk to sweep, 0-based")
 	chunks := fs.Int("chunks", 14, "how many chunks the project list is cut into")
+	baseline := fs.String("baseline", "", "the references already known to be unresolvable; red only on a NEW one. Named and unreadable is an error, never an empty baseline")
+	out := fs.String("out", "", "also write this chunk's findings here, in baseline format — the fourteen files a full sweep produces ARE the baseline")
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
@@ -140,15 +142,160 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stdout, "%s: chunk %d of %d — %d of %d bottled project(s), %s … %s\n",
 		platform, *chunk, *chunks, len(mine), len(projects), mine[0], mine[len(mine)-1])
 
-	out, err := runCmd("bk", append([]string{"unresolved", "-quiet"}, mine...)...)
-	fmt.Fprint(stdout, out)
-	if err != nil {
-		fmt.Fprintf(stderr, "sonamesweep: %s chunk %d of %d: unresolvable reference(s) above — a bottle that cannot load\n",
-			platform, *chunk, *chunks)
-		return 1
+	// ⛔ NO -quiet. It suppresses the per-reference lines, and the first run
+	// of this sweep went out with it: chunk 0 reported "64 unresolvable
+	// reference(s)" over 35 projects and named not one soname. A verdict
+	// with its evidence stripped is a line nobody can act on, and the extra
+	// cost here is ~100 "ok" lines a chunk.
+	bkOut, err := runCmd("bk", append([]string{"unresolved"}, mine...)...)
+	fmt.Fprint(stdout, bkOut)
+	found := parseFindings(bkOut)
+
+	if *out != "" {
+		if werr := writeFindings(*out, found); werr != nil {
+			// ⛔ The file IS the deliverable of a recording run, so failing
+			// to write it is not a footnote under a green tick.
+			fmt.Fprintln(stderr, "sonamesweep:", werr)
+			return 2
+		}
+		fmt.Fprintf(stdout, "%d reference(s) written to %s\n", len(found), *out)
 	}
-	fmt.Fprintf(stdout, "%s: chunk %d of %d clean over %d project(s)\n", platform, *chunk, *chunks, len(mine))
-	return 0
+
+	if *baseline == "" {
+		if err != nil {
+			fmt.Fprintf(stderr, "sonamesweep: %s chunk %d of %d: %d unresolvable reference(s) above — a bottle that cannot load\n",
+				platform, *chunk, *chunks, len(found))
+			return 1
+		}
+		fmt.Fprintf(stdout, "%s: chunk %d of %d clean over %d project(s)\n", platform, *chunk, *chunks, len(mine))
+		return 0
+	}
+
+	known, rerr := readBaseline(*baseline)
+	if rerr != nil {
+		// ⛔ Named and unreadable is an error, never an empty baseline: an
+		// empty one makes EVERY finding new, so the run goes red for the
+		// wrong reason and the real new one is lost in it.
+		fmt.Fprintln(stderr, "sonamesweep:", rerr)
+		return 2
+	}
+
+	inChunk := map[string]bool{}
+	for _, p := range mine {
+		inChunk[p] = true
+	}
+	var fresh []finding
+	seen := map[finding]bool{}
+	for _, f := range found {
+		seen[f] = true
+		if !known[f] {
+			fresh = append(fresh, f)
+		}
+	}
+	// ⛔ STALE IS COUNTED ONLY WITHIN THIS CHUNK. The baseline is global and
+	// a run sees a fourteenth of it, so "in the baseline and not found" is
+	// meaningless for the thirteen fourteenths this job never installed.
+	fixed := 0
+	for f := range known {
+		if inChunk[f.project] && !seen[f] {
+			fixed++
+		}
+	}
+
+	fmt.Fprintf(stdout, "%s: chunk %d of %d — %d reference(s), %d known, %d new, %d fixed since the baseline\n",
+		platform, *chunk, *chunks, len(found), len(found)-len(fresh), len(fresh), fixed)
+	if len(fresh) == 0 {
+		return 0
+	}
+	for _, f := range fresh {
+		fmt.Fprintf(stdout, "  NEW %-34s %-28s %s\n", f.project, f.owner, f.ref)
+	}
+	fmt.Fprintf(stderr, "sonamesweep: %s chunk %d of %d: %d reference(s) not in %s\n",
+		platform, *chunk, *chunks, len(fresh), *baseline)
+	return 1
+}
+
+// finding is one unresolvable reference: which project's closure, whose
+// binary names it, and what it names.
+//
+// All three, because the project alone collapses distinct defects into one
+// line — `attrs.org python.org libssl.so.1.1` and `attrs.org tcl-lang.org
+// libtcl8.6.so` are two bottles to rebuild, not one project to look at.
+type finding struct{ project, owner, ref string }
+
+// parseFindings reads `bk unresolved`'s output: a header line per owner with
+// a count, then one indented line per reference.
+//
+//	apache.org/jmeter   kerberos.org   2 unresolvable
+//	    libgssapi_krb5.so.2
+//	    libkrb5.so.3
+//
+// It reads the INDENTED lines rather than the counts, so a header whose
+// count disagrees with the lines under it cannot inflate the total.
+func parseFindings(out string) []finding {
+	var found []finding
+	var project, owner string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "    ") {
+			if ref := strings.TrimSpace(line); ref != "" && project != "" {
+				found = append(found, finding{project, owner, ref})
+			}
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) >= 4 && f[len(f)-1] == "unresolvable" {
+			project, owner = f[0], f[1]
+			continue
+		}
+		// Anything else — an "ok" line, the total, a blank — ends the group,
+		// so a stray indented line later cannot be attributed to it.
+		project, owner = "", ""
+	}
+	return found
+}
+
+// writeFindings emits this chunk's findings in exactly the format
+// readBaseline accepts, sorted, so concatenating a full sweep's fourteen
+// files gives a baseline and nobody has to reformat anything by hand.
+//
+// It writes the file even when there is nothing to put in it: a missing
+// file and a chunk with no findings are different facts, and the assembler
+// of a baseline needs to tell them apart.
+func writeFindings(path string, found []finding) error {
+	lines := make([]string, 0, len(found))
+	for _, f := range found {
+		lines = append(lines, f.project+" "+f.owner+" "+f.ref)
+	}
+	sort.Strings(lines)
+	var b strings.Builder
+	for _, l := range lines {
+		b.WriteString(l + "\n")
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
+
+// readBaseline reads `project owner soname` per line; `#` comments and blank
+// lines are ignored.
+func readBaseline(path string) (map[finding]bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	known := map[finding]bool{}
+	for i, line := range strings.Split(string(b), "\n") {
+		if t := strings.TrimSpace(line); t == "" || strings.HasPrefix(t, "#") {
+			continue
+		}
+		f := strings.Fields(line)
+		if len(f) != 3 {
+			return nil, fmt.Errorf("%s:%d: want `project owner soname`, got %d field(s)", path, i+1, len(f))
+		}
+		known[finding{f[0], f[1], f[2]}] = true
+	}
+	if len(known) == 0 {
+		return nil, fmt.Errorf("%s: no entries — an empty baseline makes every finding new", path)
+	}
+	return known, nil
 }
 
 // platformOf reads the one platform a catalogue is for.

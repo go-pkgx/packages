@@ -75,8 +75,16 @@ func TestItNamesTheChunkItSwept(t *testing.T) {
 		}
 	}
 	// And the subject is what it said it was.
-	if got := *argv; len(got) != 5 || got[0] != "bk" || got[1] != "unresolved" || got[3] != "curl.se" {
+	// ⛔ AND NOT WITH -quiet. That flag suppresses the per-reference lines,
+	// and the sweep's first live run went out carrying it: chunk 0 reported
+	// 64 unresolvable references and named not one soname.
+	if got := *argv; len(got) != 4 || got[0] != "bk" || got[1] != "unresolved" || got[2] != "curl.se" {
 		t.Fatalf("bk was not asked about a chunk of two: %q", got)
+	}
+	for _, a := range *argv {
+		if a == "-quiet" {
+			t.Error("-quiet strips the soname names the finding is made of")
+		}
 	}
 }
 
@@ -88,7 +96,7 @@ func TestTheChunksCoverEverythingOnce(t *testing.T) {
 	seen := map[string]int{}
 	for k := range 2 {
 		stub(t, func(_ string, args ...string) (string, error) {
-			for _, a := range args[2:] { // args[0] "unresolved", args[1] "-quiet"
+			for _, a := range args[1:] { // args[0] is "unresolved"
 				seen[a]++
 			}
 			return "", nil
@@ -210,6 +218,218 @@ func TestItRefusesToSweepNothing(t *testing.T) {
 				t.Errorf("the refusal does not say %q: %s", c.want, errb.String())
 			}
 		})
+	}
+}
+
+// What `bk unresolved` really printed, chunk 0 of the first live sweep,
+// trimmed. The indented lines are the finding; the header's count is not.
+const bkOutput = `curl.se                            ok
+python.org                         python.org                         2 unresolvable
+    libssl.so.1.1
+    libcrypto.so.1.1
+gnu.org/bash                       tcl-lang.org                       2 unresolvable
+    libtcl8.6.so
+    libtk8.6.so
+
+4 unresolvable reference(s)
+`
+
+// ⛔ RED ON SOMETHING NEW IS ACTIONABLE; RED ON EVERYTHING IS FURNITURE.
+// The first live sweep found 64 unresolvable references in its first 100
+// projects, so without a baseline every weekly run is red and the one that
+// matters is lost in it. This is vulnfetch's -fail-on-new, in the shape
+// this measurement has.
+func TestOnlyANewReferenceIsRed(t *testing.T) {
+	onLinuxX86(t)
+	base := filepath.Join(t.TempDir(), "baseline.txt")
+	if err := os.WriteFile(base, []byte(
+		"# known, being rebuilt\npython.org python.org libssl.so.1.1\npython.org python.org libcrypto.so.1.1\n"+
+			"gnu.org/bash tcl-lang.org libtcl8.6.so\ngnu.org/bash tcl-lang.org libtk8.6.so\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stub(t, func(string, ...string) (string, error) { return bkOutput, errors.New("exit status 1") })
+
+	var out, errb strings.Builder
+	// bk exits 1 because there ARE references; the baseline says none is new.
+	if code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "1", "-baseline", base}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d, want 0 — every reference is in the baseline\n%s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(out.String(), "4 reference(s), 4 known, 0 new") {
+		t.Errorf("the tally is wrong:\n%s", out.String())
+	}
+
+	// Now one of them is not recorded.
+	if err := os.WriteFile(base, []byte(
+		"python.org python.org libssl.so.1.1\ngnu.org/bash tcl-lang.org libtcl8.6.so\ngnu.org/bash tcl-lang.org libtk8.6.so\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	errb.Reset()
+	if code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "1", "-baseline", base}, &out, &errb); code != 1 {
+		t.Fatalf("code=%d, want 1 — one reference is new\n%s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(out.String(), "NEW python.org") || !strings.Contains(out.String(), "libcrypto.so.1.1") {
+		t.Errorf("the new reference is not named:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "3 known, 1 new") {
+		t.Errorf("the tally is wrong:\n%s", out.String())
+	}
+}
+
+// A reference that got fixed should leave the baseline, so the file does not
+// become a list of things that used to be true.
+//
+// ⛔ COUNTED ONLY WITHIN THIS CHUNK. The baseline is global and a run
+// installs a fourteenth of it, so "in the baseline and not seen" says
+// nothing about the thirteen fourteenths this job never touched — counting
+// those would report the whole backlog as fixed, every run.
+func TestFixedIsCountedOnlyInsideTheChunk(t *testing.T) {
+	onLinuxX86(t)
+	base := filepath.Join(t.TempDir(), "baseline.txt")
+	if err := os.WriteFile(base, []byte(
+		"python.org python.org libssl.so.1.1\npython.org python.org libcrypto.so.1.1\n"+
+			"gnu.org/bash tcl-lang.org libtcl8.6.so\ngnu.org/bash tcl-lang.org libtk8.6.so\n"+
+			// curl.se is in this chunk and came back clean: genuinely fixed.
+			"curl.se openssl.org libssl.so.1.1\n"+
+			// zlib.net is NOT in chunk 0 of 2, so nothing was learnt about it.
+			"zlib.net zlib.net libz.so.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stub(t, func(string, ...string) (string, error) { return bkOutput, errors.New("exit status 1") })
+
+	var out, errb strings.Builder
+	if code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "2", "-baseline", base}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d, want 0\n%s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(out.String(), "1 fixed since the baseline") {
+		t.Errorf("want exactly one fixed (curl.se), not zlib.net which this chunk never installed:\n%s", out.String())
+	}
+}
+
+// ⛔ A BASELINE THAT CANNOT BE READ IS NOT AN EMPTY ONE. Empty makes every
+// finding new, so the run goes red for the wrong reason and the real new
+// one is lost in the noise — the exact failure mode the baseline exists to
+// prevent.
+func TestAnUnreadableBaselineIsAnError(t *testing.T) {
+	onLinuxX86(t)
+	dir := t.TempDir()
+	empty := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(empty, []byte("# nothing but a comment\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	malformed := filepath.Join(dir, "bad.txt")
+	if err := os.WriteFile(malformed, []byte("python.org python.org\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, path, want string }{
+		{"absent", filepath.Join(dir, "nope.txt"), "nope.txt"},
+		{"empty", empty, "an empty baseline makes every finding new"},
+		{"two fields, not three", malformed, "want `project owner soname`"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			stub(t, func(string, ...string) (string, error) { return bkOutput, errors.New("exit status 1") })
+			var out, errb strings.Builder
+			if code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "1", "-baseline", c.path}, &out, &errb); code != 2 {
+				t.Fatalf("code=%d, want 2\n%s%s", code, out.String(), errb.String())
+			}
+			if !strings.Contains(errb.String(), c.want) {
+				t.Errorf("the refusal does not say %q: %s", c.want, errb.String())
+			}
+		})
+	}
+}
+
+// ⛔ THE INDENTED LINES ARE THE FINDING, NOT THE HEADER'S COUNT. A header
+// that disagreed with the lines under it would otherwise inflate the total,
+// and the two come from different code paths in bk.
+func TestTheCountComesFromTheLinesNotTheHeader(t *testing.T) {
+	got := parseFindings("a.org   b.org   99 unresolvable\n    libone.so.1\n\n1 unresolvable reference(s)\n")
+	if len(got) != 1 {
+		t.Fatalf("read %d finding(s) from one line, want 1: %+v", len(got), got)
+	}
+	if got[0] != (finding{"a.org", "b.org", "libone.so.1"}) {
+		t.Errorf("the finding lost a field: %+v", got[0])
+	}
+	// An "ok" line ends the group, so a later indented line is not attributed
+	// to the project above it.
+	if g := parseFindings("a.org   b.org   1 unresolvable\nc.org   ok\n    libstray.so.1\n"); len(g) != 0 {
+		t.Errorf("a stray indented line after `ok` became a finding: %+v", g)
+	}
+}
+
+// ⛔ THE FOURTEEN FILES A FULL SWEEP WRITES *ARE* THE BASELINE. If -out
+// emitted anything readBaseline could not read, assembling one would mean
+// reformatting fourteen files by hand — and that is where a baseline stops
+// being regenerated and starts being a list of things that used to be true.
+// So this test takes the round trip, not the format.
+func TestWhatItWritesIsWhatItReads(t *testing.T) {
+	onLinuxX86(t)
+	stub(t, func(string, ...string) (string, error) { return bkOutput, errors.New("exit status 1") })
+	emitted := filepath.Join(t.TempDir(), "chunk0.txt")
+
+	var out, errb strings.Builder
+	if code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "1", "-out", emitted}, &out, &errb); code != 1 {
+		t.Fatalf("code=%d, want 1 — recording does not make findings go away\n%s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(out.String(), "4 reference(s) written to") {
+		t.Errorf("it did not say what it wrote:\n%s", out.String())
+	}
+
+	known, err := readBaseline(emitted)
+	if err != nil {
+		t.Fatalf("what -out wrote, -baseline cannot read: %v", err)
+	}
+	if len(known) != 4 {
+		t.Errorf("the round trip lost entries: %d of 4", len(known))
+	}
+	if !known[finding{"python.org", "python.org", "libssl.so.1.1"}] {
+		t.Errorf("a finding did not survive the round trip: %v", known)
+	}
+
+	// Fed back as the baseline, the same sweep is green: that is the whole
+	// point of recording, and it is the only check that the two formats
+	// really are one format.
+	out.Reset()
+	errb.Reset()
+	if code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "1", "-baseline", emitted}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d, want 0 — its own output is not an acceptable baseline\n%s%s", code, out.String(), errb.String())
+	}
+}
+
+// A chunk with no findings still writes its file: missing and empty are
+// different facts, and whoever assembles a baseline needs to tell a chunk
+// that found nothing from one that never ran.
+func TestACleanChunkStillWritesItsFile(t *testing.T) {
+	onLinuxX86(t)
+	stub(t, func(string, ...string) (string, error) { return "curl.se   ok\n\n0 unresolvable reference(s)\n", nil })
+	emitted := filepath.Join(t.TempDir(), "chunk0.txt")
+
+	var out, errb strings.Builder
+	if code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "1", "-out", emitted}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d, want 0\n%s%s", code, out.String(), errb.String())
+	}
+	b, err := os.ReadFile(emitted)
+	if err != nil {
+		t.Fatalf("a clean chunk wrote no file: %v", err)
+	}
+	if len(b) != 0 {
+		t.Errorf("a clean chunk wrote %q", b)
+	}
+}
+
+// Somewhere unwritable is an error, not a footnote under a green tick: the
+// file is the deliverable of a recording run.
+func TestAnUnwritableOutIsAnError(t *testing.T) {
+	onLinuxX86(t)
+	stub(t, func(string, ...string) (string, error) { return bkOutput, errors.New("exit status 1") })
+	var out, errb strings.Builder
+	code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "1",
+		"-out", filepath.Join(t.TempDir(), "no-such-dir", "chunk0.txt")}, &out, &errb)
+	if code != 2 {
+		t.Fatalf("code=%d, want 2\n%s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(errb.String(), "chunk0.txt") {
+		t.Errorf("the refusal does not name the file: %s", errb.String())
 	}
 }
 
