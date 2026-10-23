@@ -132,7 +132,7 @@ jobs:
       # chunks that had nothing to report.
       - name: keep this chunk's findings
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sonames-chunk-${{ matrix.chunk }}
           path: ${{ runner.temp }}/chunk-${{ matrix.chunk }}.txt
