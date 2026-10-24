@@ -433,6 +433,181 @@ func TestAnUnwritableOutIsAnError(t *testing.T) {
 	}
 }
 
+// chunkDir lays out artefacts the way the workflow's upload unpacks them:
+// `sonames-chunk-3/chunk-3.txt`, one directory per chunk.
+func chunkDir(t *testing.T, files map[int]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for k, body := range files {
+		sub := filepath.Join(dir, "sonames-chunk-"+itoa(k))
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(sub, "chunk-"+itoa(k)+".txt"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// ⛔ A BASELINE MISSING ONE CHUNK OF FOURTEEN IS NOT 13/14 OF A BASELINE.
+// Every finding that chunk would have recorded becomes NEW on the next
+// run, so the gate goes red over a hundred references nobody introduced —
+// and the one that matters is somewhere in that list. This is the whole
+// reason the merge is a command and not `cat`.
+func TestMergeRefusesAnIncompleteSet(t *testing.T) {
+	dir := chunkDir(t, map[int]string{
+		0: "a.org b.org libone.so.1\n",
+		2: "c.org d.org libtwo.so.2\n",
+	})
+	var out, errb strings.Builder
+	if code := run([]string{"-merge", dir, "-chunks", "3"}, &out, &errb); code != 2 {
+		t.Fatalf("code=%d, want 2\n%s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(errb.String(), "1 of 3 chunk(s) are missing (1)") {
+		t.Errorf("the refusal does not name the missing chunk: %s", errb.String())
+	}
+	if out.Len() != 0 {
+		t.Errorf("it emitted a partial baseline anyway:\n%s", out.String())
+	}
+}
+
+// ⛔ AN EMPTY CHUNK IS THE GOOD NEWS, not a missing one. Those hundred
+// projects all load. Refusing it would make a clean chunk unmergeable —
+// and `cat` cannot tell it from a job that never ran, which is the
+// distinction this whole mechanism rests on.
+func TestMergeAcceptsACleanChunkAndDedupes(t *testing.T) {
+	dir := chunkDir(t, map[int]string{
+		0: "b.org z.org libtwo.so.2\na.org z.org libone.so.1\n",
+		1: "",                          // clean
+		2: "a.org z.org libone.so.1\n", // the same reference, seen twice
+	})
+	var out, errb strings.Builder
+	if code := run([]string{"-merge", dir, "-chunks", "3"}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d, want 0\n%s%s", code, out.String(), errb.String())
+	}
+	want := "a.org z.org libone.so.1\nb.org z.org libtwo.so.2\n"
+	if out.String() != want {
+		t.Errorf("merged to:\n%q\nwant:\n%q", out.String(), want)
+	}
+	if !strings.Contains(errb.String(), "2 reference(s) over 2 project(s), owned by 1 bottle(s), from 3 chunk(s)") {
+		t.Errorf("the tally is wrong: %s", errb.String())
+	}
+}
+
+// ⛔ THE TALLY IS BY OWNER, because the owner is what gets rebuilt. 967
+// references across hundreds of projects is a number nobody can act on;
+// the same 967 by whose binary names the missing soname is a work order,
+// and the counts are steeply unequal.
+func TestMergeTalliesByOwnerNotByProject(t *testing.T) {
+	dir := chunkDir(t, map[int]string{0: "" +
+		"p1.org tcl-lang.org a.so.1\np2.org tcl-lang.org a.so.1\np3.org tcl-lang.org a.so.1\n" +
+		"p1.org python.org b.so.2\np2.org python.org b.so.2\n" +
+		"p1.org zlib.net c.so.3\n"})
+	var out, errb strings.Builder
+	if code := run([]string{"-merge", dir, "-chunks", "1"}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d\n%s%s", code, out.String(), errb.String())
+	}
+	// Most first, so the top of the list is what to rebuild first.
+	tcl := strings.Index(errb.String(), "tcl-lang.org")
+	py := strings.Index(errb.String(), "python.org")
+	zlib := strings.Index(errb.String(), "zlib.net")
+	if !(tcl < py && py < zlib) {
+		t.Errorf("owners are not ordered by count:\n%s", errb.String())
+	}
+	if !strings.Contains(errb.String(), "    3  tcl-lang.org") {
+		t.Errorf("the count is wrong:\n%s", errb.String())
+	}
+}
+
+// Two files claiming the same chunk would double its entries and hide
+// that one of them came from another run.
+func TestMergeRefusesTwoFilesForOneChunk(t *testing.T) {
+	dir := chunkDir(t, map[int]string{0: "a.org b.org c.so.1\n"})
+	deeper := filepath.Join(dir, "elsewhere")
+	if err := os.MkdirAll(deeper, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(deeper, "chunk-0.txt"), []byte("x.org y.org z.so.1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb strings.Builder
+	if code := run([]string{"-merge", dir, "-chunks", "1"}, &out, &errb); code != 2 {
+		t.Fatalf("code=%d, want 2\n%s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(errb.String(), "chunk 0 is at both") {
+		t.Errorf("the refusal does not say what is wrong: %s", errb.String())
+	}
+}
+
+// A chunk file that will not parse is an error, not an empty chunk: read
+// as empty it would silently shrink the baseline.
+func TestMergeRefusesAMalformedChunk(t *testing.T) {
+	dir := chunkDir(t, map[int]string{0: "a.org b.org\n"})
+	var out, errb strings.Builder
+	if code := run([]string{"-merge", dir, "-chunks", "1"}, &out, &errb); code != 2 {
+		t.Fatalf("code=%d, want 2\n%s%s", code, out.String(), errb.String())
+	}
+	if !strings.Contains(errb.String(), "want `project owner soname`") {
+		t.Errorf("the refusal does not say what is wrong: %s", errb.String())
+	}
+}
+
+func TestMergeRefusesADirectoryThatIsNotThere(t *testing.T) {
+	var out, errb strings.Builder
+	if code := run([]string{"-merge", filepath.Join(t.TempDir(), "nope"), "-chunks", "1"}, &out, &errb); code != 2 {
+		t.Fatalf("code=%d, want 2\n%s%s", code, out.String(), errb.String())
+	}
+}
+
+// -chunks is a count for both modes, and 0 would divide by zero in one and
+// make the other merge nothing.
+func TestChunksMustBeACount(t *testing.T) {
+	var out, errb strings.Builder
+	if code := run([]string{"-merge", t.TempDir(), "-chunks", "0"}, &out, &errb); code != 2 {
+		t.Fatalf("code=%d, want 2", code)
+	}
+	if !strings.Contains(errb.String(), "is not a count") {
+		t.Errorf("the refusal does not say what is wrong: %s", errb.String())
+	}
+}
+
+// The artefact directory holds more than chunk files — an unpack leaves
+// its own litter, and a person assembling by hand will have notes beside
+// the data. Anything not named `chunk-<n>.txt` is not a chunk, and a
+// `chunk-abc.txt` is not chunk zero.
+//
+// The owner list is capped, and the cap announces itself: a top ten
+// printed as if it were the whole set would read as "ten bottles to
+// rebuild" when there are a hundred.
+func TestMergeIgnoresLitterAndAnnouncesTheCap(t *testing.T) {
+	// 12 owners, so the cap of 10 has something to hide.
+	var body strings.Builder
+	for i := range 12 {
+		body.WriteString("p" + itoa(i) + ".org owner" + itoa(i) + ".org lib" + itoa(i) + ".so.1\n")
+	}
+	dir := chunkDir(t, map[int]string{0: body.String()})
+	for _, litter := range []string{"README.md", "chunk-abc.txt", "chunk-0.txt.bak"} {
+		if err := os.WriteFile(filepath.Join(dir, litter), []byte("not a chunk\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var out, errb strings.Builder
+	if code := run([]string{"-merge", dir, "-chunks", "1"}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d, want 0 — the litter is not a chunk\n%s%s", code, out.String(), errb.String())
+	}
+	if strings.Contains(out.String(), "not a chunk") {
+		t.Errorf("litter reached the baseline:\n%s", out.String())
+	}
+	if !strings.Contains(errb.String(), "owned by 12 bottle(s)") {
+		t.Errorf("the tally is wrong: %s", errb.String())
+	}
+	if !strings.Contains(errb.String(), "… 2 more owner(s)") {
+		t.Errorf("the cap does not announce itself: %s", errb.String())
+	}
+}
+
 // A catalogue that is not there is not a platform with nothing to sweep.
 func TestAMissingCatalogueIsAnError(t *testing.T) {
 	onLinuxX86(t)

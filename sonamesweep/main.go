@@ -52,9 +52,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-pkgx/bottle"
@@ -89,8 +92,16 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	chunks := fs.Int("chunks", 14, "how many chunks the project list is cut into")
 	baseline := fs.String("baseline", "", "the references already known to be unresolvable; red only on a NEW one. Named and unreadable is an error, never an empty baseline")
 	out := fs.String("out", "", "also write this chunk's findings here, in baseline format — the fourteen files a full sweep produces ARE the baseline")
+	merge := fs.String("merge", "", "instead of sweeping, assemble the chunk files under this directory into one baseline on stdout. Refuses unless every chunk 0..N-1 is present")
 	if err := fs.Parse(argv); err != nil {
 		return 2
+	}
+	if *chunks < 1 {
+		fmt.Fprintf(stderr, "sonamesweep: -chunks %d is not a count\n", *chunks)
+		return 2
+	}
+	if *merge != "" {
+		return runMerge(*merge, *chunks, stdout, stderr)
 	}
 	if *catalog == "" {
 		fmt.Fprintln(stderr, "sonamesweep: -catalog is required")
@@ -254,6 +265,114 @@ func parseFindings(out string) []finding {
 	return found
 }
 
+// runMerge assembles a full sweep's chunk files into one baseline.
+//
+// ⛔ IT REFUSES AN INCOMPLETE SET, and that is the whole reason this is a
+// command rather than `cat`. A baseline missing one chunk of fourteen is
+// not 13/14 of a baseline: every finding that chunk would have recorded
+// becomes NEW on the next run, so the gate goes red over a hundred
+// references nobody introduced — and the one that matters is somewhere in
+// that list. Concatenation cannot tell a chunk that found nothing from a
+// chunk whose job never ran; this can, because -out writes the empty file.
+//
+// It reads `chunk-<k>.txt` at any depth, because that is how the workflow's
+// artefacts unpack (`sonames-chunk-3/chunk-3.txt`) and how a person would
+// lay them out by hand.
+func runMerge(dir string, chunks int, stdout, stderr io.Writer) int {
+	found := map[int]string{}
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		name := d.Name()
+		if !strings.HasPrefix(name, "chunk-") || !strings.HasSuffix(name, ".txt") {
+			return nil
+		}
+		k, cerr := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(name, "chunk-"), ".txt"))
+		if cerr != nil {
+			return nil
+		}
+		if prev, dup := found[k]; dup {
+			// Two files claiming the same chunk: merging both would double
+			// its entries and hide that one of them is from another run.
+			return fmt.Errorf("chunk %d is at both %s and %s", k, prev, p)
+		}
+		found[k] = p
+		return nil
+	})
+	if err != nil {
+		fmt.Fprintln(stderr, "sonamesweep:", err)
+		return 2
+	}
+
+	var missing []string
+	for k := range chunks {
+		if _, ok := found[k]; !ok {
+			missing = append(missing, strconv.Itoa(k))
+		}
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(stderr, "sonamesweep: %d of %d chunk(s) are missing (%s) — a baseline without them marks everything they found as NEW\n",
+			len(missing), chunks, strings.Join(missing, " "))
+		return 2
+	}
+
+	all := map[finding]bool{}
+	for k := range chunks {
+		one, rerr := readBaselineAllowingEmpty(found[k])
+		if rerr != nil {
+			fmt.Fprintln(stderr, "sonamesweep:", rerr)
+			return 2
+		}
+		for f := range one {
+			all[f] = true
+		}
+	}
+
+	lines := make([]string, 0, len(all))
+	for f := range all {
+		lines = append(lines, f.project+" "+f.owner+" "+f.ref)
+	}
+	sort.Strings(lines)
+	for _, l := range lines {
+		fmt.Fprintln(stdout, l)
+	}
+
+	// ⛔ THE TALLY IS BY OWNER, NOT BY PROJECT, BECAUSE THE OWNER IS WHAT
+	// GETS REBUILT. 967 references across hundreds of projects is a number
+	// nobody can act on; the same 967 sorted by whose binary names the
+	// missing soname says which handful of bottles to rebuild first, and
+	// the counts are steeply unequal — one bad openssl pin in a popular
+	// dependency appears once per dependent.
+	byOwner := map[string]int{}
+	projects := map[string]bool{}
+	for f := range all {
+		byOwner[f.owner]++
+		projects[f.project] = true
+	}
+	owners := make([]string, 0, len(byOwner))
+	for o := range byOwner {
+		owners = append(owners, o)
+	}
+	sort.Slice(owners, func(i, j int) bool {
+		if byOwner[owners[i]] != byOwner[owners[j]] {
+			return byOwner[owners[i]] > byOwner[owners[j]]
+		}
+		return owners[i] < owners[j] // ties alphabetical, so two runs agree
+	})
+	fmt.Fprintf(stderr, "sonamesweep: %d reference(s) over %d project(s), owned by %d bottle(s), from %d chunk(s)\n",
+		len(lines), len(projects), len(owners), chunks)
+	const show = 10
+	for i, o := range owners {
+		if i == show {
+			fmt.Fprintf(stderr, "  … %d more owner(s)\n", len(owners)-show)
+			break
+		}
+		fmt.Fprintf(stderr, "  %5d  %s\n", byOwner[o], o)
+	}
+	return 0
+}
+
 // writeFindings emits this chunk's findings in exactly the format
 // readBaseline accepts, sorted, so concatenating a full sweep's fourteen
 // files gives a baseline and nobody has to reformat anything by hand.
@@ -277,6 +396,24 @@ func writeFindings(path string, found []finding) error {
 // readBaseline reads `project owner soname` per line; `#` comments and blank
 // lines are ignored.
 func readBaseline(path string) (map[finding]bool, error) {
+	known, err := readBaselineAllowingEmpty(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(known) == 0 {
+		return nil, fmt.Errorf("%s: no entries — an empty baseline makes every finding new", path)
+	}
+	return known, nil
+}
+
+// readBaselineAllowingEmpty is the same parser without that refusal.
+//
+// ⛔ THE TWO CALLERS DISAGREE ABOUT EMPTY ON PURPOSE. For a BASELINE,
+// empty is a configuration error: every finding becomes new and the gate
+// goes red for the wrong reason. For one CHUNK of a sweep, empty is the
+// good news — that chunk's hundred projects all load — and refusing it
+// would make a clean chunk unmergeable.
+func readBaselineAllowingEmpty(path string) (map[finding]bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -291,9 +428,6 @@ func readBaseline(path string) (map[finding]bool, error) {
 			return nil, fmt.Errorf("%s:%d: want `project owner soname`, got %d field(s)", path, i+1, len(f))
 		}
 		known[finding{f[0], f[1], f[2]}] = true
-	}
-	if len(known) == 0 {
-		return nil, fmt.Errorf("%s: no entries — an empty baseline makes every finding new", path)
 	}
 	return known, nil
 }

@@ -103,20 +103,19 @@ jobs:
       # catalogue, no bottled project in it, an empty chunk, or a catalogue
       # for a platform this machine is not.
       #
-      # ⛔ -out, AND NO BASELINE YET. The first live sweep (2026-10-23) found
-      # 64 unresolvable references in its first 100 projects, owned by
-      # python.org, tcl-lang.org, nodejs.org, kerberos.org, libgit2.org and
-      # curl.se among others. Against a backlog that size a gate that fails
-      # on ANY finding is red every week, and red on everything is furniture
-      # — vulnscan.yml carries the same note and the same -fail-on-new
-      # answer.
+      # ⛔ -baseline, BECAUSE RED ON EVERYTHING IS FURNITURE. The full sweep
+      # of 2026-10-24 measured 967 unresolvable references over 259 of the
+      # 1407 bottled projects, owned by 100 bottles — tcl-lang.org 218,
+      # haskell.org 152, python.org 82, kerberos.org 60. A gate that fails
+      # on ANY finding would be red every week over a backlog nobody
+      # introduced that week, and the one reference that matters would be
+      # somewhere inside it. vulnscan.yml carries the same note and the
+      # same -fail-on-new answer.
       #
-      # So this run RECORDS. The fourteen files it uploads concatenate into
-      # `sonames/baseline.txt`; once that lands, this step gains
-      # `-baseline sonames/baseline.txt` and goes red only on a reference
-      # that is NOT in it. The baseline has to be measured before it can be
-      # committed, and a half-measured one would mark the other thirteen
-      # fourteenths as new.
+      # So: red only on a reference that is NOT in sonames/baseline.txt.
+      # -out keeps recording, because the fourteen files it uploads are how
+      # the baseline is regenerated — `sonamesweep -merge`, which refuses
+      # an incomplete set rather than quietly dropping a chunk.
       - name: chunk ${{ matrix.chunk }} of 14
         env:
           PKGX_DIR: ${{ runner.temp }}/pkgx
@@ -125,6 +124,7 @@ jobs:
             -catalog "$RUNNER_TEMP/pkgx/catalog/linux-x86-64.json" \
             -chunk ${{ matrix.chunk }} \
             -chunks "${{ inputs.chunks || '14' }}" \
+            -baseline sonames/baseline.txt \
             -out "$RUNNER_TEMP/chunk-${{ matrix.chunk }}.txt"
 
       # if: always(), because the chunk that FAILS is the one whose findings

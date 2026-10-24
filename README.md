@@ -453,17 +453,39 @@ not a thing to pretend to do weekly. It refuses a catalogue for a platform
 this host is not: `bk unresolved` installs for the **host**, so that answer
 would be this machine's bottles under another platform's name.
 
-**The first live sweep says how big this is.** Chunk 0 — 100 of 1407 bottled
-projects — came back with **64 unresolvable references**, owned by
-`python.org`, `tcl-lang.org`, `nodejs.org`, `kerberos.org`, `libgit2.org`,
-`libssh2.org` and `curl.se` among others. Against a backlog that size a gate
-that fails on *any* finding is red every week, and red on everything is
-furniture. So the sweep **records**: `-out` writes each chunk's findings in
-the format `-baseline` reads, the fourteen files concatenate into
-`sonames/baseline.txt`, and the gate then goes red only on a reference that
-is **not** in it — `bk vulnfetch -fail-on-new` in the shape this measurement
-has. A baseline has to be measured before it can be committed; a
-half-measured one would mark the other thirteen fourteenths as new.
+**The full sweep says how big this is.** Measured 2026-10-24 over all
+fourteen chunks of linux/x86-64:
+
+```
+967 reference(s) over 259 project(s), owned by 100 bottle(s)
+    218  tcl-lang.org
+    152  haskell.org
+     82  python.org
+     60  kerberos.org
+     40  libgit2.org
+     36  libevent.org
+     30  openprinting.github.io/cups
+```
+
+⛔ **The tally is by OWNER, because the owner is what gets rebuilt.** 967
+references over 259 projects is a number nobody can act on; the same 967
+sorted by whose binary names the missing soname is a work order, and the
+counts are steeply unequal — one bad pin in a popular dependency appears
+once per dependent.
+
+Against a backlog that size a gate that fails on *any* finding is red every
+week, and red on everything is furniture. So the gate goes red only on a
+reference **not** in `sonames/baseline.txt` — `bk vulnfetch -fail-on-new`
+in the shape this measurement has.
+
+`-out` writes each chunk in the format `-baseline` reads, and
+`sonamesweep -merge <dir> -chunks 14` assembles them. ⛔ **It refuses an
+incomplete set**, which is why it is a command and not `cat`: a baseline
+missing one chunk of fourteen is not 13/14 of a baseline — every finding
+that chunk would have recorded becomes *new* next run, and the one that
+matters is lost in it. `cat` also cannot tell a chunk that found nothing
+from a chunk whose job never ran; this can, because `-out` writes the
+empty file.
 
 ⛔ That first run also went out with `-quiet`, which suppresses the
 per-reference lines: it reported "64 unresolvable reference(s)" and named
