@@ -237,6 +237,21 @@ jobs:
   build:
     needs: setup
     runs-on: ${{ matrix.runner }}
+    # ⛔ 360 IS THE DEFAULT, AND IT IS NOT ENOUGH FOR AN EMULATED ARCH.
+    # Measured 2026-10-23/24: `nodejs.org 26.12.1` for linux/aarch64 started
+    # at 19:29:30Z and was cancelled at 01:34:31Z — six hours and five
+    # minutes, the default job timeout plus its cleanup. Twelve of the
+    # job's twenty-three steps had run; nothing had failed.
+    #
+    # That reads as a CI flake and is not one. The same recipe took under
+    # an hour on x86-64: aarch64 in this pool is emulated, and a large C++
+    # build there is simply slower than six hours. Left at the default,
+    # node can never be rebuilt for that platform — which is what blocked
+    # the remedy for six advisories in #344.
+    #
+    # Raised rather than removed: a job that hangs should still end, and
+    # this one holds a runner the whole organisation shares.
+    timeout-minutes: 720
     strategy:
       fail-fast: false
       max-parallel: 20
