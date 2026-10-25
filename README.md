@@ -409,10 +409,11 @@ or pull a package directly:
 Three workflows exist to catch the failures that do not announce themselves.
 
 **`fromscratch.yml` — continuous proof that a published package runs with no
-system at all.** For each of twelve witness tools (`lz4.org`, `openssl.org`,
+system at all.** For each witness tool in that workflow's `TOOLS` array —
+eleven today (`lz4.org`, `openssl.org`,
 `tukaani.org/xz`, `facebook.com/zstd`, `sqlite.org`, `rsync.samba.org`,
 `perl.org`, `stedolan.github.io/jq`, `gnu.org/wget`, `curl.se`,
-`git-scm.org`, …) `pkgm image` emits a `FROM scratch` Containerfile whose `RUN`
+`git-scm.org`) — `pkgm image` emits a `FROM scratch` Containerfile whose `RUN`
 step uses pkgm *itself*, inside the image, to install the tool's whole runtime
 closure over HTTPS from this registry and wire the pkgx loader. The job then
 executes exactly that — the ENV and argv are read out of the Containerfile pkgm
@@ -422,6 +423,28 @@ chroot proves the same thing with no image-layer machinery in between. A closure
 that is not fully published yet makes the install fail and is reported as a
 coverage gap (SKIP); a tool that installs but whose smoke run fails **fails the
 job**.
+
+Measured 2026-10-25, after a week in which the OpenSSL-1.1 class was found,
+`nodejs.org` was rebuilt twice and 967 unresolvable references were recorded:
+
+```
+PASS (run from scratch): lz4.org openssl.org tukaani.org/xz facebook.com/zstd
+                         sqlite.org rsync.samba.org perl.org stedolan.github.io/jq
+                         gnu.org/wget curl.se git-scm.org
+SKIP (closure gap):
+FAIL (installed but broken):
+```
+
+⛔ **Read the SKIP line, not the tick.** A closure that is not fully
+published is a *coverage gap*, so a green run with eight skips looks
+identical from the outside to this one. Empty is what makes eleven of
+eleven an answer.
+
+⛔ **And it was two months stale when that was measured.** Its cron went off
+on 2026-08-12 with the others; the previous run was 2026-08-28. The property
+held across everything that changed in between — but nobody knew until
+somebody dispatched it. A control that only runs when remembered is a
+control that reports the past.
 
 **`index-audit.yml` — a gate on the one defect that hides.** Publishing a
 version's OCI index is a read-modify-write on one mutable tag, and four
