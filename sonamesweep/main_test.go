@@ -33,12 +33,13 @@ func write(t *testing.T, body string) string {
 // below is about the thing it names rather than about which machine the
 // suite happens to run on. The s390x lane caught a fixture that assumed its
 // host once already.
-func onLinuxX86(t *testing.T) {
-	t.Helper()
-	prev := hostSlug
-	hostSlug = func() (string, string) { return "linux", "x86-64" }
-	t.Cleanup(func() { hostSlug = prev })
-}
+// onLinuxX86 used to pin the HOST, back when the sweep could only audit
+// the machine it ran on and refused any other catalogue. bk v0.34.0 takes
+// `-platform`, so the catalogue's own platform steers the run and the
+// host is no longer part of the answer — the helper stays as a no-op
+// marker on the tests that were written when it was, rather than being
+// deleted from each of them in a change about something else.
+func onLinuxX86(t *testing.T) { t.Helper() }
 
 func stub(t *testing.T, f func(string, ...string) (string, error)) *[]string {
 	t.Helper()
@@ -78,8 +79,13 @@ func TestItNamesTheChunkItSwept(t *testing.T) {
 	// ⛔ AND NOT WITH -quiet. That flag suppresses the per-reference lines,
 	// and the sweep's first live run went out carrying it: chunk 0 reported
 	// 64 unresolvable references and named not one soname.
-	if got := *argv; len(got) != 4 || got[0] != "bk" || got[1] != "unresolved" || got[2] != "curl.se" {
-		t.Fatalf("bk was not asked about a chunk of two: %q", got)
+	// ⛔ AND IT NAMES THE PLATFORM. The catalogue's platform is an
+	// instruction to bk now, not a fact to refuse on: without it the audit
+	// would be about whatever machine the job landed on, wearing this
+	// catalogue's name.
+	if got := *argv; len(got) != 6 || got[0] != "bk" || got[1] != "unresolved" ||
+		got[2] != "-platform" || got[3] != "linux/x86-64" || got[4] != "curl.se" {
+		t.Fatalf("bk was not asked about a chunk of two for this platform: %q", got)
 	}
 	for _, a := range *argv {
 		if a == "-quiet" {
@@ -96,7 +102,7 @@ func TestTheChunksCoverEverythingOnce(t *testing.T) {
 	seen := map[string]int{}
 	for k := range 2 {
 		stub(t, func(_ string, args ...string) (string, error) {
-			for _, a := range args[1:] { // args[0] is "unresolved"
+			for _, a := range args[3:] { // "unresolved", "-platform", "<os/arch>"
 				seen[a]++
 			}
 			return "", nil
@@ -121,30 +127,37 @@ func TestTheChunksCoverEverythingOnce(t *testing.T) {
 	}
 }
 
-// ⛔ THE REFUSAL THAT KEEPS THE ANSWER HONEST. bk unresolved installs for the
-// HOST. Handed another platform's catalogue it would install this machine's
-// bottles and report on them under the other platform's name — a judge and a
-// subject counting differently.
-func TestItRefusesAPlatformItIsNotOn(t *testing.T) {
-	prev := hostSlug
-	hostSlug = func() (string, string) { return "darwin", "aarch64" }
-	t.Cleanup(func() { hostSlug = prev })
-	ran := stub(t, func(string, ...string) (string, error) {
-		t.Error("bk was run against a catalogue for another platform")
-		return "", nil
-	})
+// ⛔ THE CATALOGUE'S PLATFORM STEERS THE RUN — and this test used to
+// assert the opposite, that any catalogue but the host's was REFUSED.
+// That refusal was right while `bk unresolved` installed for the host:
+// handed another platform's catalogue it would have reported this
+// machine's bottles under that platform's name, a judge and a subject
+// counting differently. It was also what capped the audit at one platform
+// of six.
+//
+// bottle v0.55.0 made the closure platform-explicit and bk v0.34.0
+// exposed it, so the same fact is now an instruction. What has to be
+// pinned is that it REACHES bk: a run that quietly dropped it would be
+// the old wrong answer with none of the old refusal.
+func TestTheCataloguesPlatformReachesBk(t *testing.T) {
+	// A catalogue for a platform this machine is certainly not, whichever
+	// machine runs the suite — that is the point of the test.
+	const elsewhere = `{"generated":"2026-10-25T00:00:00Z","projects":[
+	 {"project":"curl.se","versions":["8.20.0"],"platforms":["linux/s390x"]},
+	 {"project":"zlib.net","versions":["1.3.2"],"platforms":["linux/s390x"]}
+	]}`
+	argv := stub(t, func(string, ...string) (string, error) { return "", nil })
 
 	var out, errb strings.Builder
-	if code := run([]string{"-catalog", write(t, published)}, &out, &errb); code != 2 {
-		t.Fatalf("code=%d, want 2\n%s%s", code, out.String(), errb.String())
+	if code := run([]string{"-catalog", write(t, elsewhere), "-chunk", "0", "-chunks", "1"}, &out, &errb); code != 0 {
+		t.Fatalf("code=%d, want 0 — another platform's catalogue is now ordinary\n%s%s", code, out.String(), errb.String())
 	}
-	if len(*ran) != 0 {
-		t.Fatalf("bk ran anyway: %q", *ran)
+	got := *argv
+	if len(got) < 4 || got[2] != "-platform" || got[3] != "linux/s390x" {
+		t.Fatalf("bk was not told which platform: %q", got)
 	}
-	for _, want := range []string{"linux/x86-64", "darwin/aarch64", "installs for the HOST"} {
-		if !strings.Contains(errb.String(), want) {
-			t.Errorf("the refusal does not say %q: %s", want, errb.String())
-		}
+	if !strings.Contains(out.String(), "auditing linux/s390x") {
+		t.Errorf("the run does not say what it audited:\n%s", out.String())
 	}
 }
 

@@ -80,10 +80,6 @@ var runCmd = func(name string, args ...string) (string, error) {
 	return buf.String(), err
 }
 
-// hostSlug is a seam too: the platform refusal has to be testable from
-// whichever machine runs the suite.
-var hostSlug = bottle.HostSlug
-
 func run(argv []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("sonamesweep", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -128,14 +124,18 @@ func run(argv []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "sonamesweep:", err)
 		return 2
 	}
-	osn, arch := hostSlug()
-	if host := osn + "/" + arch; platform != host {
-		// ⛔ NOT A WARNING. bk unresolved installs for the host, so the
-		// answer would be about this machine wearing another platform's
-		// name.
-		fmt.Fprintf(stderr, "sonamesweep: that catalogue is for %s and this machine is %s — bk unresolved installs for the HOST, so the answer would be about the wrong platform\n", platform, host)
-		return 2
-	}
+	// ⛔ THE CATALOGUE'S PLATFORM IS NOW AN INSTRUCTION, NOT A REFUSAL.
+	// Until bk v0.34.0 this had to check that the catalogue matched the
+	// host and exit 2 otherwise, because `bk unresolved` installed for the
+	// host: handed another platform's catalogue it would have reported
+	// THIS machine's bottles under that platform's name. The refusal was
+	// right, and it capped the audit at one platform of six — where it
+	// found 967 unresolvable references while the other five went unasked.
+	//
+	// bottle v0.55.0 made the closure platform-explicit and bk v0.34.0
+	// exposed it, so the same fact now steers the run instead of stopping
+	// it. One machine, every platform.
+	fmt.Fprintf(stdout, "auditing %s (bk unresolved -platform)\n", platform)
 
 	projects := bottled(c)
 	if len(projects) == 0 {
@@ -158,7 +158,7 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	// reference(s)" over 35 projects and named not one soname. A verdict
 	// with its evidence stripped is a line nobody can act on, and the extra
 	// cost here is ~100 "ok" lines a chunk.
-	bkOut, err := runCmd("bk", append([]string{"unresolved"}, mine...)...)
+	bkOut, err := runCmd("bk", append([]string{"unresolved", "-platform", platform}, mine...)...)
 	fmt.Fprint(stdout, bkOut)
 	found := parseFindings(bkOut)
 

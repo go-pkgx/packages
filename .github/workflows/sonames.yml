@@ -41,6 +41,10 @@ on:
         description: "how many chunks to cut the project list into (the matrix below is fixed at 14; this is for a narrower manual run)"
         required: false
         default: ""
+      platform:
+        description: "which platform to audit, e.g. linux/aarch64 or darwin/x86-64 (blank = linux/x86-64, the weekly one). `pkgs catalog platforms` lists what the registry publishes."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -56,13 +60,21 @@ env:
 
 jobs:
   sweep:
-    # ⛔ ONE PLATFORM, SAID OUT LOUD. `bk unresolved` resolves and installs
-    # for the HOST — there is no --platform — so an ubuntu runner can only
-    # answer for linux/x86-64, and sonamesweep REFUSES another platform's
-    # catalogue rather than reporting this machine's bottles under its name.
-    # That is a gap in coverage and it is written here instead of being
-    # implied by a green tick: vulnscan.yml spent two months scanning two of
-    # six platforms because its coverage lived in a comment.
+    # ⛔ ONE PLATFORM PER RUN, SAID OUT LOUD — but no longer only ONE
+    # platform. Until bk v0.34.0 `bk unresolved` installed for the host, so
+    # an ubuntu runner could answer for linux/x86-64 and nothing else, and
+    # sonamesweep refused any other catalogue rather than report this
+    # machine's bottles under its name. The weekly run found 967
+    # unresolvable references there while the other five platforms went
+    # unasked — the shape vulnscan.yml spent two months in.
+    #
+    # bottle v0.55.0 made the closure platform-explicit and bk v0.34.0
+    # exposed it, so this one ubuntu runner can audit any of the six. The
+    # SCHEDULE still covers one, because ~1400 closure installs is about
+    # ten hours of wall clock and six of those weekly is not a thing to
+    # pretend to do; `platform:` on a dispatch covers the others on demand,
+    # and a rotation is the next step once its cost is measured rather than
+    # guessed.
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -92,10 +104,16 @@ jobs:
       # is PUBLISHED, so the list of subjects has to come from the registry
       # and not from a pantry checkout that may be ahead of it. PKGX_VERIFY
       # is on by default, so an unsigned catalogue stops the job here.
-      - name: the published catalogue for this host
+      - name: the published catalogue for ${{ inputs.platform || 'linux/x86-64' }}
         env:
           PKGX_DIR: ${{ runner.temp }}/pkgx
-        run: pkgs catalog update --platform linux/x86-64
+          PLATFORM: ${{ inputs.platform || 'linux/x86-64' }}
+        run: |
+          pkgs catalog update --platform "$PLATFORM"
+          # os/arch -> os-arch is the name `pkgs catalog update` writes, and
+          # the baseline is PER PLATFORM: a reference known on linux must not
+          # mask a new one on darwin.
+          echo "SLUG=${PLATFORM/\//-}" >> "$GITHUB_ENV"
 
       # sonamesweep prints which chunk it swept and how many projects that
       # was, so "clean" in this log is never mistaken for "clean overall".
@@ -112,19 +130,27 @@ jobs:
       # somewhere inside it. vulnscan.yml carries the same note and the
       # same -fail-on-new answer.
       #
-      # So: red only on a reference that is NOT in sonames/baseline.txt.
+      # So: red only on a reference that is NOT in this platform's baseline.
       # -out keeps recording, because the fourteen files it uploads are how
       # the baseline is regenerated — `sonamesweep -merge`, which refuses
       # an incomplete set rather than quietly dropping a chunk.
-      - name: chunk ${{ matrix.chunk }} of 14
+      #
+      # ⛔ THE BASELINE IS PER PLATFORM. One shared file would let a
+      # reference known on linux mask a new one on darwin — the gate would
+      # be green about a platform it had just learned something bad about.
+      # A platform with no baseline yet has none to mask with: the file is
+      # named and missing, which sonamesweep treats as an error rather than
+      # as an empty baseline, so the first sweep of a new platform says
+      # "record me" instead of reporting 900 fresh findings.
+      - name: chunk ${{ matrix.chunk }} of 14 on ${{ inputs.platform || 'linux/x86-64' }}
         env:
           PKGX_DIR: ${{ runner.temp }}/pkgx
         run: |
           go run ./sonamesweep \
-            -catalog "$RUNNER_TEMP/pkgx/catalog/linux-x86-64.json" \
+            -catalog "$RUNNER_TEMP/pkgx/catalog/$SLUG.json" \
             -chunk ${{ matrix.chunk }} \
             -chunks "${{ inputs.chunks || '14' }}" \
-            -baseline sonames/baseline.txt \
+            -baseline "sonames/baseline-$SLUG.txt" \
             -out "$RUNNER_TEMP/chunk-${{ matrix.chunk }}.txt"
 
       # if: always(), because the chunk that FAILS is the one whose findings
@@ -134,6 +160,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: sonames-chunk-${{ matrix.chunk }}
+          # The platform is in the name, so `gh run download -n` can fetch
+          # one platform's fourteen and `sonamesweep -merge` cannot mix two
+          # platforms' findings into one baseline.
+          name: sonames-${{ env.SLUG }}-chunk-${{ matrix.chunk }}
           path: ${{ runner.temp }}/chunk-${{ matrix.chunk }}.txt
           if-no-files-found: warn

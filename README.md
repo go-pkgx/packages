@@ -475,7 +475,7 @@ once per dependent.
 
 Against a backlog that size a gate that fails on *any* finding is red every
 week, and red on everything is furniture. So the gate goes red only on a
-reference **not** in `sonames/baseline.txt` — `bk vulnfetch -fail-on-new`
+reference **not** in `sonames/baseline-<os>-<arch>.txt` — `bk vulnfetch -fail-on-new`
 in the shape this measurement has.
 
 `-out` writes each chunk in the format `-baseline` reads, and
