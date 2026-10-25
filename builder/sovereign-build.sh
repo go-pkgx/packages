@@ -89,9 +89,27 @@ fi
 
 # --preserve-env, never a command line: the token and the signing key must not
 # become argv anybody can read out of /proc.
+#
+# ⛔ IT IS SUDO'S FLAG, SO IT GOES WHEN SUDO DOES. --preserve-env exists to
+# carry the caller's environment ACROSS a privilege change; already root,
+# there is no change and the variables are simply there. Left in, the line
+# became `--preserve-env=… unshare …` and the shell ran the FLAG as a
+# command:
+#
+#   builder/sovereign-build.sh: line 94: --preserve-env=OCI_USERNAME,…: command not found
+#   Process completed with exit code 127
+#
+# Measured 2026-10-25 on the `ubuntu-24.04-arm` lane, where the job runs as
+# root inside debian:stable-slim. The self-hosted pool never hit it because
+# its runner user is unprivileged, so $SUDO is set there — which is why a
+# path that cannot work has been in this file unnoticed.
+PRESERVE=""
+[ -n "$SUDO" ] && PRESERVE="--preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,LOCK,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_VERIFY,PKGX_PANTRY_OVERLAY"
 # shellcheck disable=SC2016  # the inner script is deliberately literal: it runs
 # in the new namespace, where these variables are the ones that matter.
-$SUDO --preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,LOCK,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_VERIFY,PKGX_PANTRY_OVERLAY \
+# shellcheck disable=SC2086  # $PRESERVE is one flag or nothing, and must not
+# become an empty argument when it is nothing.
+$SUDO $PRESERVE \
   unshare --mount --pid --fork "$(command -v bash)" -euxc '
     r="$1"; pantry="$2"; overrides="$3"; overlay="$4"; advisories="$5"; shift 5
     for d in null zero full random urandom tty; do
