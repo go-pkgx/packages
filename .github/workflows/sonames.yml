@@ -38,7 +38,7 @@ on:
   workflow_dispatch:
     inputs:
       chunks:
-        description: "how many chunks to cut the project list into (the matrix below is fixed at 14; this is for a narrower manual run)"
+        description: "how many chunks to cut the project list into (blank = 14). The job matrix is built from this, so a small platform can ask for a few: 14 chunks over linux/s390x's handful of bottled projects would leave most of them empty, which is an error."
         required: false
         default: ""
       platform:
@@ -59,7 +59,30 @@ env:
   GONOPROXY: github.com/go-pkgx/*
 
 jobs:
+  # ⛔ THE MATRIX AND THE CHUNK COUNT ARE ONE NUMBER NOW. They were two: a
+  # literal [0..13] here beside a `chunks` input defaulting to 14, with
+  # nothing making them agree. Dispatched with chunks=2, twelve of the
+  # fourteen jobs refused as out of range — measured 2026-10-25, within a
+  # minute of shipping the input. The opposite is worse for a small
+  # platform: 14 chunks over linux/s390x's handful of bottled projects
+  # leaves most of them empty, also an error. So the fixed matrix made the
+  # narrow run the tool explicitly supports impossible to request.
+  #
+  # The arithmetic lives in the tested program, not in `seq`/`jq` here.
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      chunks: ${{ steps.n.outputs.chunks }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - id: n
+        run: |
+          echo "chunks=$(go run ./sonamesweep -chunk-list -chunks "${{ inputs.chunks || '14' }}")" >> "$GITHUB_OUTPUT"
+
   sweep:
+    needs: plan
     # ⛔ ONE PLATFORM PER RUN, SAID OUT LOUD — but no longer only ONE
     # platform. Until bk v0.34.0 `bk unresolved` installed for the host, so
     # an ubuntu runner could answer for linux/x86-64 and nothing else, and
@@ -85,7 +108,7 @@ jobs:
       # sweeps have starved this account's runners before.
       max-parallel: 4
       matrix:
-        chunk: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+        chunk: ${{ fromJSON(needs.plan.outputs.chunks) }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -142,7 +165,7 @@ jobs:
       # named and missing, which sonamesweep treats as an error rather than
       # as an empty baseline, so the first sweep of a new platform says
       # "record me" instead of reporting 900 fresh findings.
-      - name: chunk ${{ matrix.chunk }} of 14 on ${{ inputs.platform || 'linux/x86-64' }}
+      - name: chunk ${{ matrix.chunk }} of ${{ inputs.chunks || '14' }} on ${{ inputs.platform || 'linux/x86-64' }}
         env:
           PKGX_DIR: ${{ runner.temp }}/pkgx
         run: |
