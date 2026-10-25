@@ -89,12 +89,37 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	baseline := fs.String("baseline", "", "the references already known to be unresolvable; red only on a NEW one. Named and unreadable is an error, never an empty baseline")
 	out := fs.String("out", "", "also write this chunk's findings here, in baseline format — the fourteen files a full sweep produces ARE the baseline")
 	merge := fs.String("merge", "", "instead of sweeping, assemble the chunk files under this directory into one baseline on stdout. Refuses unless every chunk 0..N-1 is present")
+	chunkList := fs.Bool("chunk-list", false, "print -chunks as the JSON array a workflow matrix needs, and do nothing else")
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}
 	if *chunks < 1 {
 		fmt.Fprintf(stderr, "sonamesweep: -chunks %d is not a count\n", *chunks)
 		return 2
+	}
+	// ⛔ ONE NUMBER, NOT TWO. The matrix used to be a literal [0..13] beside
+	// a `chunks` input that defaulted to 14, and the two had to agree with
+	// nothing making them. Dispatched with chunks=2, twelve of the fourteen
+	// jobs refused as out of range — measured 2026-10-25, on myself, within
+	// a minute of shipping the input. And the opposite is worse for a small
+	// platform: 14 chunks over linux/s390x's ~29 bottled projects leaves
+	// chunks empty, which is also an error, so the fixed matrix made the
+	// narrow run the tool explicitly supports impossible to request.
+	//
+	// The workflow now asks for the list and feeds it to the matrix, so the
+	// count exists once. Printing it here rather than building it with
+	// `seq`/`jq` in YAML keeps the one piece of arithmetic in the tested
+	// program.
+	if *chunkList {
+		fmt.Fprint(stdout, "[")
+		for k := range *chunks {
+			if k > 0 {
+				fmt.Fprint(stdout, ",")
+			}
+			fmt.Fprint(stdout, k)
+		}
+		fmt.Fprintln(stdout, "]")
+		return 0
 	}
 	if *merge != "" {
 		return runMerge(*merge, *chunks, stdout, stderr)

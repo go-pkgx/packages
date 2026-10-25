@@ -621,6 +621,40 @@ func TestMergeIgnoresLitterAndAnnouncesTheCap(t *testing.T) {
 	}
 }
 
+// ⛔ THE MATRIX AND THE CHUNK COUNT ARE ONE NUMBER. They used to be two —
+// a literal [0..13] in the workflow beside a `chunks` input defaulting to
+// 14 — with nothing making them agree. Dispatched with chunks=2, twelve
+// of the fourteen jobs refused as out of range; and 14 chunks over a
+// small platform's ~29 projects leaves chunks EMPTY, which is also an
+// error. The fixed matrix made the narrow run this tool supports
+// impossible to request.
+func TestChunkListIsWhatTheMatrixNeeds(t *testing.T) {
+	for _, c := range []struct{ chunks, want string }{
+		{"1", "[0]\n"},
+		{"2", "[0,1]\n"},
+		{"14", "[0,1,2,3,4,5,6,7,8,9,10,11,12,13]\n"},
+	} {
+		var out, errb strings.Builder
+		if code := run([]string{"-chunk-list", "-chunks", c.chunks}, &out, &errb); code != 0 {
+			t.Fatalf("-chunks %s: code=%d\n%s%s", c.chunks, code, out.String(), errb.String())
+		}
+		if out.String() != c.want {
+			t.Errorf("-chunks %s printed %q, want %q", c.chunks, out.String(), c.want)
+		}
+	}
+	// It needs no catalogue: the matrix is built before anything is fetched.
+	var out, errb strings.Builder
+	if code := run([]string{"-chunk-list", "-chunks", "3"}, &out, &errb); code != 0 {
+		t.Errorf("it demanded a catalogue: code=%d %s", code, errb.String())
+	}
+	// And a count that is not one is still refused here.
+	out.Reset()
+	errb.Reset()
+	if code := run([]string{"-chunk-list", "-chunks", "0"}, &out, &errb); code != 2 {
+		t.Errorf("-chunks 0 printed %q with code %d, want a refusal", out.String(), code)
+	}
+}
+
 // A catalogue that is not there is not a platform with nothing to sweep.
 func TestAMissingCatalogueIsAnError(t *testing.T) {
 	onLinuxX86(t)
