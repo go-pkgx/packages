@@ -190,8 +190,27 @@ jobs:
           # the fix for the allocation failure; lowering it alone changed
           # nothing. Native runners keep both defaults.
           SELFARM='{"runner":["self-hosted","incus","arm64"],"platform":"linux/aarch64","slug":"linux-aarch64","container":"","jobs":"4","qemu_va":"0x400000000"}'
-          GH64='{"runner":"ubuntu-latest","platform":"linux/x86-64","slug":"linux-x86-64","container":"debian:stable-slim"}'
-          GHARM='{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","container":"debian:stable-slim"}'
+          # ⛔ NO `container:` ON THE GITHUB LANES, AND NOTHING EVER CAME OUT
+          # OF THEM WITH ONE. A GitHub container job has no CAP_SYS_ADMIN, so
+          # builder/sovereign-build.sh died at
+          #
+          #   unshare: unshare failed: Operation not permitted
+          #
+          # measured 2026-10-25 on ubuntu-24.04-arm. The build needs a mount
+          # and pid namespace and then `chroot`s into the rootfs it just
+          # built (sovereign-build.sh:113,132), which a capability-stripped
+          # container cannot do.
+          #
+          # What the container was for — "a pinned, controlled debian base
+          # instead of the drifting runner host" — is largely provided by
+          # that chroot: the compiler, the glibc and the PATH the build sees
+          # all come from the sovereign rootfs, not from the job. What is
+          # left outside it is STAGING, and `debian:stable-slim` is a
+          # FLOATING TAG, so the pinning it offered staging was already
+          # softer than the comment implies. The self-hosted lanes keep
+          # their Incus image, which is the pinned base this was imitating.
+          GH64='{"runner":"ubuntu-latest","platform":"linux/x86-64","slug":"linux-x86-64","container":""}'
+          GHARM='{"runner":"ubuntu-24.04-arm","platform":"linux/aarch64","slug":"linux-aarch64","container":""}'
           # IBM Z. A LinuxONE VM with a self-hosted runner built by
           # IBM/action-runner-image-pz — actions/runner does not build for
           # s390x out of the box (it is .NET, and linux-s390x is community
