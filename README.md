@@ -650,7 +650,7 @@ spelling; the pkgx slug is `wasip1/wasm`.
   a *library* writes an archive and exits 0. Each module is staged as
   `bin/<name>.wasm` (a recipe's `provides: bin/<name>` stays extension-free;
   `bottle.ResolveBinPath` finds the `.wasm` on a wasm host, as it finds `.exe` on
-  Windows), **run under wasmtime** (`wasmtime run --dir=. x.wasm -- <args>`), then
+  Windows), **run under wasmtime** (`wasmtime run --dir=. x.wasm <args>`), then
   `bk publish --platform wasip1/wasm`. A publish failure fails the job.
 - **Pilots:** `filippo.io/age` 1.3.2, `github.com/cpuguy83/go-md2man` 2.0.7 and
   `mvdan.cc/sh` (`shfmt`) 3.14.1.
