@@ -24,7 +24,7 @@ build:
   dependencies:
     gnu.org/make: '*'
   script:
-    - make -C src -j {{ hw.concurrency }} lua luac CC="$BK_CC" AR="llvm-ar rcu" RANLIB=llvm-ranlib MYCFLAGS="-DL_tmpnam=32-D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" MYLIBS="-lwasi-emulated-process-clocks -lwasi-emulated-signal -lsetjmp" MYLDFLAGS="-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false"
+    - make -C src -j {{ hw.concurrency }} lua luac CC="$BK_CC" AR="llvm-ar rcu" RANLIB=llvm-ranlib MYCFLAGS="-DL_tmpnam=32 -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" MYLIBS="-lwasi-emulated-process-clocks -lwasi-emulated-signal -lsetjmp" MYLDFLAGS="-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false"
     - install -D src/lua "{{ prefix }}/bin/lua.wasm"
     - install -D src/luac "{{ prefix }}/bin/luac.wasm"
 
