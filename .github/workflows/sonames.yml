@@ -162,9 +162,16 @@ jobs:
       # reference known on linux mask a new one on darwin — the gate would
       # be green about a platform it had just learned something bad about.
       # A platform with no baseline yet has none to mask with: the file is
-      # named and missing, which sonamesweep treats as an error rather than
-      # as an empty baseline, so the first sweep of a new platform says
-      # "record me" instead of reporting 900 fresh findings.
+      # named and MISSING, which is an error, so the first sweep of a new
+      # platform says "record me" instead of reporting 900 fresh findings.
+      #
+      # ⛔ MISSING AND EMPTY ARE DIFFERENT. A baseline that exists and
+      # lists nothing says "nothing is known bad here", and the first
+      # reference that ever turns up against it is genuinely NEW — which
+      # is what you want, not a failure. linux/s390x swept clean on
+      # 2026-10-26 (66 bottled projects, 0 references), and the earlier
+      # rule refusing an empty file would have made the cleanest platform
+      # in the fleet the one whose gate could never be wired.
       - name: chunk ${{ matrix.chunk }} of ${{ inputs.chunks || '14' }} on ${{ inputs.platform || 'linux/x86-64' }}
         env:
           PKGX_DIR: ${{ runner.temp }}/pkgx

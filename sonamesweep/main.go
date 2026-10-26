@@ -344,7 +344,7 @@ func runMerge(dir string, chunks int, stdout, stderr io.Writer) int {
 
 	all := map[finding]bool{}
 	for k := range chunks {
-		one, rerr := readBaselineAllowingEmpty(found[k])
+		one, rerr := readBaseline(found[k])
 		if rerr != nil {
 			fmt.Fprintln(stderr, "sonamesweep:", rerr)
 			return 2
@@ -420,25 +420,24 @@ func writeFindings(path string, found []finding) error {
 
 // readBaseline reads `project owner soname` per line; `#` comments and blank
 // lines are ignored.
-func readBaseline(path string) (map[finding]bool, error) {
-	known, err := readBaselineAllowingEmpty(path)
-	if err != nil {
-		return nil, err
-	}
-	if len(known) == 0 {
-		return nil, fmt.Errorf("%s: no entries — an empty baseline makes every finding new", path)
-	}
-	return known, nil
-}
-
-// readBaselineAllowingEmpty is the same parser without that refusal.
+// readBaseline reads the references already known to be unresolvable.
 //
-// ⛔ THE TWO CALLERS DISAGREE ABOUT EMPTY ON PURPOSE. For a BASELINE,
-// empty is a configuration error: every finding becomes new and the gate
-// goes red for the wrong reason. For one CHUNK of a sweep, empty is the
-// good news — that chunk's hundred projects all load — and refusing it
-// would make a clean chunk unmergeable.
-func readBaselineAllowingEmpty(path string) (map[finding]bool, error) {
+// ⛔ AN EMPTY ONE IS AN ANSWER, AND THIS REFUSED IT. The first version
+// errored on a baseline with no entries — "an empty baseline makes every
+// finding new" — which conflates two different things, and it is the
+// conflation this whole tool exists to avoid:
+//
+//	the file is MISSING or will not parse   → nothing was read. An error.
+//	the file is THERE and says nothing      → nothing is known-bad here.
+//	                                          A finding later IS new, and
+//	                                          red is then correct.
+//
+// Measured 2026-10-26: linux/s390x swept clean — 66 bottled projects, 0
+// unresolvable references — so its baseline is legitimately empty, and
+// the refusal made the cleanest platform in the fleet the one that could
+// never have its gate wired. A platform is not disqualified from being
+// guarded by having nothing wrong with it.
+func readBaseline(path string) (map[finding]bool, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
