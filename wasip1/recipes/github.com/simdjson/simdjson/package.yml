@@ -1,0 +1,50 @@
+distributable:
+  url: https://github.com/simdjson/simdjson/archive/refs/tags/{{ version.tag }}.tar.gz
+  strip-components: 1
+
+versions:
+  github: simdjson/simdjson
+
+# wasip1/wasm recipe, the C++ pilot: the simdjson LIBRARY (src/simdjson.cpp, ~C++17
+# templates throughout) plus a 15-line stdin->stdout minifier driver. The project's
+# own tools/ all need cxxopts, which its CMake FETCHES at configure time; a recipe
+# that downloads in its own script is not what a sovereign build does, so the driver
+# is ours and the library is upstream's. It exercises everything the C++ stencil
+# adds: libc++ headers and libc++/libc++abi from libcxx.llvm.org/wasi, the wasi-libc
+# sysroot, compiler-rt.
+#
+# No exceptions (clang's wasip1 default, and libc++ is built without them). wasm32
+# has no SIMD kernel under -mcpu=lime1, so simdjson runs its `fallback`
+# implementation.
+
+build:
+  dependencies:
+    libcxx.llvm.org/wasi: '*'
+  script:
+    - run: cp $PROP minify.cpp
+      prop: |
+        #include <iostream>
+        #include <iterator>
+        #include <string>
+        #include "simdjson.h"
+        int main() {
+          std::string in((std::istreambuf_iterator<char>(std::cin)), std::istreambuf_iterator<char>());
+          simdjson::padded_string p(in);
+          std::string out(in.size() + simdjson::SIMDJSON_PADDING, '\0');
+          size_t n = 0;
+          auto err = simdjson::get_active_implementation()->minify(
+              reinterpret_cast<const uint8_t *>(p.data()), p.length(),
+              reinterpret_cast<uint8_t *>(&out[0]), n);
+          if (err) { std::cerr << simdjson::error_message(err) << "\n"; return 1; }
+          std::cout.write(out.data(), n);
+          std::cout << "\n";
+          std::cerr << "implementation: " << simdjson::get_active_implementation()->name() << "\n";
+          return 0;
+        }
+    - run: >-
+        $BK_CXX -std=c++17 -O2 -Iinclude -Isrc
+        -o minify.wasm src/simdjson.cpp minify.cpp
+    - install -D minify.wasm "{{ prefix }}/bin/simdjson-minify.wasm"
+
+provides:
+  - bin/simdjson-minify

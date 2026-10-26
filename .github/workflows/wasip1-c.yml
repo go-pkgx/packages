@@ -1,15 +1,25 @@
-# wasip1/wasm package factory (C) — builds C pantry-style projects for
-# wasm32-wasip1 with OUR toolchain and publishes them to ghcr.io/go-pkgx/packages
-# with OCI platform os=wasip1, architecture=wasm. Sibling of wasip1.yml (Go).
+# wasip1/wasm package factory (C/C++) — builds projects for wasm32-wasip1 with OUR
+# toolchain INSIDE THE SOVEREIGN ROOTFS and publishes them to
+# ghcr.io/go-pkgx/packages with OCI platform os=wasip1, architecture=wasm.
+# Sibling of wasip1.yml (Go).
 #
 # The toolchain is not a prebuilt wasi-sdk: it is the llvm.org bottle (clang,
-# wasm-ld, llvm-ar) plus two bottles built from source in the pantry overlay,
-# compiler-rt.llvm.org/wasi (builtins + clang headers as a resource dir) and
-# github.com/WebAssembly/wasi-libc (the sysroot). `bk --platform wasip1/wasm
-# build` adds all three to the dependency eval and imposes the stencil through
-# $BK_CC (clang --target=wasm32-wasip1 --sysroot=… -resource-dir=… -mcpu=lime1),
-# which the cc/gcc/clang shims re-exec, so a recipe cannot lose it by setting
-# CFLAGS or CC.
+# wasm-ld, llvm-ar) plus bottles built from source in the pantry overlay,
+# compiler-rt.llvm.org/wasi (builtins + clang headers as a resource dir),
+# github.com/WebAssembly/wasi-libc (the sysroot) and libcxx.llvm.org/wasi
+# (libc++, libc++abi). `bk --platform wasip1/wasm build` adds them to the
+# dependency eval and imposes the stencil through $BK_CC/$BK_CXX
+# (clang --target=wasm32-wasip1 --sysroot=… -resource-dir=… -mcpu=lime1
+# --rtlib=compiler-rt), which the cc/gcc/clang shims re-exec, so a recipe cannot
+# lose it by setting CFLAGS or CC.
+#
+# SOVEREIGN: the build runs in the rootfs `bk builder` stages from
+# builder/toolchain.txt, entered with unshare+chroot (builder/sovereign-bk.sh),
+# so make, sh, coreutils, clang and wasm-ld all come from bottles in that tree and
+# nothing from the runner's distribution takes part. The runner contributes three
+# static Go binaries, a mount namespace and — to RUN the result — wasmtime, which
+# is the runtime under test, not a build tool. The "what ran, from where" step
+# prints the resolved path of every tool the build uses.
 #
 # Recipes: wasip1/recipes/<slug>/package.yml — the wasm build of each project is
 # its own small recipe (static, no dlopen, no threads), not a conditional in the
@@ -23,13 +33,12 @@ permissions: { contents: read, packages: write }
 env:
   GOPROXY: https://proxy.golang.org,direct
   GONOPROXY: github.com/go-pkgx/*
-  BK: github.com/go-pkgx/bk/cmd/bk@v0.37.0
   PKGX_DIST: oci://ghcr.io/go-pkgx/packages
   PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
@@ -40,34 +49,64 @@ jobs:
           # raises and catches an error: lua throws with longjmp, which here is
           # the wasm exception-handling instructions (wasi-sdk SetjmpLongjmp.md),
           # so it proves the engine runs them, not just that the module starts.
-          - { slug: zlib.net, version: "1.3.2", bin: minigzip, smoke: "", stdin: t.txt }
-          - { slug: lua.org, version: "5.4.9", bin: lua, smoke: '-e "assert(not pcall(error, 1)); assert(_VERSION == [[Lua 5.4]])"', stdin: /dev/null }
-          - { slug: sqlite.org, version: "3.53.4", bin: sqlite3, smoke: ':memory: "select sqlite_version();"', stdin: /dev/null }
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: zlib.net, version: "1.3.2", bin: minigzip, smoke: "", stdin: t.txt }
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: lua.org, version: "5.4.9", bin: lua, smoke: '-e "assert(not pcall(error, 1)); assert(_VERSION == [[Lua 5.4]])"', stdin: /dev/null }
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: sqlite.org, version: "3.53.4", bin: sqlite3, smoke: ':memory: "select sqlite_version();"', stdin: /dev/null }
+          # the C++ pilot: libc++ from libcxx.llvm.org/wasi; reads j.json (JSON).
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: github.com/simdjson/simdjson, version: "5.0.5", bin: simdjson-minify, smoke: "", stdin: j.json }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with: { go-version: '1.27.3' }
       - uses: bytecodealliance/actions/wasmtime/setup@v1
-      - name: base tools
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends make
-      # OUR pkgx: it resolves from our signed registry and honours the overlay,
-      # which is where the two wasi bottles' recipes live.
-      - name: install pkgx and bk
+      # The host's only jobs: run three static Go binaries and hold a namespace.
+      - name: build bk, pkgx and pkgm (static)
         run: |
+          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@v0.40.0
           CGO_ENABLED=0 go install github.com/go-pkgx/pkgx@main
-          CGO_ENABLED=0 go install "$BK"
+          CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: build ${{ matrix.slug }} ${{ matrix.version }} for wasip1/wasm
-        run: bk --platform wasip1/wasm build --recipe "wasip1/recipes/${{ matrix.slug }}/package.yml" --version "${{ matrix.version }}" --dist out "${{ matrix.slug }}"
-      - name: what was built
-        run: find out "$HOME/.pkgx/${{ matrix.slug }}" -maxdepth 4
+      - name: stage the sovereign rootfs
+        run: |
+          sudo rm -rf "$RUNNER_TEMP/rootfs"
+          bk builder \
+            --out "$RUNNER_TEMP/rootfs" \
+            --platform "${{ matrix.platform }}" \
+            --toolchain builder/toolchain.txt \
+            --bk "$(command -v bk)" \
+            --pkgx "$(command -v pkgx)" \
+            --container
+      # The claim to check is a negative one: no distribution in the tree. The
+      # build below runs `chroot` into it, so these are the only files it sees.
+      - name: what the rootfs is made of
+        run: |
+          ls "$RUNNER_TEMP/rootfs"
+          ls "$RUNNER_TEMP/rootfs/etc"
+      - name: build ${{ matrix.slug }} ${{ matrix.version }} for wasip1/wasm, in the rootfs
+        run: |
+          chmod +x builder/sovereign-bk.sh
+          builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/wasip1/recipes" "$PWD/advisories" \
+            /usr/local/bin/bk --platform wasip1/wasm build --libc=pkgx \
+            --recipe "/recipes/${{ matrix.slug }}/package.yml" --version "${{ matrix.version }}" \
+            --dist /dist "${{ matrix.slug }}"
+      # WHAT RAN, FROM WHERE: the program resolved for every tool a build uses,
+      # in the same chroot, through the same pkgx environment the build had.
+      # Anything under /pkgx came from a bottle in the rootfs; /bin and /usr are
+      # the rootfs's own (staged from the same toolchain list), never the runner's.
+      # A name that prints nothing is a tool that is NOT there.
+      - name: what ran, from where
+        run: |
+          builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/wasip1/recipes" "$PWD/advisories" \
+            /bin/sh -c 'command -v sh make install cp clang clang++ wasm-ld llvm-ar llvm-ranlib cc gcc; echo "PATH=$PATH"'
       - name: smoke under wasmtime
         run: |
           mkdir smoke && cd smoke
           printf 'hello wasip1\n' > t.txt
-          mod="$(ls "$HOME/.pkgx/${{ matrix.slug }}/v${{ matrix.version }}/bin/${{ matrix.bin }}.wasm")"
+          printf '{ "a" : [1, 2 ] }\n' > j.json
+          mod="$RUNNER_TEMP/rootfs/pkgx/${{ matrix.slug }}/v${{ matrix.version }}/bin/${{ matrix.bin }}.wasm"
+          ls -l "$mod"
           wasmtime run --dir=/ --env PWD="$PWD" "$mod" ${{ matrix.smoke }} < ${{ matrix.stdin }} > /dev/null
-      - name: publish ${{ matrix.slug }} to ghcr (wasip1/wasm)
+      - name: publish ${{ matrix.slug }} to ghcr (wasip1/wasm), from the rootfs
         env:
           OCI_USERNAME: ${{ github.actor }}
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
@@ -75,11 +114,12 @@ jobs:
         run: |
           SIGN_ARGS=()
           if [ -n "${SIGNING_KEY:-}" ]; then
-            umask 077; KEYFILE="$(mktemp)"; printf '%s' "$SIGNING_KEY" > "$KEYFILE"
-            SIGN_ARGS=(--sign "$KEYFILE"); echo "signing: enabled"
+            umask 077; printf '%s' "$SIGNING_KEY" | sudo tee "$RUNNER_TEMP/rootfs/sign.key" > /dev/null
+            SIGN_ARGS=(--sign /sign.key); echo "signing: enabled"
           fi
           SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
-            bk publish --to oci://ghcr.io/go-pkgx/packages --project "${{ matrix.slug }}" \
+            builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/wasip1/recipes" "$PWD/advisories" \
+              /usr/local/bin/bk publish --to oci://ghcr.io/go-pkgx/packages --project "${{ matrix.slug }}" \
               --version "${{ matrix.version }}" --platform wasip1/wasm "${SIGN_ARGS[@]}" \
-              --advisories "$GITHUB_WORKSPACE/advisories" \
-              "out/${{ matrix.slug }}/wasip1/wasm/v${{ matrix.version }}.tar.zst"
+              --advisories /advisories \
+              "/dist/${{ matrix.slug }}/wasip1/wasm/v${{ matrix.version }}.tar.zst"
