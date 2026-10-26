@@ -79,4 +79,4 @@ jobs:
             bk publish --to oci://ghcr.io/go-pkgx/packages --project "${{ matrix.slug }}" \
               --version "${{ matrix.version }}" --platform wasip1/wasm "${SIGN_ARGS[@]}" \
               --advisories "$GITHUB_WORKSPACE/advisories" \
-              "out/${{ matrix.slug }}/wasip1/wasm/v${{ matrix.version }}.tar.gz"
+              "out/${{ matrix.slug }}/wasip1/wasm/v${{ matrix.version }}.tar.zst"
