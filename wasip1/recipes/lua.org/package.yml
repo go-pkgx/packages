@@ -1,0 +1,31 @@
+distributable:
+  url: http://www.lua.org/ftp/lua-{{version}}.tar.gz
+  strip-components: 1
+
+versions:
+  url: http://www.lua.org/ftp/
+  match: /lua-(\d+\.\d+\.\d+)\.tar\.gz/
+  strip:
+    - /lua-/
+    - /.tar.gz/
+
+# wasip1/wasm recipe: the lua interpreter. Lua raises errors with
+# setjmp/longjmp, which wasm only has through the exception-handling proposal:
+# WebAssembly/wasi-sdk SetjmpLongjmp.md asks for
+#   -mllvm -wasm-enable-sjlj -lsetjmp -mllvm -wasm-use-legacy-eh=false
+# (the standard, not the legacy, instructions). No dlopen on wasip1:
+# LUA_USE_DLOPEN is off, so `require` finds Lua modules only. The `posix`
+# defines would pull signal()/popen() that wasi-libc only emulates or lacks, so
+# the generic `ansi` platform is used.
+
+build:
+  dependencies:
+    gnu.org/make: '*'
+  script:
+    - make -C src -j {{ hw.concurrency }} lua luac CC="$BK_CC" AR="llvm-ar rcu" RANLIB=llvm-ranlib MYCFLAGS="-D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" MYLIBS="-lwasi-emulated-process-clocks -lwasi-emulated-signal -lsetjmp" MYLDFLAGS="-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false"
+    - install -D src/lua "{{ prefix }}/bin/lua.wasm"
+    - install -D src/luac "{{ prefix }}/bin/luac.wasm"
+
+provides:
+  - bin/lua
+  - bin/luac

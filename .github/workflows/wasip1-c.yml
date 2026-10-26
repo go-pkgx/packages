@@ -1,0 +1,81 @@
+# wasip1/wasm package factory (C) — builds C pantry-style projects for
+# wasm32-wasip1 with OUR toolchain and publishes them to ghcr.io/go-pkgx/packages
+# with OCI platform os=wasip1, architecture=wasm. Sibling of wasip1.yml (Go).
+#
+# The toolchain is not a prebuilt wasi-sdk: it is the llvm.org bottle (clang,
+# wasm-ld, llvm-ar) plus two bottles built from source in the pantry overlay,
+# compiler-rt.llvm.org/wasi (builtins + clang headers as a resource dir) and
+# github.com/WebAssembly/wasi-libc (the sysroot). `bk --platform wasip1/wasm
+# build` adds all three to the dependency eval and imposes the stencil through
+# $BK_CC (clang --target=wasm32-wasip1 --sysroot=… -resource-dir=… -mcpu=lime1),
+# which the cc/gcc/clang shims re-exec, so a recipe cannot lose it by setting
+# CFLAGS or CC.
+#
+# Recipes: wasip1/recipes/<slug>/package.yml — the wasm build of each project is
+# its own small recipe (static, no dlopen, no threads), not a conditional in the
+# host recipe. Every module is RUN under wasmtime before it is published.
+#
+# workflow_dispatch only, like the other factories.
+name: wasip1-c
+on:
+  workflow_dispatch:
+permissions: { contents: read, packages: write }
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
+  BK: github.com/go-pkgx/bk/cmd/bk@v0.36.0
+  PKGX_DIST: oci://ghcr.io/go-pkgx/packages
+  PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # bin: the module under <prefix>/bin; smoke: its arguments under wasmtime
+          # (run in an empty directory holding t.txt; stdin is /dev/null).
+          - { slug: zlib.net, version: "1.3.2", bin: minigzip, smoke: "t.txt" }
+          - { slug: lua.org, version: "5.4.9", bin: lua, smoke: "-v" }
+          - { slug: sqlite.org, version: "3.53.4", bin: sqlite3, smoke: "--version" }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - uses: bytecodealliance/actions/wasmtime/setup@v1
+      - name: base tools
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends make
+      # OUR pkgx: it resolves from our signed registry and honours the overlay,
+      # which is where the two wasi bottles' recipes live.
+      - name: install pkgx and bk
+        run: |
+          CGO_ENABLED=0 go install github.com/go-pkgx/pkgx@main
+          CGO_ENABLED=0 go install "$BK"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: build ${{ matrix.slug }} ${{ matrix.version }} for wasip1/wasm
+        run: bk --platform wasip1/wasm build --recipe "wasip1/recipes/${{ matrix.slug }}/package.yml" --version "${{ matrix.version }}" --dist out "${{ matrix.slug }}"
+      - name: what was built
+        run: find out "$HOME/.pkgx/${{ matrix.slug }}" -maxdepth 4
+      - name: smoke under wasmtime
+        run: |
+          mkdir smoke && cd smoke
+          printf 'hello wasip1\n' > t.txt
+          mod="$(ls "$HOME/.pkgx/${{ matrix.slug }}/v${{ matrix.version }}/bin/${{ matrix.bin }}.wasm")"
+          wasmtime run --dir=/ --env PWD="$PWD" "$mod" ${{ matrix.smoke }} </dev/null
+      - name: publish ${{ matrix.slug }} to ghcr (wasip1/wasm)
+        env:
+          OCI_USERNAME: ${{ github.actor }}
+          OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
+        run: |
+          SIGN_ARGS=()
+          if [ -n "${SIGNING_KEY:-}" ]; then
+            umask 077; KEYFILE="$(mktemp)"; printf '%s' "$SIGNING_KEY" > "$KEYFILE"
+            SIGN_ARGS=(--sign "$KEYFILE"); echo "signing: enabled"
+          fi
+          SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
+            bk publish --to oci://ghcr.io/go-pkgx/packages --project "${{ matrix.slug }}" \
+              --version "${{ matrix.version }}" --platform wasip1/wasm "${SIGN_ARGS[@]}" \
+              --advisories "$GITHUB_WORKSPACE/advisories" \
+              "out/${{ matrix.slug }}/wasip1/wasm/v${{ matrix.version }}.tar.gz"
