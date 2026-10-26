@@ -669,10 +669,26 @@ spelling; the pkgx slug is `wasip1/wasm`.
   setjmp/longjmp, compiled to the standard exception-handling instructions with
   `-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false -lsetjmp`; a
   `pcall(error)` is run). wasi-libc declares but does not define
-  `tmpfile`/`tmpnam`/`system`, which lua stubs. Not yet: libc++/libc++abi (C++),
-  the sovereign rootfs for the pilots' own build step (they run `bk build` on the
-  runner with host `make`; only the compiler, libc and runtime are ours),
-  darwin/aarch64 toolchain bottles (linux/x86-64 only so far).
+  `tmpfile`/`tmpnam`/`system`, which lua stubs.
+  - **Sovereign.** The build runs INSIDE the rootfs `bk builder` stages from
+    `builder/toolchain.txt` (`builder/sovereign-bk.sh`: unshare + chroot + the pkgx
+    environment of `sovereign-build.sh`), so `sh`, `make`, coreutils, clang and
+    wasm-ld are bottles in that tree; the runner supplies three static Go binaries,
+    the namespace and wasmtime (the runtime under test). A "what ran, from where"
+    step prints `command -v` of each tool from inside the chroot: `/bin/sh`
+    (the tree's), `/pkgx/gnu.org/make/…`, `/pkgx/gnu.org/coreutils/…/{install,cp}`,
+    `/pkgx/llvm.org/…/{clang,clang++,wasm-ld,llvm-ar,llvm-ranlib}`; `gcc` is absent.
+  - **C++.** `libcxx.llvm.org/wasi` (libc++ + libc++abi for wasm32-wasip1, from
+    wasi-sdk's `define_libcxx_sub`; no exceptions, `-fno-exceptions` in the
+    `$BK_CXX` stencil). Pilot: `github.com/simdjson/simdjson` 5.0.5 (the library
+    from upstream plus a 15-line stdin-to-stdout minifier; upstream's tools fetch
+    cxxopts at configure time), run under wasmtime.
+  - **aarch64.** The same four pilots on GitHub's native `ubuntu-24.04-arm` runner,
+    with the toolchain bottles published for linux/aarch64 hosts too (this needed
+    `curl.se` 8.12 for aarch64: cmake's own dependency resolved to a curl linked
+    against libssl.so.1.1).
+  - Not yet: C++ exceptions (wasi-sdk's "DUAL": `-fwasm-exceptions` + libunwind),
+    darwin hosts.
 - **Out of scope:** anything needing cgo on the host side.
 
 ## License
