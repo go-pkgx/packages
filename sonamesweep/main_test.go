@@ -336,7 +336,6 @@ func TestAnUnreadableBaselineIsAnError(t *testing.T) {
 	}
 	for _, c := range []struct{ name, path, want string }{
 		{"absent", filepath.Join(dir, "nope.txt"), "nope.txt"},
-		{"empty", empty, "an empty baseline makes every finding new"},
 		{"two fields, not three", malformed, "want `project owner soname`"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -350,6 +349,43 @@ func TestAnUnreadableBaselineIsAnError(t *testing.T) {
 			}
 		})
 	}
+
+	// ⛔ AND AN EMPTY ONE IS NOT IN THAT LIST ANY MORE. This test used to
+	// assert that a baseline with no entries was an error, on the grounds
+	// that "an empty baseline makes every finding new". It does — and for
+	// a platform that is genuinely clean, that is the CORRECT behaviour,
+	// not a failure mode.
+	//
+	// Measured 2026-10-26: linux/s390x swept clean, 66 bottled projects
+	// and 0 unresolvable references, so its baseline is legitimately
+	// empty. The refusal made the cleanest platform in the fleet the one
+	// whose gate could never be wired.
+	//
+	// The distinction that matters is the one this tool exists for:
+	// nothing READ is an error; nothing FOUND is an answer.
+	t.Run("a clean platform's baseline is empty and usable", func(t *testing.T) {
+		stub(t, func(string, ...string) (string, error) { return "curl.se   ok\n\n0 unresolvable reference(s)\n", nil })
+		var out, errb strings.Builder
+		if code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "1", "-baseline", empty}, &out, &errb); code != 0 {
+			t.Fatalf("code=%d, want 0 — nothing known bad, nothing found\n%s%s", code, out.String(), errb.String())
+		}
+		if !strings.Contains(out.String(), "0 reference(s), 0 known, 0 new") {
+			t.Errorf("the tally is wrong:\n%s", out.String())
+		}
+	})
+
+	// And it still goes red when something turns up against an empty
+	// baseline, because then the finding really is new.
+	t.Run("a finding against an empty baseline is new", func(t *testing.T) {
+		stub(t, func(string, ...string) (string, error) { return bkOutput, errors.New("exit status 1") })
+		var out, errb strings.Builder
+		if code := run([]string{"-catalog", write(t, published), "-chunk", "0", "-chunks", "1", "-baseline", empty}, &out, &errb); code != 1 {
+			t.Fatalf("code=%d, want 1\n%s%s", code, out.String(), errb.String())
+		}
+		if !strings.Contains(out.String(), "0 known, 4 new") {
+			t.Errorf("the tally is wrong:\n%s", out.String())
+		}
+	})
 }
 
 // ⛔ THE INDENTED LINES ARE THE FINDING, NOT THE HEADER'S COUNT. A header
