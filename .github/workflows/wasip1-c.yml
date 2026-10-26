@@ -23,7 +23,7 @@ permissions: { contents: read, packages: write }
 env:
   GOPROXY: https://proxy.golang.org,direct
   GONOPROXY: github.com/go-pkgx/*
-  BK: github.com/go-pkgx/bk/cmd/bk@v0.36.0
+  BK: github.com/go-pkgx/bk/cmd/bk@v0.37.0
   PKGX_DIST: oci://ghcr.io/go-pkgx/packages
   PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
 

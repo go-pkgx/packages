@@ -18,6 +18,11 @@ build:
     - make --jobs {{ hw.concurrency }} libz.a minigzip
     - make install
     - install -D minigzip "{{ prefix }}/bin/minigzip.wasm"
+  env:
+    # zlib's gz*.c use errno/EAGAIN without including <errno.h> (glibc's stdio
+    # happens to pull it in; wasi-libc's does not): "use of undeclared identifier
+    # 'errno'" (wasip1-c run 40369903497).
+    CFLAGS: -include errno.h -O2
 
 provides:
   - bin/minigzip

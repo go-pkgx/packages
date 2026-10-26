@@ -16,13 +16,15 @@ versions:
 # (the standard, not the legacy, instructions). No dlopen on wasip1:
 # LUA_USE_DLOPEN is off, so `require` finds Lua modules only. The `posix`
 # defines would pull signal()/popen() that wasi-libc only emulates or lacks, so
-# the generic `ansi` platform is used.
+# the generic `ansi` platform is used; its os.tmpname uses tmpnam(), and wasi-libc
+# has no L_tmpnam, hence -DLUA_TMPNAMBUFSIZE (loslib.c:172 "undeclared L_tmpnam",
+# wasip1-c run 40369903497).
 
 build:
   dependencies:
     gnu.org/make: '*'
   script:
-    - make -C src -j {{ hw.concurrency }} lua luac CC="$BK_CC" AR="llvm-ar rcu" RANLIB=llvm-ranlib MYCFLAGS="-D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" MYLIBS="-lwasi-emulated-process-clocks -lwasi-emulated-signal -lsetjmp" MYLDFLAGS="-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false"
+    - make -C src -j {{ hw.concurrency }} lua luac CC="$BK_CC" AR="llvm-ar rcu" RANLIB=llvm-ranlib MYCFLAGS="-DLUA_TMPNAMBUFSIZE=32 -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" MYLIBS="-lwasi-emulated-process-clocks -lwasi-emulated-signal -lsetjmp" MYLDFLAGS="-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false"
     - install -D src/lua "{{ prefix }}/bin/lua.wasm"
     - install -D src/luac "{{ prefix }}/bin/luac.wasm"
 
