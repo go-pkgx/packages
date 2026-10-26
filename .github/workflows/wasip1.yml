@@ -62,14 +62,18 @@ jobs:
           CGO_ENABLED: "0"
         run: go build -trimpath -o "$RUNNER_TEMP/${{ matrix.bin }}.wasm" "${{ matrix.pkg }}"
       - name: smoke under wasmtime
-        # The directory is granted explicitly (WASI has no ambient filesystem).
-        # The guest's arguments follow the module path with NO `--`: wasmtime 50
+        # The filesystem is granted explicitly (WASI has none ambient) and PWD
+        # tells Go's wasip1 runtime which preopen the working directory is in,
+        # exactly as $GOROOT/lib/wasm/go_wasip1_wasm_exec does: with `--dir=.`
+        # the guest's `open t.md` failed with "Bad file number" (run
+        # 40312870805, go-md2man). The guest's arguments follow the module path
+        # with NO `--`: wasmtime 50
         # hands a `--` to the guest as argv[1] (shfmt then tried to lstat
         # "--version"), whatever $GOROOT/lib/wasm/go_wasip1_wasm_exec does.
         run: |
           mkdir smoke && cd smoke
           printf '# Title\n\nbody\n' > t.md
-          wasmtime run --dir=. "$RUNNER_TEMP/${{ matrix.bin }}.wasm" ${{ matrix.smoke }}
+          wasmtime run --dir=/ --env PWD="$PWD" "$RUNNER_TEMP/${{ matrix.bin }}.wasm" ${{ matrix.smoke }}
       - name: publish ${{ matrix.slug }} to ghcr (wasip1/wasm)
         env:
           OCI_USERNAME: ${{ github.actor }}
