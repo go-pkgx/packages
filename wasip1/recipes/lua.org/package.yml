@@ -24,7 +24,17 @@ build:
   dependencies:
     gnu.org/make: '*'
   script:
-    - make -C src -j {{ hw.concurrency }} lua luac CC="$BK_CC" AR="llvm-ar rcu" RANLIB=llvm-ranlib MYCFLAGS="-DL_tmpnam=32 -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" MYLIBS="-lwasi-emulated-process-clocks -lwasi-emulated-signal -lsetjmp" MYLDFLAGS="-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false"
+    # wasi-libc DECLARES tmpfile/tmpnam/system (marked deprecated) and does not
+    # DEFINE them: "undefined symbol: tmpfile / tmpnam / system" at the link (run
+    # 40377008651). They are stubbed to fail the way a sandbox without them
+    # would: io.tmpfile() / os.tmpname() / os.execute() report an error.
+    - run: cp $PROP wasi_stubs.c
+      prop: |
+        void *tmpfile(void) { return 0; }
+        char *tmpnam(char *s) { (void)s; return 0; }
+        int system(const char *c) { return c ? -1 : 0; }
+    - run: $BK_CC -O2 -c -o wasi_stubs.o wasi_stubs.c
+    - make -C src -j {{ hw.concurrency }} lua luac CC="$BK_CC" AR="llvm-ar rcu" RANLIB=llvm-ranlib MYCFLAGS="-DL_tmpnam=32 -D_WASI_EMULATED_PROCESS_CLOCKS -D_WASI_EMULATED_SIGNAL -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" MYLIBS="$SRCROOT/wasi_stubs.o -lwasi-emulated-process-clocks -lwasi-emulated-signal -lsetjmp" MYLDFLAGS="-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false"
     - install -D src/lua "{{ prefix }}/bin/lua.wasm"
     - install -D src/luac "{{ prefix }}/bin/luac.wasm"
 
