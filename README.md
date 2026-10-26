@@ -654,7 +654,26 @@ spelling; the pkgx slug is `wasip1/wasm`.
   `bk publish --platform wasip1/wasm`. A publish failure fails the job.
 - **Pilots:** `filippo.io/age` 1.3.2, `github.com/cpuguy83/go-md2man` 2.0.7 and
   `mvdan.cc/sh` (`shfmt`) 3.14.1.
-- **Out of scope:** C tools (wasi-sdk / wasi-libc); anything needing cgo.
+- **C tools (`wasip1-c.yml`).** Built with OUR toolchain, not a prebuilt wasi-sdk:
+  the `llvm.org` bottle (clang, wasm-ld, llvm-ar), plus two cross parts built from
+  source in the pantry overlay following wasi-sdk's `cmake/wasi-sdk-sysroot.cmake`:
+  `compiler-rt.llvm.org/wasi` (libclang_rt.builtins for wasm32-wasip1 + clang's
+  headers, laid out as a resource dir) and `github.com/WebAssembly/wasi-libc` (the
+  sysroot). `bk --platform wasip1/wasm build` adds the three and imposes
+  `clang --target=wasm32-wasip1 --sysroot=… -resource-dir=… -mcpu=lime1
+  --rtlib=compiler-rt` through `$BK_CC` (the shims re-exec it, so a recipe cannot
+  lose it). Each project has its own small recipe under `wasip1/recipes/<slug>/`
+  (static, no dlopen, no threads). Pilots, built, run under wasmtime 50 and
+  published as `wasip1/wasm`: `zlib.net` 1.3.2 (libz.a + minigzip), `sqlite.org`
+  3.53.4 (the shell; a query is run) and `lua.org` 5.4.9 (errors are thrown with
+  setjmp/longjmp, compiled to the standard exception-handling instructions with
+  `-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false -lsetjmp`; a
+  `pcall(error)` is run). wasi-libc declares but does not define
+  `tmpfile`/`tmpnam`/`system`, which lua stubs. Not yet: libc++/libc++abi (C++),
+  the sovereign rootfs for the pilots' own build step (they run `bk build` on the
+  runner with host `make`; only the compiler, libc and runtime are ours),
+  darwin/aarch64 toolchain bottles (linux/x86-64 only so far).
+- **Out of scope:** anything needing cgo on the host side.
 
 ## License
 
