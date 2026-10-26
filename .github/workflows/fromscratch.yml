@@ -20,9 +20,30 @@ name: fromscratch
 # directory and prints its version, inside an Incus container.
 on:
   workflow_dispatch:
-  # schedule:  # cron disabled 2026-08-12 (free runners for targeted jobs; workflow_dispatch kept)
-    # 12:00 UTC daily — the 06-11h slots are taken by the other factory workflows.
-    # - cron: "0 12 * * *"
+  schedule:
+    # ⛔ BACK ON, WEEKLY — because this is an AUDIT, not a factory.
+    #
+    # The 2026-08-12 sweep disabled every cron here "to free runners for
+    # targeted jobs", and that reasoning holds for build/darwin/windows:
+    # they compile for hours. This one installs eleven published closures
+    # into empty chroots and runs them — 17 minutes, measured
+    # 2026-10-25 — and it is the lane that tests the project's central
+    # claim. The crons still live are exactly the other audits:
+    # index-audit (daily 04:00), vulnscan (daily 05:37), catalogue
+    # (Mon 05:00), sonames (Sun 03:00). This belonged with them.
+    #
+    # What switching it off cost: the proof went stale for two months.
+    # The previous run was 2026-08-28; dispatched by hand on 2026-10-25 it
+    # was still clean — eleven of eleven, no skips — but nobody knew that
+    # across the week the OpenSSL-1.1 class was found, nodejs.org was
+    # rebuilt twice and 967 unresolvable references were recorded. A
+    # control that only runs when somebody remembers reports the past.
+    #
+    # WEEKLY, not the daily it had. What it audits is PUBLISHED bottles,
+    # and the factory crons are off, so most days it would re-prove the
+    # same artefacts. Thursday 12:00 UTC keeps its original hour and
+    # collides with nothing above.
+    - cron: "0 12 * * 4"
 
 permissions:
   contents: read
