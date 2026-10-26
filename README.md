@@ -637,6 +637,25 @@ scale. Consume the Windows packages from either channel:
     PKGX_DIST=https://go-pkgx.github.io/packages pkgx syft.exe --version
     PKGX_DIST=oci://ghcr.io/go-pkgx/packages     pkgx syft.exe --version
 
+## wasip1/wasm
+
+A pilot target for an in-browser container engine: pure-Go projects built with
+`GOOS=wasip1 GOARCH=wasm CGO_ENABLED=0` become `.wasm` modules, published (signed,
+OCI-only for now — no Pages mirror) to `ghcr.io/go-pkgx/packages` with OCI platform
+`os=wasip1, architecture=wasm` — the Docker+Wasm / CNCF wasm-oci-artifact
+spelling; the pkgx slug is `wasip1/wasm`.
+
+- **`.github/workflows/wasip1.yml`.** `workflow_dispatch` only. An explicit matrix
+  (slug, pinned tag, main package) rather than a derived list: `go build -o f .` on
+  a *library* writes an archive and exits 0. Each module is staged as
+  `bin/<name>.wasm` (a recipe's `provides: bin/<name>` stays extension-free;
+  `bottle.ResolveBinPath` finds the `.wasm` on a wasm host, as it finds `.exe` on
+  Windows), **run under wasmtime** (`wasmtime run --dir=. x.wasm -- <args>`), then
+  `bk publish --platform wasip1/wasm`. A publish failure fails the job.
+- **Pilots:** `filippo.io/age` 1.3.2, `github.com/cpuguy83/go-md2man` 2.0.7 and
+  `mvdan.cc/sh` (`shfmt`) 3.14.1.
+- **Out of scope:** C tools (wasi-sdk / wasi-libc); anything needing cgo.
+
 ## License
 
 BSD-3-Clause © the go-pkgx authors.
