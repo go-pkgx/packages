@@ -35,10 +35,11 @@ jobs:
       matrix:
         include:
           # bin: the module under <prefix>/bin; smoke: its arguments under wasmtime
-          # (run in an empty directory holding t.txt; stdin is /dev/null).
-          - { slug: zlib.net, version: "1.3.2", bin: minigzip, smoke: "t.txt" }
-          - { slug: lua.org, version: "5.4.9", bin: lua, smoke: "-v" }
-          - { slug: sqlite.org, version: "3.53.4", bin: sqlite3, smoke: "--version" }
+          # (run in an empty directory holding t.txt); stdin: the file it reads.
+          # minigzip with no argument compresses stdin to stdout.
+          - { slug: zlib.net, version: "1.3.2", bin: minigzip, smoke: "", stdin: t.txt }
+          - { slug: lua.org, version: "5.4.9", bin: lua, smoke: "-v", stdin: /dev/null }
+          - { slug: sqlite.org, version: "3.53.4", bin: sqlite3, smoke: "--version", stdin: /dev/null }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -62,7 +63,7 @@ jobs:
           mkdir smoke && cd smoke
           printf 'hello wasip1\n' > t.txt
           mod="$(ls "$HOME/.pkgx/${{ matrix.slug }}/v${{ matrix.version }}/bin/${{ matrix.bin }}.wasm")"
-          wasmtime run --dir=/ --env PWD="$PWD" "$mod" ${{ matrix.smoke }} </dev/null
+          wasmtime run --dir=/ --env PWD="$PWD" "$mod" ${{ matrix.smoke }} < ${{ matrix.stdin }} > /dev/null
       - name: publish ${{ matrix.slug }} to ghcr (wasip1/wasm)
         env:
           OCI_USERNAME: ${{ github.actor }}
