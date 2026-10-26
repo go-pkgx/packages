@@ -22,6 +22,13 @@ set -euo pipefail
 root="${1:?rootfs}"; recipes="${2:?recipes}"; advisories="${3:?advisories}"; shift 3
 : "${1:?program}"
 
+# builder/Containerfile's ENV, and the reason is measured: without PKGX_DIR=/pkgx
+# pkgx falls back to $HOME/.pkgx, and the tree's coreutils (mkdir, install, …)
+# then fail with "error while loading shared libraries: libc.so.6" (first wasip1-c
+# run in the rootfs, go-pkgx/packages run 40388148703). build.yml exports the same
+# pair before calling sovereign-build.sh.
+export PKGX_DIR=/pkgx HOME=/root
+
 mkdir -p "$root/recipes" "$root/advisories" "$root/dist" "$root/dev" "$root/proc" "$root/tmp" "$root/etc"
 chmod 1777 "$root/tmp"
 cp /etc/resolv.conf "$root/etc/resolv.conf"
