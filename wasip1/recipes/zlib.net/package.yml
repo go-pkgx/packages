@@ -1,0 +1,23 @@
+distributable:
+  url: https://zlib.net/zlib-{{version.raw}}.tar.gz
+  strip-components: 1
+
+versions:
+  github: madler/zlib
+
+# wasip1/wasm recipe: static libz.a + headers + the minigzip test program, built
+# with the wasip1 stencil bk imposes through $BK_CC (clang --target=wasm32-wasip1
+# --sysroot=<wasi-libc> -resource-dir=<compiler-rt>). `--static`: no shared
+# objects exist on wasip1.
+
+build:
+  dependencies:
+    gnu.org/make: '*'
+  script:
+    - ./configure --prefix="{{ prefix }}" --static
+    - make --jobs {{ hw.concurrency }} libz.a minigzip
+    - make install
+    - install -D minigzip "{{ prefix }}/bin/minigzip.wasm"
+
+provides:
+  - bin/minigzip
