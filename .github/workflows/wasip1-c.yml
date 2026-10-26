@@ -36,10 +36,13 @@ jobs:
         include:
           # bin: the module under <prefix>/bin; smoke: its arguments under wasmtime
           # (run in an empty directory holding t.txt); stdin: the file it reads.
-          # minigzip with no argument compresses stdin to stdout.
+          # minigzip with no argument compresses stdin to stdout. The lua smoke
+          # raises and catches an error: lua throws with longjmp, which here is
+          # the wasm exception-handling instructions (wasi-sdk SetjmpLongjmp.md),
+          # so it proves the engine runs them, not just that the module starts.
           - { slug: zlib.net, version: "1.3.2", bin: minigzip, smoke: "", stdin: t.txt }
-          - { slug: lua.org, version: "5.4.9", bin: lua, smoke: "-v", stdin: /dev/null }
-          - { slug: sqlite.org, version: "3.53.4", bin: sqlite3, smoke: "--version", stdin: /dev/null }
+          - { slug: lua.org, version: "5.4.9", bin: lua, smoke: '-e "assert(not pcall(error, 1)); assert(_VERSION == [[Lua 5.4]])"', stdin: /dev/null }
+          - { slug: sqlite.org, version: "3.53.4", bin: sqlite3, smoke: ':memory: "select sqlite_version();"', stdin: /dev/null }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
