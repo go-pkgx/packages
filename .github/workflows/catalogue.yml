@@ -7,8 +7,8 @@
 # would be told, truthfully and uselessly, "47 day(s) old".
 #
 # This is the floor under that. It builds nothing: `bk catalog` reads the
-# pantry and asks the registry which versions it carries, so six platforms'
-# catalogues cost six short jobs rather than a night of compiling. The
+# pantry and asks the registry which versions it carries, so seven platforms'
+# catalogues cost seven short jobs rather than a night of compiling. The
 # factories keep their own catalogue step, because a run that publishes new
 # bottles should say so immediately; this is what happens when none runs.
 #
@@ -51,6 +51,24 @@ jobs:
           - darwin/aarch64
           - darwin/x86-64
           - windows/x86-64
+          # ⛔ THE WASM LANE PUBLISHED BOTTLES NOBODY COULD FIND. wasip1.yml and
+          # wasip1-c.yml have been publishing seven projects under OCI platform
+          # os=wasip1, architecture=wasm -- age, go-md2man, shfmt, zlib, lua,
+          # sqlite3, simdjson -- and neither lane has ever published a
+          # catalogue, so the only platform of the seven that a client could
+          # not ASK about was the one whose bottles are hardest to find by
+          # other means:
+          #
+          #   $ pkgs catalog update --platform wasip1/wasm
+          #   no bottle for go-pkgx.dev/catalog v1 (wasip1/wasm): platform not in index
+          #
+          # pkgx itself has supported the platform throughout -- platformKeys,
+          # the host slug, `bin/<name>.wasm` resolution and the OCI spelling
+          # all have tests. It was the registry that had nothing to answer
+          # with. Verified before adding the lane: `bk catalog --platform
+          # wasip1/wasm` over a 192-recipe tree produces a catalogue, so this
+          # needs no new code, only a seventh short job.
+          - wasip1/wasm
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
