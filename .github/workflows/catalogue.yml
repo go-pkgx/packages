@@ -104,6 +104,11 @@ jobs:
       - name: publish the catalogue for ${{ matrix.platform }}
         env:
           PLATFORM: ${{ matrix.platform }}
+          # ⛔ #387: simdjson is built by wasip1-c.yml from wasip1/recipes and
+          # is in neither the pantry nor the overlay, so a catalogue read from
+          # those two could not name it. Only the wasm catalogue gets the lane's
+          # own recipes: the other platforms do not build them.
+          RECIPES: ${{ startsWith(matrix.platform, 'wasip1/') && 'wasip1/recipes' || '' }}
           OCI_USERNAME: ${{ github.actor }}
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -115,5 +120,6 @@ jobs:
             --overlay overlay \
             --overrides overrides \
             --versions \
+            ${RECIPES:+--recipes "$RECIPES"} \
             --platform "$PLATFORM" \
             --publish
