@@ -3,8 +3,8 @@ module github.com/go-pkgx/packages
 go 1.27.2
 
 require (
-	github.com/go-pkgx/bk v0.35.0
-	github.com/go-pkgx/bottle v0.56.0
+	github.com/go-pkgx/bk v0.44.2
+	github.com/go-pkgx/bottle v0.60.0
 	github.com/hashicorp/hcl/v2 v2.25.0
 	gopkg.in/yaml.v3 v3.0.1
 )
