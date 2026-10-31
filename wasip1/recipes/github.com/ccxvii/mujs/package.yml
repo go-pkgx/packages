@@ -24,7 +24,15 @@ build:
   dependencies:
     gnu.org/make: '*'
   script:
-    - make build/release/mujs HAVE_READLINE=no CC="$BK_CC" AR=llvm-ar CFLAGS="-std=c99 -O2 -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" READLINE_LIBS="-lsetjmp -lwasi-emulated-signal -lwasi-emulated-process-clocks"
+    # `-o utfdata.h`: the tarball ships utfdata.h, but the Makefile (line 75-81)
+    # also lists UnicodeData.txt/SpecialCasing.txt as its prerequisites and would
+    # `curl` them from unicode.org to regenerate it with python3. A first local
+    # build quietly did exactly that (it had a network); the sovereign CI build
+    # has none: "curl -s -o UnicodeData.txt https://www.unicode.org/... make: ***
+    # [Makefile:76: UnicodeData.txt] Error 77" (run 41239753572). `-o` says the
+    # shipped file is up to date, so nothing is downloaded. astnames.h/opnames.h
+    # are shipped too and are likewise not regenerated.
+    - make -o utfdata.h -o astnames.h -o opnames.h build/release/mujs HAVE_READLINE=no CC="$BK_CC" AR=llvm-ar CFLAGS="-std=c99 -O2 -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" READLINE_LIBS="-lsetjmp -lwasi-emulated-signal -lwasi-emulated-process-clocks"
     - install -D build/release/mujs "{{ prefix }}/bin/mujs.wasm"
 
 provides:
