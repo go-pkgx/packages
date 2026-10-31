@@ -683,14 +683,15 @@ spelling; the pkgx slug is `wasip1/wasm`.
     `$BK_CXX` stencil). Pilot: `github.com/simdjson/simdjson` 5.0.5 (the library
     from upstream plus a 15-line stdin-to-stdout minifier; upstream's tools fetch
     cxxopts at configure time), run under wasmtime.
-  - **More C tools.** Seven recipes added after the pilots, each built with
+  - **More C tools.** Eight recipes added after the pilots, each built with
     wasi-sdk 34 and run under wasmtime 48 before being put in the matrix (the CI
     smoke then runs each again on both build hosts): `sourceware.org/bzip2` 1.0.8,
     `facebook.com/zstd` 1.5.7, `lz4.org` 1.10.0 (`lz4 -b` compresses and
     decompresses), `github.com/google/brotli` 1.2.1, `pcre.org/v2` 10.49
     (`pcre2grep`, `pcre2test`; no JIT, no fork-based callouts), `libexpat.github.io`
-    2.9.0 (`xmlwf`) and `stedolan.github.io/jq` 1.8.2 (oniguruma vendored). The
-    matrix runs at most 4 jobs at once (`max-parallel: 4`); it is now 22 jobs.
+    2.9.0 (`xmlwf`), `stedolan.github.io/jq` 1.8.2 (oniguruma vendored) and
+    `github.com/ccxvii/mujs` 1.3.7 (JavaScript; setjmp/longjmp as for lua). The
+    matrix runs at most 4 jobs at once (`max-parallel: 4`); it is now 24 jobs.
     Each recipe's header lists what wasi-libc could not carry (`chown`/`fchown`
     undeclared, `fchmod`/`utime` defined as ENOSYS, `signal` behind
     `-D_WASI_EMULATED_SIGNAL`, the 64 KiB default stack) and the fix. A wasip1

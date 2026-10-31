@@ -1,0 +1,31 @@
+distributable:
+  url: https://github.com/ccxvii/mujs/archive/refs/tags/{{ version.raw }}.tar.gz
+  strip-components: 1
+
+versions:
+  github: ccxvii/mujs/tags
+
+# wasip1/wasm recipe: the mujs interpreter (ES5 JavaScript). Makefile target
+# build/release/mujs; variables from the Makefile itself:
+#  - HAVE_READLINE=no: main.c:65 "fatal error: 'readline/readline.h' file not
+#    found" otherwise (the REPL line editor; mujs then reads stdin plainly).
+#  - mujs reports errors with setjmp/longjmp (jsi.h js_throw), which wasm only has
+#    through the exception-handling proposal. Same flags and same demand as the
+#    lua.org recipe (WebAssembly/wasi-sdk SetjmpLongjmp.md): the compile needs
+#    `-mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false`, the link needs
+#    `-lsetjmp`; without it wasm-ld fails with "undefined symbol: __wasm_setjmp,
+#    __wasm_longjmp, __wasm_setjmp_test, __c_longjmp".
+#  - -D_WASI_EMULATED_SIGNAL / _PROCESS_CLOCKS: wasi-libc's signal.h / sys/times.h
+#    are `#error`s without them.
+# Measured by hand under wasmtime: a script using JSON, Array.map, a RegExp and a
+# caught TypeError (try { null.x } catch) runs and prints the expected lines.
+
+build:
+  dependencies:
+    gnu.org/make: '*'
+  script:
+    - make build/release/mujs HAVE_READLINE=no CC="$BK_CC" AR=llvm-ar CFLAGS="-std=c99 -O2 -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -mllvm -wasm-enable-sjlj -mllvm -wasm-use-legacy-eh=false" READLINE_LIBS="-lsetjmp -lwasi-emulated-signal -lwasi-emulated-process-clocks"
+    - install -D build/release/mujs "{{ prefix }}/bin/mujs.wasm"
+
+provides:
+  - bin/mujs
