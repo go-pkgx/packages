@@ -1,0 +1,46 @@
+distributable:
+  url: https://github.com/google/brotli/archive/refs/tags/{{ version.tag }}.tar.gz
+  strip-components: 1
+
+versions:
+  github: google/brotli
+
+# wasip1/wasm recipe: the `brotli` command-line program. Upstream builds it with
+# CMake (CMakeLists.txt) or Bazel; the C sources are three flat directories
+# (c/common, c/dec, c/enc) plus c/tools/brotli.c and the program uses no threads,
+# so the recipe compiles them in ONE $BK_CC invocation instead of fetching cmake.
+#
+# What wasi-libc cannot carry (each a measured compiler or linker error):
+#  - chown(): c/tools/brotli.c:870 "call to undeclared function 'chown'" (the
+#    tool copies owner/mode onto the output). Declared, renamed
+#    (-include wasi_compat.h: chown -> zs_chown) and defined as a no-op, because
+#    wasi-libc already DEFINES chown as an ENOSYS stub and wasm-ld refuses a
+#    second definition ("duplicate symbol: chown") — measured while building
+#    zstd with the same stub.
+#  - signal() and process clocks: -D_WASI_EMULATED_SIGNAL and
+#    -D_WASI_EMULATED_PROCESS_CLOCKS (+ the matching -l), as for lua.
+#  - fchmod() is defined by wasi-libc as ENOSYS, so `brotli file` prints
+#    "setting access bits failed ... Function not implemented" and exits 0; the
+#    output is written correctly, with default permissions. stdin/stdout mode
+#    (`brotli < in > out`) is silent.
+
+build:
+  script:
+    - run: cp $PROP wasi_compat.h
+      prop: |
+        #ifndef __ASSEMBLER__
+        int zs_chown(const char *, unsigned, unsigned);
+        #define chown zs_chown
+        #endif
+    - run: cp $PROP wasi_stubs.c
+      prop: |
+        int zs_chown(const char *p, unsigned u, unsigned g) { (void)p; (void)u; (void)g; return 0; }
+    - run: >-
+        $BK_CC -O2 -Ic/include -include wasi_compat.h
+        -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS
+        -o brotli.wasm wasi_stubs.c c/common/*.c c/dec/*.c c/enc/*.c c/tools/brotli.c
+        -lwasi-emulated-signal -lwasi-emulated-process-clocks
+    - install -D brotli.wasm "{{ prefix }}/bin/brotli.wasm"
+
+provides:
+  - bin/brotli

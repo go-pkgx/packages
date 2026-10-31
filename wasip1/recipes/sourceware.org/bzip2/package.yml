@@ -1,0 +1,55 @@
+distributable:
+  url: https://sourceware.org/pub/bzip2/bzip2-{{version}}.tar.gz
+  strip-components: 1
+
+versions:
+  url: https://sourceware.org/pub/bzip2/
+  match: /bzip2-(\d+\.\d+\.\d+)\.tar\.gz/
+  strip:
+    - /bzip2-/
+    - /.tar.gz/
+
+# wasip1/wasm recipe: libbz2.a + the bzip2 program. Upstream's Makefile is the
+# build documentation (CC/AR/RANLIB/CFLAGS/LDFLAGS are its cross-compiling knobs,
+# "To assist in cross-compiling"); only the two targets we ship are built, not
+# `all`, because `all` also runs the `test` target, which EXECUTES the freshly
+# linked program on the build host — impossible for a wasm module.
+#
+# What wasi-libc cannot carry (each one is a measured compiler/linker error):
+#  - signal(), SIGINT/SIGTERM/SIGHUP/SIGSEGV/SIGBUS: wasi-libc's signal.h is
+#    `#error "wasm lacks signal support; ... compile with -D_WASI_EMULATED_SIGNAL
+#    and link with -lwasi-emulated-signal"`. bzip2 only uses signals to delete a
+#    half-written output on ^C; the emulation (handlers never fire) is enough.
+#  - sys/times.h: same, `-D_WASI_EMULATED_PROCESS_CLOCKS -lwasi-emulated-process-clocks`.
+#  - fchown(): not declared by wasi-libc ("call to undeclared function 'fchown'"),
+#    so wasi_compat.h declares it and wasi_stubs.c defines it as a no-op.
+#  - fchmod() and utime(): declared, but wasi-libc defines them to fail with
+#    ENOSYS (libc.a posix.c.obj), and bzip2 calls them when compressing a NAMED
+#    file to copy the mode and mtime onto the output, so `bzip2 file` died with
+#    "Function not implemented" while `bzip2 < file` worked. They are renamed to
+#    no-op stubs for this translation unit only (-Dfchmod=bz_fchmod
+#    -Dutime=bz_utime); a duplicate definition at link time is refused by wasm-ld
+#    ("duplicate symbol: utime"), hence the rename rather than a plain override.
+#    Effect: the output file gets default permissions and the current mtime.
+
+build:
+  dependencies:
+    gnu.org/make: '*'
+  script:
+    - run: cp $PROP wasi_compat.h
+      prop: |
+        int fchown(int, unsigned, unsigned);
+    - run: cp $PROP wasi_stubs.c
+      prop: |
+        struct utimbuf;
+        int fchown(int fd, unsigned u, unsigned g) { (void)fd; (void)u; (void)g; return 0; }
+        int bz_fchmod(int fd, unsigned m) { (void)fd; (void)m; return 0; }
+        int bz_utime(const char *p, const struct utimbuf *t) { (void)p; (void)t; return 0; }
+    - run: $BK_CC -O2 -c -o wasi_stubs.o wasi_stubs.c
+    - make libbz2.a bzip2 CC="$BK_CC" AR=llvm-ar RANLIB=llvm-ranlib CFLAGS="-O2 -D_FILE_OFFSET_BITS=64 -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -Dfchmod=bz_fchmod -Dutime=bz_utime -include wasi_compat.h" LDFLAGS="$SRCROOT/wasi_stubs.o -lwasi-emulated-signal -lwasi-emulated-process-clocks"
+    - install -D bzip2 "{{ prefix }}/bin/bzip2.wasm"
+    - install -D libbz2.a "{{ prefix }}/lib/libbz2.a"
+    - install -D bzlib.h "{{ prefix }}/include/bzlib.h"
+
+provides:
+  - bin/bzip2
