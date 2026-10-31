@@ -663,11 +663,35 @@ spelling; the pkgx slug is `wasip1/wasm`.
   (go-containerregistry), `mockgen`, `jd`, `gosec`, `addlicense`, `hcl2json`, `mmark`
   and `protoc-gen-go`. The matrix runs `max-parallel: 6` so the 30 jobs do not
   starve the other lanes. Measured not to build for `wasip1/wasm` at their latest
-  tag (do not retry): `dasel` (atotto/clipboard), `golines`, `gron`, `helm-docs`
-  (logrus / go-isatty terminal checks), `duf`, `html-to-markdown` (termenv),
-  `minify` (djherbis/atime), `cue` (internal/robustio), `gomplate` (azblob), and
-  `helm`, `opa`, `nfpm`, `task`, `csvtk`, `miller`, `trdsql`, `seqkit`, `vale`,
-  `glow`, `buf`, `cobra-cli`.
+  tag, with the full compiler error kept (do not retry):
+  - `dasel`: `atotto/clipboard` has no wasip1 `readAll`/`writeAll`.
+  - `golines`, `helm-docs`: `sirupsen/logrus` `isTerminal` undefined.
+  - `gron`: `fatih/color` -> `mattn/go-isatty` `IsTerminal` undefined.
+  - `duf`, `html-to-markdown`: `muesli/termenv` terminal-colour fields undefined.
+  - `minify`: `djherbis/atime` `Stat_t.Atime` has a different type.
+  - `cue`: `internal/robustio` undefined; `gomplate`: `azblob` `Mmb` undefined.
+  - `buf`: `docker/go-connections` (`syscall.RawSockaddrUnix`, `ForkLock`),
+    `buf.build/go/app` and `bufbuild/protoplugin` platform symbols undefined.
+  - `cobra-cli`: `spf13/viper` v1.10.1 needs `fsnotify.Watcher` (no wasip1 backend).
+  - `csvtk`: `cheggaaa/pb` `termutil` (`lockEcho`, `unlockSignals`) undefined.
+  - `glow`: `atotto/clipboard`, `muesli/termenv` and `bubbletea` v2 (`listenForResize`,
+    `initInput`) undefined.
+  - `helm`: `moby/term` needs `unix.Termios`/`TIOCGWINSZ` ioctls.
+  - `miller`: the Go compiler rejects a generated parser table
+    (`function too big: ... exceeds 65536 blocks`).
+  - `nfpm`: `go-git/go-git` `isSymlinkWindowsNonAdmin` undefined.
+  - `opa`: `reeflective/readline` `GetSize` undefined.
+  - `seqkit`: `vbauerster/mpb` `cwriter` needs `unix.IoctlGetWinsize`/`IoctlGetTermios`.
+  - `task`: `atotto/clipboard`, `u-root/pkg/ls` (`Stat_t.Rdev`, `unix.Major`),
+    `bubbletea` v2 undefined.
+  - `trdsql`: `modernc.org/libc` has no wasip1 packages (build constraints exclude
+    every file), so `modernc.org/sqlite` cannot build.
+  - `vale`: `smacker/go-tree-sitter` is cgo (all grammars excluded), plus
+    `adrg/xdg` and `otiai10/copy` (`syscall.Mkfifo`).
+
+  Not built because of the tag format, not the code: `staticcheck`, `jmespath/jp`
+  and `golang/tools` (`gopls/v...`) have tags without a `v` prefix, but the matrix
+  clones `v<version>`. A `tag:` field in the matrix would admit them (follow-up).
 - **C tools (`wasip1-c.yml`).** Built with OUR toolchain, not a prebuilt wasi-sdk:
   the `llvm.org` bottle (clang, wasm-ld, llvm-ar), plus two cross parts built from
   source in the pantry overlay following wasi-sdk's `cmake/wasi-sdk-sysroot.cmake`:
