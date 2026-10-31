@@ -67,7 +67,7 @@ jobs:
           - { slug: github.com/tidwall/jj, repo: tidwall/jj, version: "1.9.2", pkg: "./cmd/jj", bin: jj, smoke: "-i t.json a" }
           - { slug: github.com/hashicorp/hcl, repo: hashicorp/hcl, version: "2.25.0", pkg: "./cmd/hclfmt", bin: hclfmt, smoke: "-version" }
           - { slug: github.com/golangci/misspell, repo: golangci/misspell, version: "0.8.0", pkg: "./cmd/misspell", bin: misspell, smoke: "t.txt" }
-          - { slug: github.com/mvdan/xurls, repo: mvdan/xurls, version: "2.6.0", pkg: "./cmd/xurls", bin: xurls, smoke: "t.md" }
+          - { slug: mvdan.cc/xurls, repo: mvdan/xurls, version: "2.6.0", pkg: "./cmd/xurls", bin: xurls, smoke: "t.md" }
           - { slug: github.com/BurntSushi/toml, repo: BurntSushi/toml, version: "1.6.0", pkg: "./cmd/tomlv", bin: tomlv, smoke: "t.toml" }
           - { slug: github.com/itchyny/json2yaml, repo: itchyny/json2yaml, version: "0.1.5", pkg: "./cmd/json2yaml", bin: json2yaml, smoke: "t.json" }
           - { slug: github.com/google/go-containerregistry, repo: google/go-containerregistry, version: "0.22.1", pkg: "./cmd/crane", bin: crane, smoke: "version" }
