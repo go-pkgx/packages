@@ -34,6 +34,10 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
+      # 30 entries: an unbounded fan-out has starved the other lanes of this
+      # repository before (37 parallel jobs caused cancellations). 6 at a time
+      # keeps this lane to a fraction of the runner pool.
+      max-parallel: 6
       matrix:
         include:
           # Each entry was built for wasip1/wasm and checked for the \0asm magic
@@ -43,6 +47,37 @@ jobs:
           - { slug: filippo.io/age, repo: FiloSottile/age, version: "1.3.2", pkg: "./cmd/age", bin: age, smoke: "--version" }
           - { slug: github.com/cpuguy83/go-md2man, repo: cpuguy83/go-md2man, version: "2.0.7", pkg: ".", bin: go-md2man, smoke: "-in t.md" }
           - { slug: mvdan.cc/sh, repo: mvdan/sh, version: "3.14.1", pkg: "./cmd/shfmt", bin: shfmt, smoke: "--version" }
+          # Wave 2 (2026-10-31): every entry below was built for wasip1/wasm on
+          # a workstation AND run under wasmtime 50.0.1 with exactly this smoke
+          # (exit 0, output checked) before it was listed. Fixtures t.json,
+          # t.yaml, t.toml, t.hcl, t.txt are written by the smoke step.
+          - { slug: github.com/mikefarah/yq, repo: mikefarah/yq, version: "4.54.1", pkg: ".", bin: yq, smoke: "e .a t.yaml" }
+          - { slug: github.com/itchyny/gojq, repo: itchyny/gojq, version: "0.12.19", pkg: "./cmd/gojq", bin: gojq, smoke: ".a t.json" }
+          - { slug: github.com/google/go-jsonnet, repo: google/go-jsonnet, version: "0.22.0", pkg: "./cmd/jsonnet", bin: jsonnet, smoke: "--version" }
+          - { slug: mvdan.cc/gofumpt, repo: mvdan/gofumpt, version: "0.12.0", pkg: ".", bin: gofumpt, smoke: "--version" }
+          - { slug: github.com/pelletier/go-toml, repo: pelletier/go-toml, version: "2.4.3", pkg: "./cmd/tomljson", bin: tomljson, smoke: "t.toml" }
+          - { slug: google.com/yamlfmt, repo: google/yamlfmt, version: "0.21.0", pkg: "./cmd/yamlfmt", bin: yamlfmt, smoke: "-version" }
+          - { slug: github.com/rhysd/actionlint, repo: rhysd/actionlint, version: "1.7.12", pkg: "./cmd/actionlint", bin: actionlint, smoke: "-version" }
+          - { slug: github.com/editorconfig-checker/editorconfig-checker, repo: editorconfig-checker/editorconfig-checker, version: "4.0.2", pkg: "./cmd/editorconfig-checker", bin: editorconfig-checker, smoke: "--version" }
+          - { slug: github.com/mgechev/revive, repo: mgechev/revive, version: "1.17.1", pkg: ".", bin: revive, smoke: "-version" }
+          - { slug: github.com/fatih/gomodifytags, repo: fatih/gomodifytags, version: "1.17.0", pkg: ".", bin: gomodifytags, smoke: "-h" }
+          - { slug: github.com/jstemmer/go-junit-report, repo: jstemmer/go-junit-report, version: "2.1.0", pkg: ".", bin: go-junit-report, smoke: "-version" }
+          - { slug: github.com/zegl/kube-score, repo: zegl/kube-score, version: "1.20.0", pkg: "./cmd/kube-score", bin: kube-score, smoke: "version" }
+          - { slug: github.com/google/gnostic, repo: google/gnostic, version: "0.7.0", pkg: ".", bin: gnostic, smoke: "--help" }
+          - { slug: github.com/tidwall/jj, repo: tidwall/jj, version: "1.9.2", pkg: "./cmd/jj", bin: jj, smoke: "-i t.json a" }
+          - { slug: github.com/hashicorp/hcl, repo: hashicorp/hcl, version: "2.25.0", pkg: "./cmd/hclfmt", bin: hclfmt, smoke: "-version" }
+          - { slug: github.com/golangci/misspell, repo: golangci/misspell, version: "0.8.0", pkg: "./cmd/misspell", bin: misspell, smoke: "t.txt" }
+          - { slug: github.com/mvdan/xurls, repo: mvdan/xurls, version: "2.6.0", pkg: "./cmd/xurls", bin: xurls, smoke: "t.md" }
+          - { slug: github.com/BurntSushi/toml, repo: BurntSushi/toml, version: "1.6.0", pkg: "./cmd/tomlv", bin: tomlv, smoke: "t.toml" }
+          - { slug: github.com/itchyny/json2yaml, repo: itchyny/json2yaml, version: "0.1.5", pkg: "./cmd/json2yaml", bin: json2yaml, smoke: "t.json" }
+          - { slug: github.com/google/go-containerregistry, repo: google/go-containerregistry, version: "0.22.1", pkg: "./cmd/crane", bin: crane, smoke: "version" }
+          - { slug: go.uber.org/mock/mockgen, repo: uber-go/mock, version: "0.6.0", pkg: "./mockgen", bin: mockgen, smoke: "-version" }
+          - { slug: github.com/josephburnett/jd, repo: josephburnett/jd, version: "2.5.0", pkg: ".", bin: jd, smoke: "t.json t.json" }
+          - { slug: github.com/securego/gosec, repo: securego/gosec, version: "2.30.0", pkg: "./cmd/gosec", bin: gosec, smoke: "-version" }
+          - { slug: github.com/google/addlicense, repo: google/addlicense, version: "1.2.0", pkg: ".", bin: addlicense, smoke: "-check t.txt" }
+          - { slug: github.com/tmccombs/hcl2json, repo: tmccombs/hcl2json, version: "0.6.9", pkg: ".", bin: hcl2json, smoke: "t.hcl" }
+          - { slug: github.com/mmarkdown/mmark, repo: mmarkdown/mmark, version: "2.2.48", pkg: ".", bin: mmark, smoke: "-version" }
+          - { slug: google.com/protobuf-go, repo: protocolbuffers/protobuf-go, version: "1.36.12", pkg: "./cmd/protoc-gen-go", bin: protoc-gen-go, smoke: "--version" }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -73,6 +108,11 @@ jobs:
         run: |
           mkdir smoke && cd smoke
           printf '# Title\n\nbody\n' > t.md
+          printf '{"a":1}\n' > t.json
+          printf 'a: 1\n' > t.yaml
+          printf 'a = 1\n' > t.toml
+          printf 'a   = 1\n' > t.hcl
+          printf 'hello wrold\n' > t.txt
           wasmtime run --dir=/ --env PWD="$PWD" "$RUNNER_TEMP/${{ matrix.bin }}.wasm" ${{ matrix.smoke }}
       - name: publish ${{ matrix.slug }} to ghcr (wasip1/wasm)
         env:

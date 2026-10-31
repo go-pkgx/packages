@@ -654,6 +654,20 @@ spelling; the pkgx slug is `wasip1/wasm`.
   `bk publish --platform wasip1/wasm`. A publish failure fails the job.
 - **Pilots:** `filippo.io/age` 1.3.2, `github.com/cpuguy83/go-md2man` 2.0.7 and
   `mvdan.cc/sh` (`shfmt`) 3.14.1.
+- **Go lane, wave 2 (27 more, 30 in all).** Each was built for `wasip1/wasm` and run
+  under wasmtime 50.0.1 with its smoke arguments before it was listed, and is pinned
+  to an exact upstream tag: `yq`, `gojq`, `jsonnet` (go-jsonnet), `gofumpt`,
+  `tomljson` (go-toml), `yamlfmt`, `actionlint`, `editorconfig-checker`, `revive`,
+  `gomodifytags`, `go-junit-report`, `kube-score`, `gnostic`, `jj`, `hclfmt` (hcl),
+  `misspell` (golangci), `xurls`, `tomlv` (BurntSushi/toml), `json2yaml`, `crane`
+  (go-containerregistry), `mockgen`, `jd`, `gosec`, `addlicense`, `hcl2json`, `mmark`
+  and `protoc-gen-go`. The matrix runs `max-parallel: 6` so the 30 jobs do not
+  starve the other lanes. Measured not to build for `wasip1/wasm` at their latest
+  tag (do not retry): `dasel` (atotto/clipboard), `golines`, `gron`, `helm-docs`
+  (logrus / go-isatty terminal checks), `duf`, `html-to-markdown` (termenv),
+  `minify` (djherbis/atime), `cue` (internal/robustio), `gomplate` (azblob), and
+  `helm`, `opa`, `nfpm`, `task`, `csvtk`, `miller`, `trdsql`, `seqkit`, `vale`,
+  `glow`, `buf`, `cobra-cli`.
 - **C tools (`wasip1-c.yml`).** Built with OUR toolchain, not a prebuilt wasi-sdk:
   the `llvm.org` bottle (clang, wasm-ld, llvm-ar), plus two cross parts built from
   source in the pantry overlay following wasi-sdk's `cmake/wasi-sdk-sysroot.cmake`:
