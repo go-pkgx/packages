@@ -1,0 +1,42 @@
+distributable:
+  url: https://github.com/PCRE2Project/pcre2/releases/download/pcre2-{{version.major}}.{{version.minor}}/pcre2-{{version.major}}.{{version.minor}}.tar.gz
+  strip-components: 1
+
+versions:
+  github: PCRE2Project/pcre2/tags
+  strip: /^pcre2-/
+
+# wasip1/wasm recipe: libpcre2-8.a plus the pcre2grep and pcre2test programs
+# (8-bit library only). Configure switches, from `./configure --help` and
+# configure.ac of pcre2-10.49:
+#  - --disable-jit: the JIT emits native machine code; there is none on wasm.
+#  - --disable-pcre2grep-callout --disable-pcre2grep-callout-fork: the default
+#    pcre2grep supports callout scripts run through fork/exec, and configure
+#    stops with "Callout script support needs sys/wait.h." on wasi. The option
+#    only removes `--om-separator`-style external callouts (`(?C"command")`).
+#  - --host=wasm32-wasi: config.sub accepts it; it makes configure treat this as
+#    cross-compiling, so it never tries to RUN a test program.
+#  - no zlib/bz2 for pcre2grep (-z / -b): the wasip1 recipe set has no such
+#    dependency in this recipe, configure reports them absent ("checking for
+#    gzopen in -lz... no") and builds without.
+# -D_WASI_EMULATED_SIGNAL / -D_WASI_EMULATED_PROCESS_CLOCKS: wasi-libc's signal.h
+# and sys/times.h are `#error`s without them (pcre2test installs a SIGSEGV handler
+# and times matches), as for lua.
+#
+# The smoke runs pcre2grep. pcre2test was also run by hand under wasmtime
+# (`/a(b+)c/` against `xabbbcx` prints ` 0: abbbc`, ` 1: bbb`).
+
+build:
+  dependencies:
+    gnu.org/make: '*'
+  script:
+    - ./configure --prefix="{{ prefix }}" --host=wasm32-wasi --disable-shared --enable-static --disable-jit --disable-pcre2grep-callout --disable-pcre2grep-callout-fork CC="$BK_CC" AR=llvm-ar RANLIB=llvm-ranlib CFLAGS="-O2 -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS" LDFLAGS="-lwasi-emulated-signal -lwasi-emulated-process-clocks"
+    - make --jobs {{ hw.concurrency }} libpcre2-8.la pcre2grep pcre2test
+    - install -D pcre2grep "{{ prefix }}/bin/pcre2grep.wasm"
+    - install -D pcre2test "{{ prefix }}/bin/pcre2test.wasm"
+    - install -D .libs/libpcre2-8.a "{{ prefix }}/lib/libpcre2-8.a"
+    - install -D src/pcre2.h "{{ prefix }}/include/pcre2.h"
+
+provides:
+  - bin/pcre2grep
+  - bin/pcre2test

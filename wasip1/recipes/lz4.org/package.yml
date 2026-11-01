@@ -1,0 +1,45 @@
+distributable:
+  url: https://github.com/lz4/lz4/releases/download/{{ version.tag }}/lz4-{{ version }}.tar.gz
+  strip-components: 1
+
+versions:
+  github: lz4/lz4
+
+# wasip1/wasm recipe: the lz4 command-line program (programs/Makefile `lz4`
+# target, which compiles ../lib itself).
+#  - HAVE_MULTITHREAD=0: programs/Makefile line 68-70 probes `cc -pthread` and
+#    adds -DLZ4IO_MULTITHREAD; wasip1 has no threads, so it is set explicitly.
+#
+# What wasi-libc cannot carry (each a measured compiler or linker error):
+#  - signal(): "wasm lacks signal support ... -D_WASI_EMULATED_SIGNAL"; process
+#    clocks (the -b benchmark) likewise need -D_WASI_EMULATED_PROCESS_CLOCKS.
+#  - chown(): util.h:251 "call to undeclared function 'chown'". Same fix as the
+#    zstd recipe: declared, renamed (-Dchown=lz_chown) and defined as a no-op,
+#    because wasi-libc already DEFINES chown as an ENOSYS stub and wasm-ld would
+#    refuse a second one. programs/Makefile compiles every programs/*.c
+#    (SRCFILES, line 46), so wasi_stubs.c is picked up without being named;
+#    wasi_compat.h is guarded for __ASSEMBLER__ for the same reason as in zstd.
+#  - STACK: the first build decoded nothing: `lz4 -d` trapped "memory fault at
+#    wasm address 0xfffffc10 ... out of bounds memory access" inside fread from
+#    LZ4IO_decompressSrcFile. wasm-ld's default shadow stack is 64 KiB and
+#    lz4io keeps large buffers on it. `-Wl,-z,stack-size=8388608` (wasm-ld
+#    option) fixed it; `lz4 -d` and `lz4 -b` then round-trip.
+
+build:
+  dependencies:
+    gnu.org/make: '*'
+  script:
+    - run: cp $PROP programs/wasi_compat.h
+      prop: |
+        #ifndef __ASSEMBLER__
+        int lz_chown(const char *, unsigned, unsigned);
+        #define chown lz_chown
+        #endif
+    - run: cp $PROP programs/wasi_stubs.c
+      prop: |
+        int lz_chown(const char *p, unsigned u, unsigned g) { (void)p; (void)u; (void)g; return 0; }
+    - make -C programs lz4 CC="$BK_CC" HAVE_MULTITHREAD=0 CFLAGS="-O2 -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -include wasi_compat.h" LDLIBS="-lwasi-emulated-signal -lwasi-emulated-process-clocks -Wl,-z,stack-size=8388608"
+    - install -D programs/lz4 "{{ prefix }}/bin/lz4.wasm"
+
+provides:
+  - bin/lz4

@@ -41,6 +41,10 @@ jobs:
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
+      # 24 jobs (12 projects x 2 build hosts). Parallel matrices in this repository
+      # have starved other lanes (37 concurrent jobs caused cancellations), so at
+      # most 4 run at once: the longest build (jq + vendored oniguruma) is minutes.
+      max-parallel: 4
       matrix:
         include:
           # bin: the module under <prefix>/bin; smoke: its arguments under wasmtime
@@ -54,6 +58,21 @@ jobs:
           - { runner: ubuntu-latest, platform: linux/x86-64, slug: sqlite.org, version: "3.53.4", bin: sqlite3, smoke: ':memory: "select sqlite_version();"', stdin: /dev/null }
           # the C++ pilot: libc++ from libcxx.llvm.org/wasi; reads j.json (JSON).
           - { runner: ubuntu-latest, platform: linux/x86-64, slug: github.com/simdjson/simdjson, version: "5.0.5", bin: simdjson-minify, smoke: "", stdin: j.json }
+          # Compressors, regex, XML and JSON tools (C). Each smoke is one wasmtime
+          # run that must exit 0; $PWD below is expanded by the smoke step's shell,
+          # because the module resolves relative paths against nothing but PWD+--dir=/.
+          # lz4 -b1 -i1 compresses AND decompresses the file in memory (benchmark),
+          # which a stdin->stdout compress would not: lz4 -d once trapped on the stack.
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: sourceware.org/bzip2, version: "1.0.8", bin: bzip2, smoke: "-9", stdin: t.txt }
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: facebook.com/zstd, version: "1.5.7", bin: zstd, smoke: "-c", stdin: t.txt }
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: lz4.org, version: "1.10.0", bin: lz4, smoke: '-b1 -i1 "$PWD/t.txt"', stdin: /dev/null }
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: github.com/google/brotli, version: "1.2.1", bin: brotli, smoke: "", stdin: t.txt }
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: pcre.org/v2, version: "10.49", bin: pcre2grep, smoke: '"[0-9]+"', stdin: t.txt }
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: libexpat.github.io, version: "2.9.0", bin: xmlwf, smoke: "", stdin: x.xml }
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: stedolan.github.io/jq, version: "1.8.2", bin: jq, smoke: '-e ".a[1] == 2"', stdin: j.json }
+          # mujs throws with setjmp/longjmp (exception-handling instructions, as lua);
+          # m.js catches a TypeError, so it proves the engine runs them.
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: github.com/ccxvii/mujs, version: "1.3.7", bin: mujs, smoke: '"$PWD/m.js"', stdin: /dev/null }
           # linux/aarch64: the same rootfs, staged for aarch64 on GitHub's native
           # arm runner. The toolchain bottles (compiler-rt, wasi-libc, libcxx) are
           # published for linux/aarch64 hosts too; the wasm they produce is the same.
@@ -61,6 +80,14 @@ jobs:
           - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: lua.org, version: "5.4.9", bin: lua, smoke: '-e "assert(not pcall(error, 1)); assert(_VERSION == [[Lua 5.4]])"', stdin: /dev/null }
           - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: sqlite.org, version: "3.53.4", bin: sqlite3, smoke: ':memory: "select sqlite_version();"', stdin: /dev/null }
           - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: github.com/simdjson/simdjson, version: "5.0.5", bin: simdjson-minify, smoke: "", stdin: j.json }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: sourceware.org/bzip2, version: "1.0.8", bin: bzip2, smoke: "-9", stdin: t.txt }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: facebook.com/zstd, version: "1.5.7", bin: zstd, smoke: "-c", stdin: t.txt }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: lz4.org, version: "1.10.0", bin: lz4, smoke: '-b1 -i1 "$PWD/t.txt"', stdin: /dev/null }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: github.com/google/brotli, version: "1.2.1", bin: brotli, smoke: "", stdin: t.txt }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: pcre.org/v2, version: "10.49", bin: pcre2grep, smoke: '"[0-9]+"', stdin: t.txt }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: libexpat.github.io, version: "2.9.0", bin: xmlwf, smoke: "", stdin: x.xml }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: stedolan.github.io/jq, version: "1.8.2", bin: jq, smoke: '-e ".a[1] == 2"', stdin: j.json }
+          - { runner: ubuntu-24.04-arm, platform: linux/aarch64, slug: github.com/ccxvii/mujs, version: "1.3.7", bin: mujs, smoke: '"$PWD/m.js"', stdin: /dev/null }
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
@@ -110,6 +137,8 @@ jobs:
           mkdir smoke && cd smoke
           printf 'hello wasip1\n' > t.txt
           printf '{ "a" : [1, 2 ] }\n' > j.json
+          printf '<a x="1"><b>hi</b></a>\n' > x.xml
+          printf 'var o={a:[1,2,3]}; print(JSON.stringify(o), o.a.map(function(x){return x*2}).join(","));\ntry { null.x } catch (e) { print("caught", e.name) }\nprint(/a(b+)c/.exec("xabbbc")[1]);\n' > m.js
           mod="$RUNNER_TEMP/rootfs/pkgx/${{ matrix.slug }}/v${{ matrix.version }}/bin/${{ matrix.bin }}.wasm"
           ls -l "$mod"
           wasmtime run --dir=/ --env PWD="$PWD" "$mod" ${{ matrix.smoke }} < ${{ matrix.stdin }} > /dev/null

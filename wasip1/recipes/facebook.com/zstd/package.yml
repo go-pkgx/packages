@@ -1,0 +1,47 @@
+distributable:
+  url: https://github.com/facebook/zstd/releases/download/{{ version.tag }}/zstd-{{ version }}.tar.gz
+  strip-components: 1
+
+versions:
+  github: facebook/zstd
+
+# wasip1/wasm recipe: the zstd command-line program (programs/Makefile `zstd`
+# target, which compiles ../lib itself). Chosen switches, from programs/Makefile:
+#  - HAVE_THREAD=0: the Makefile otherwise probes `cc -pthread` (HAVE_PTHREAD,
+#    line 66) and enables -DZSTD_MULTITHREAD; wasip1 has no threads, so -T/--threads
+#    stays single-threaded. Set explicitly rather than left to a probe.
+#  - HAVE_ZLIB/HAVE_LZMA/HAVE_LZ4=0: the .gz/.xz/.lz4 container support is
+#    autodetected from system libraries; this module is zstd only.
+#  - BACKTRACE=0: no execinfo on wasi.
+#
+# What wasi-libc cannot carry (each a measured compiler or linker error):
+#  - signal(): fileio.c:134 "use of undeclared identifier 'SIGINT'" behind
+#    wasi-libc's `#error "wasm lacks signal support ... -D_WASI_EMULATED_SIGNAL"`;
+#    zstd only uses it to remove a half-written output on ^C.
+#  - chown(): util.c:324 "call to undeclared function 'chown'" (UTIL_setFDStat
+#    copies the owner onto the output). Declared and defined here as a no-op,
+#    renamed (-Dchown=zs_chown) because wasi-libc DEFINES chown as an ENOSYS
+#    stub in libc.a and wasm-ld refuses a second definition ("duplicate symbol:
+#    chown"). zstd's Makefile compiles every programs/*.c, so wasi_stubs.c is
+#    picked up without being named; wasi_compat.h is guarded for __ASSEMBLER__
+#    because CFLAGS also reaches huf_decompress_amd64.S ("Expected ,, instead
+#    got: (").
+
+build:
+  dependencies:
+    gnu.org/make: '*'
+  script:
+    - run: cp $PROP programs/wasi_compat.h
+      prop: |
+        #ifndef __ASSEMBLER__
+        int zs_chown(const char *, unsigned, unsigned);
+        #define chown zs_chown
+        #endif
+    - run: cp $PROP programs/wasi_stubs.c
+      prop: |
+        int zs_chown(const char *p, unsigned u, unsigned g) { (void)p; (void)u; (void)g; return 0; }
+    - make -C programs zstd CC="$BK_CC" HAVE_THREAD=0 HAVE_ZLIB=0 HAVE_LZMA=0 HAVE_LZ4=0 BACKTRACE=0 CFLAGS="-O2 -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS -include wasi_compat.h" LDLIBS="-lwasi-emulated-signal -lwasi-emulated-process-clocks"
+    - install -D programs/zstd "{{ prefix }}/bin/zstd.wasm"
+
+provides:
+  - bin/zstd

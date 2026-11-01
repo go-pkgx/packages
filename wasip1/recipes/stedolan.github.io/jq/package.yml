@@ -1,0 +1,35 @@
+distributable:
+  url: https://github.com/jqlang/jq/releases/download/jq-{{version.raw}}/jq-{{version.raw}}.tar.gz
+  strip-components: 1
+
+versions:
+  github: jqlang/jq/releases
+  strip: /jq /
+
+# wasip1/wasm recipe: the jq program. Differences from the host recipe:
+#  - --with-oniguruma=builtin: configure then builds the oniguruma copy the jq
+#    release tarball vendors (vendor/oniguruma), so the module is one static
+#    file and the recipe needs no oniguruma dependency. `make jq` alone fails
+#    ("No rule to make target vendor/oniguruma/src/.libs/libonig.la"), the plain
+#    `make` builds it first.
+#  - --disable-docs: the manual needs ruby/bundler.
+#  - --host=wasm32-wasi: config.sub accepts it; configure cross-compiles and never
+#    runs a test program. The release tarball ships the generated parser/lexer,
+#    so no bison/flex is needed.
+#  - -D_WASI_EMULATED_SIGNAL / _PROCESS_CLOCKS: wasi-libc's signal.h and
+#    sys/times.h are `#error`s without them, as for lua. Exceptions use no
+#    setjmp, so none of lua's -wasm-enable-sjlj flags apply; `try error("x")
+#    catch .` was run under wasmtime and gives "x".
+# Measured by hand under wasmtime: path/array/regex (oniguruma) filters, `now`,
+# and `fromdate` all give the expected output with exit 0.
+
+build:
+  dependencies:
+    gnu.org/make: '*'
+  script:
+    - ./configure --prefix="{{ prefix }}" --host=wasm32-wasi --disable-shared --enable-static --disable-docs --disable-maintainer-mode --with-oniguruma=builtin CC="$BK_CC" AR=llvm-ar RANLIB=llvm-ranlib CFLAGS="-O2 -D_WASI_EMULATED_SIGNAL -D_WASI_EMULATED_PROCESS_CLOCKS" LDFLAGS="-lwasi-emulated-signal -lwasi-emulated-process-clocks"
+    - make --jobs {{ hw.concurrency }}
+    - install -D jq "{{ prefix }}/bin/jq.wasm"
+
+provides:
+  - bin/jq
