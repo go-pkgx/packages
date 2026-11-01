@@ -113,7 +113,42 @@ jobs:
           mod="$RUNNER_TEMP/rootfs/pkgx/${{ matrix.slug }}/v${{ matrix.version }}/bin/${{ matrix.bin }}.wasm"
           ls -l "$mod"
           wasmtime run --dir=/ --env PWD="$PWD" "$mod" ${{ matrix.smoke }} < ${{ matrix.stdin }} > /dev/null
+
+      # ⛔ THE SAME MODULE, BUILT ON TWO HOSTS, IS A FREE REPRODUCIBILITY TEST —
+      # and until 2026-11-01 nobody looked at it. `platform:` in this matrix is
+      # the BUILD HOST and the target is always wasip1/wasm, so each project is
+      # built twice for one output. Printing the digest costs nothing and makes
+      # the two comparable in the logs.
+      #
+      # It does not FAIL on a difference yet, because the two values live in
+      # different jobs and comparing them needs an artefact round-trip. That is
+      # the next step and it is worth taking: a difference here is a
+      # non-reproducible build, and go-pkgx/packages#393 is what one looks like
+      # when nobody is watching.
+      - name: the module's digest, for comparison with the other host
+        run: |
+          mod="$RUNNER_TEMP/rootfs/pkgx/${{ matrix.slug }}/v${{ matrix.version }}/bin/${{ matrix.bin }}.wasm"
+          echo "digest ${{ matrix.slug }} ${{ matrix.version }} built on ${{ matrix.platform }}:"
+          sha256sum "$mod"
+
+      # ⛔ ONE TAG, ONE PUBLISHER. go-pkgx/packages#393: both host jobs ran this
+      # step for the same `(project, version, platform)`, so the tag was written
+      # twice and its content was whichever job finished last. For zlib.net,
+      # lua.org and sqlite.org the two hosts produce identical wasm, so the
+      # doubling was invisible; for the C++ project it is not, and
+      # `github.com/simdjson/simdjson` v5.0.5 was measured serving two different
+      # modules ten minutes apart with no publish in between — 87e24e89…, then
+      # c946f9c5…, then 87e24e89… again.
+      #
+      # `bk publish` is documented to SKIP a tag already in ghcr; it replaced it
+      # instead, which is a separate defect and still open. This step does not
+      # depend on that being fixed: it simply stops asking.
+      #
+      # The aarch64 job still builds and still runs the module under wasmtime,
+      # so nothing about the second host's verification is lost — only its
+      # publishing.
       - name: publish ${{ matrix.slug }} to ghcr (wasip1/wasm), from the rootfs
+        if: matrix.platform == 'linux/x86-64'
         env:
           OCI_USERNAME: ${{ github.actor }}
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
