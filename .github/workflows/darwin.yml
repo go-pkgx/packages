@@ -25,6 +25,10 @@ on:
         description: "build ONLY the projects named in recipes, not their dependency closure. For a REPAIR run: the dependencies are already published, and walking to them costs a version resolution each and can drag a toolchain in behind them."
         required: false
         default: ""
+      rebuild:
+        description: "`1` publishes a build of an ALREADY-PUBLISHED version as the next `_N` instead of replacing its tag — for a recipe fix that changes the binary without changing the upstream version. fftw gained SIMD codelets and went out as the same 3.3.11, so nothing could tell the two apart. NOT implied by a manual dispatch (which always forces): a counter minted on every retry would litter the registry. ⛔ upstream pkgx cannot parse `_N`, so a project carrying one is unreadable to an upstream client."
+        required: false
+        default: ""
       source_mirror:
         description: "keep every source archive this run downloads in this registry, addressed by its sha256. Blank = keep nothing. 57% of the pantry builds from tarballs GitHub GENERATES on request rather than stores, so for those it is the first stored artefact they have ever had."
         required: false
@@ -269,7 +273,11 @@ jobs:
           echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects${FORCE:+ (FORCE rebuild)}"
           # RECIPES, NO_CLOSURE and PLATFORM are read from the env by `bk factory` itself.
           NO_CLOSURE="${{ github.event.inputs.no_closure }}"
-          export RECIPES NO_CLOSURE FORCE
+          # REBUILD is NOT derived from FORCE. A manual dispatch always forces,
+          # so deriving it would mint a `_N` on every retry of a lane that
+          # failed at the publish step. It is asked for explicitly or not at all.
+          REBUILD="${{ github.event.inputs.rebuild }}"
+          export RECIPES NO_CLOSURE FORCE REBUILD
           # --advisories on EVERY lane, not just linux. A darwin bottle with no
           # OpenVEX document beside its SBOM is a bottle whose consumer has to
           # re-triage what we already decided — and a flag added to one lane is

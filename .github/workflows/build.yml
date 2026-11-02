@@ -34,6 +34,10 @@ on:
         description: "build ONLY the projects named in recipes, not their dependency closure. For a REPAIR run: the dependencies are already published, and walking to them costs a version resolution each and can drag a toolchain in behind them."
         required: false
         default: ""
+      rebuild:
+        description: "`1` publishes a build of an ALREADY-PUBLISHED version as the next `_N` instead of replacing its tag — for a recipe fix that changes the binary without changing the upstream version. fftw gained SIMD codelets and went out as the same 3.3.11, so nothing could tell the two apart. NOT implied by `force`: a counter minted on every retry would litter the registry. ⛔ upstream pkgx cannot parse `_N`, so a project carrying one is unreadable to an upstream client."
+        required: false
+        default: ""
       runner:
         description: "where to run: blank = our GARM/Incus pool for BOTH arches (no GitHub minutes; aarch64 is emulated); `github` = both arches on GitHub's runners."
         required: false
@@ -735,7 +739,11 @@ jobs:
           MAX_VERSIONS="${{ github.event.inputs.max_versions }}"
           NO_CLOSURE="${{ github.event.inputs.no_closure }}"
           PIN_TO_DEPENDENTS="${{ github.event.inputs.pin_to_dependents }}"
-          export RECIPES FORCE MAX_VERSIONS NO_CLOSURE PIN_TO_DEPENDENTS LOCK
+          # REBUILD is NOT derived from FORCE: a manual dispatch forces by
+          # default, so deriving it would mint a `_N` on every retry of a lane
+          # that failed at the publish step. Asked for explicitly or not at all.
+          REBUILD="${{ github.event.inputs.rebuild }}"
+          export RECIPES FORCE MAX_VERSIONS NO_CLOSURE PIN_TO_DEPENDENTS LOCK REBUILD
           # A glibc-pinned build links the pkgx glibc bottle directly, which bakes
           # an ABSOLUTE PT_INTERP pointing into $PKGX_DIR. Under the default
           # ($HOME/.pkgx) that is the RUNNER's home — a path no consumer has, so
