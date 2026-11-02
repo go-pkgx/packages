@@ -38,6 +38,20 @@ import (
 
 var osExit = os.Exit
 
+// The registry is reached through these two seams so the sweep's reporting can
+// be driven without a network: which version to take, and putting it on disk.
+//
+// Everything interesting in this tool is in what it does with the tree
+// AFTERWARDS — which needle it chooses, what it counts, what it refuses to
+// call clean — and none of that should be testable only against ghcr.io.
+// They hold the upstream functions directly rather than wrappers around them:
+// a wrapper body is code that only a network call can execute, so it would sit
+// uncovered forever and the 100% gate would be bought by excusing it.
+var (
+	pickVersion = bottle.PickVersionFor
+	install     = bottle.InstallFor
+)
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "prefixsweep:", err)
@@ -90,13 +104,13 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	var swept, baked, unreadable int
 	for _, project := range projects {
-		v, err := bottle.PickVersionFor(project, "*", osn, arch)
+		v, err := pickVersion(project, "*", osn, arch)
 		if err != nil {
 			fmt.Fprintf(stdout, "SKIP      %-34s %v\n", project, err)
 			unreadable++
 			continue
 		}
-		if _, err := bottle.InstallFor(bottle.Resolved{Project: project, Version: v}, dir, osn, arch); err != nil {
+		if _, err := install(bottle.Resolved{Project: project, Version: v}, dir, osn, arch); err != nil {
 			fmt.Fprintf(stdout, "UNREAD    %-34s %v\n", project, err)
 			unreadable++
 			continue
