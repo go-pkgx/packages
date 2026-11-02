@@ -66,6 +66,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	list := fs0.String("list", "", "file of project names, one per line, '#' comments ignored")
 	max := fs0.Int("n", 0, "stop after this many projects (0 = all)")
 	store := fs0.String("store", "", "install into this directory instead of a temporary one")
+	needle := fs0.String("needle", "", "sweep for this literal (e.g. the builder's cache root) instead of the package's own version directory; any hit fails the run")
 	if err := fs0.Parse(args); err != nil {
 		return err
 	}
@@ -123,13 +124,21 @@ func run(args []string, stdout, stderr io.Writer) error {
 		// that could not read reporting zero. fftw.org did exactly that here
 		// before this line existed.
 		home := filepath.Join(dir, filepath.FromSlash(project))
-		component, err := installedComponent(home)
-		if err != nil {
-			fmt.Fprintf(stdout, "UNREAD    %-34s %v\n", project, err)
-			unreadable++
-			continue
+		var hits []hit
+		if *needle != "" {
+			// ⛔ A CALLER-SUPPLIED NEEDLE REPLACES THE VERSION-DIRECTORY ONE. That
+			// one cannot see a builder path lacking the package's own directory,
+			// and a path normalised to /build/... no longer contains it at all, so
+			// re-running the default sweep on a fixed bottle would print a vacuous
+			// zero (go-pkgx/bk#387).
+			hits, err = findNeedle(home, []byte(*needle))
+		} else {
+			var component string
+			component, err = installedComponent(home)
+			if err == nil {
+				hits, err = bakedPrefixes(home, component)
+			}
 		}
-		hits, err := bakedPrefixes(home, component)
 		if err != nil {
 			fmt.Fprintf(stdout, "UNREAD    %-34s %v\n", project, err)
 			unreadable++
@@ -159,6 +168,11 @@ func run(args []string, stdout, stderr io.Writer) error {
 		swept, baked, swept-baked, unreadable)
 	if swept == 0 {
 		return fmt.Errorf("no project was swept, so this measured nothing")
+	}
+	// With -needle the sweep is an ASSERTION: any hit is a failure, so "no
+	// builder path is shipped" is a test rather than an observation.
+	if *needle != "" && baked > 0 {
+		return fmt.Errorf("%d project(s) contain %q", baked, *needle)
 	}
 	return nil
 }
@@ -214,8 +228,12 @@ type hit struct {
 // .pc file, a libtool archive, a shell wrapper or an ELF's RUNPATH, and
 // guessing which by extension is how a sweep misses the one that matters.
 func bakedPrefixes(root, component string) ([]hit, error) {
+	return findNeedle(root, []byte("/"+component+"/"))
+}
+
+// findNeedle returns the regular files under root whose content holds needle.
+func findNeedle(root string, needle []byte) ([]hit, error) {
 	var hits []hit
-	needle := []byte("/" + component + "/")
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

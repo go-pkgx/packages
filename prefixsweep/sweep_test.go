@@ -365,3 +365,65 @@ func TestMainReportsFailureThroughTheExitCode(t *testing.T) {
 		t.Errorf("exit code = %d, want 1", code)
 	}
 }
+
+// ⛔ THE NEEDLE SWEEP (go-pkgx/bk#387). Each test below fails for the reason it
+// names: the positive one gives hits > 0 on a fixture that holds the cache
+// root, so the zero in the negative one means something.
+const cacheRoot = "/Users/runner/Library/Caches/brewkit"
+
+func needleRegistry() *fakeRegistry {
+	return &fakeRegistry{
+		versions: map[string]string{"leaky.example": "1.0.0", "fixed.example": "1.0.0"},
+		trees: map[string]map[string]string{
+			// the shape in the issue: an assert string in a binary, a path in debug info
+			"leaky.example": {
+				"v1.0.0/bin/tool":   "assert: " + cacheRoot + "/darwin+aarch64/leaky.example/v1.0.0/build/x.c\x00",
+				"v1.0.0/lib/liba.a": "clean bytes",
+			},
+			// normalised, plus a legitimate @rpath load command (bk#386), which is
+			// out of scope and must NOT count.
+			"fixed.example": {
+				"v1.0.0/bin/tool": "assert: /build/darwin+aarch64/fixed.example/v1.0.0/build/x.c\x00@rpath/fixed.example/v1.0.0/lib/liba.dylib\x00",
+			},
+		},
+	}
+}
+
+func TestTheNeedleIsFoundOnAFixtureThatContainsIt(t *testing.T) {
+	out, err := sweep(t, needleRegistry(), "-needle", cacheRoot, "leaky.example")
+	if err == nil {
+		t.Fatalf("a bottle holding the cache root passed the needle sweep:\n%s", out)
+	}
+	for _, want := range []string{"⛔ BAKED", "leaky.example", "v1.0.0/bin/tool", cacheRoot, "1 swept · 1 bake their own prefix"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("report lacks %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestTheNeedleSweepIsCleanOnANormalisedBottleAndIgnoresRpath(t *testing.T) {
+	out, err := sweep(t, needleRegistry(), "-needle", cacheRoot, "fixed.example")
+	if err != nil {
+		t.Fatalf("a normalised bottle failed the needle sweep: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "1 swept · 0 bake their own prefix · 1 clean") {
+		t.Errorf("want one clean project:\n%s", out)
+	}
+	// Control on the SAME fixture: the default sweep does flag the @rpath
+	// version path, so the zero above comes from the needle, not from an empty tree.
+	out, _ = sweep(t, needleRegistry(), "fixed.example")
+	if !strings.Contains(out, "⛔ BAKED") {
+		t.Errorf("control: the version-directory sweep should flag the @rpath entry:\n%s", out)
+	}
+}
+
+// A needle sweep needs no v<version> directory: the layout is not its business.
+func TestTheNeedleSweepDoesNotNeedAVersionDirectory(t *testing.T) {
+	f := &fakeRegistry{
+		versions: map[string]string{"p": "1.0.0"},
+		trees:    map[string]map[string]string{"p": {"bin/t": "x"}},
+	}
+	if out, err := sweep(t, f, "-needle", cacheRoot, "p"); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+}
