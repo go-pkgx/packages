@@ -546,6 +546,92 @@ the same question came up for the same package and there was no `npmtag` —
 not on `PATH`, not in any repository — so the answer was re-derived with
 `curl`. The scratchpad is not durable; a repository is.
 
+### `./prefixsweep` — does a bottle's content name its own version directory?
+
+It installs each named project into a throwaway store and reads every regular
+file in the installed tree, whole, looking for the package's own
+`v<version>` as a **path component**.
+
+```console
+$ go run ./prefixsweep -platform darwin/aarch64 fftw.org zlib.net
+⛔ BAKED  fftw.org    3.3.11_1 — 9 file(s)
+            v3.3.11/lib/libfftw3.3.dylib
+                -> @rpath/fftw.org/v3.3.11/lib/libfftw3.3.dylib
+⛔ BAKED  zlib.net    1.3.2 — 1 file(s)
+            v1.3.2/lib/libz.1.3.2.dylib
+                -> @rpath/zlib.net/v1.3.2/lib/libz.1.dylib
+
+2 swept · 2 bake their own prefix · 0 clean · 0 unreadable
+```
+
+13 of 13 bottles swept on darwin/aarch64 bake their own prefix, every one
+through an `@rpath` load command. That is what settled go-pkgx/bk#386: the
+version directory sits in the literal remainder after `@rpath`, so renaming
+it makes `dyld` look for a path that no longer exists, and a rebuild
+published as `_N` has to be **built** under that name rather than repackaged
+into it.
+
+`-needle <literal>` sweeps for a caller-supplied string instead, and **any
+hit fails the run** — that form is an assertion, not a census. It is how
+go-pkgx/bk#387 is checked: `-needle /Users/runner/Library/Caches/brewkit`
+must find nothing in a bottle built by a lane carrying bk's prefix-map shims.
+
+⛔ **A spelled needle certifies the lane it was written for and no other.**
+That darwin needle finds nothing on linux whatever the bottle contains,
+because that lane builds with `HOME=/github/home`. Measured 2026-11-03: four
+pre-fix linux bottles swept `4 clean` against `/home/runner`, which meant
+nothing at all. The s390x LinuxONE box is a third convention, and it is the
+lane where a stray absolute path actually costs something, because that
+runner is ours and its paths are not constant between rebuilds.
+
+### `-absolute` — the property, not a remembered string
+
+```console
+$ go run ./prefixsweep -platform darwin/aarch64 -absolute sourceware.org/bzip2
+absolute paths are reported unless they start with one of:
+  /usr/  /bin/  /sbin/  /etc/  /dev/  /var/  /private/var/  /System/ …
+
+⛔ BAKED  sourceware.org/bzip2   1.0.8 — 19 file(s)
+            v1.0.8/lib/libbz2.a
+                -> /Applications/Xcode_15.4.app/…/MacOSX.sdk
+            v1.0.8/bin/bunzip2
+                -> /Users/runner/.pkgx
+```
+
+It asserts **no absolute path outside the allowlist is baked into a shipped
+artefact**, so a lane nobody anticipated fails instead of passing. It also
+finds the *class* rather than the instance: the first run turned up
+`/Applications/Xcode_15.4.app/…/MacOSX.sdk`, a builder path pinning an Xcode
+version, which no needle anyone had written would have caught.
+
+⛔ **The allowlist prints on every run.** It is the part most likely to rot
+into a rubber stamp, and a clean result cannot be read without seeing what
+was forgiven — which is exactly how the `/home/runner` zero passed for a
+question nobody could see was wrong.
+
+Two false-positive classes it had to learn, both from real bottles: a `/`
+preceded by a path character is a **relative** load path (`@rpath/…`,
+`@loader_path/../..`), not an absolute one; and the path alphabet must be
+strict, because the loose one used elsewhere in this tool swallowed `sed`
+expressions out of `bzgrep` and C comment rules out of `bzlib.h`.
+
+⛔ **It takes the needle from the directory that LANDED, not from the version
+requested.** A bottle is installed under the directory it *carries*, and a
+rebuild published as `3.3.11_1` unpacks to `v3.3.11`. The first form of this
+tool searched for `v3.3.11_1` inside a tree named `v3.3.11`, found nothing,
+and printed `clean` — a scan that could not read, reporting zero.
+
+⛔ **And it reads binary files, because that is where baked prefixes live.**
+The measurement this tool replaces was a `grep -rl` that returned 0 files and
+was published on the issue as "fftw's bottle bakes nothing". That `grep`
+resolves to `ugrep` with `-I`: binary files skipped. All nine of fftw's hits
+are Mach-O images. A text-only search cannot see a baked prefix at all.
+
+⛔ **A project it could not read prints `UNREAD` and is never folded into
+`clean`**, and a run that swept nothing exits non-zero — "0 bake their own
+prefix" and "nothing was measured" print almost the same line, and only one
+of them is an answer.
+
 ### How the lanes bootstrap their tools, and why it is one line per workflow
 
 Every publishing lane starts by installing `bk`, `pkgx` or `pkgm` from source,
@@ -654,6 +740,44 @@ spelling; the pkgx slug is `wasip1/wasm`.
   `bk publish --platform wasip1/wasm`. A publish failure fails the job.
 - **Pilots:** `filippo.io/age` 1.3.2, `github.com/cpuguy83/go-md2man` 2.0.7 and
   `mvdan.cc/sh` (`shfmt`) 3.14.1.
+- **Go lane, wave 2 (27 more, 30 in all).** Each was built for `wasip1/wasm` and run
+  under wasmtime 50.0.1 with its smoke arguments before it was listed, and is pinned
+  to an exact upstream tag: `yq`, `gojq`, `jsonnet` (go-jsonnet), `gofumpt`,
+  `tomljson` (go-toml), `yamlfmt`, `actionlint`, `editorconfig-checker`, `revive`,
+  `gomodifytags`, `go-junit-report`, `kube-score`, `gnostic`, `jj`, `hclfmt` (hcl),
+  `misspell` (golangci), `xurls`, `tomlv` (BurntSushi/toml), `json2yaml`, `crane`
+  (go-containerregistry), `mockgen`, `jd`, `gosec`, `addlicense`, `hcl2json`, `mmark`
+  and `protoc-gen-go`. The matrix runs `max-parallel: 6` so the 30 jobs do not
+  starve the other lanes. Measured not to build for `wasip1/wasm` at their latest
+  tag, with the full compiler error kept (do not retry):
+  - `dasel`: `atotto/clipboard` has no wasip1 `readAll`/`writeAll`.
+  - `golines`, `helm-docs`: `sirupsen/logrus` `isTerminal` undefined.
+  - `gron`: `fatih/color` -> `mattn/go-isatty` `IsTerminal` undefined.
+  - `duf`, `html-to-markdown`: `muesli/termenv` terminal-colour fields undefined.
+  - `minify`: `djherbis/atime` `Stat_t.Atime` has a different type.
+  - `cue`: `internal/robustio` undefined; `gomplate`: `azblob` `Mmb` undefined.
+  - `buf`: `docker/go-connections` (`syscall.RawSockaddrUnix`, `ForkLock`),
+    `buf.build/go/app` and `bufbuild/protoplugin` platform symbols undefined.
+  - `cobra-cli`: `spf13/viper` v1.10.1 needs `fsnotify.Watcher` (no wasip1 backend).
+  - `csvtk`: `cheggaaa/pb` `termutil` (`lockEcho`, `unlockSignals`) undefined.
+  - `glow`: `atotto/clipboard`, `muesli/termenv` and `bubbletea` v2 (`listenForResize`,
+    `initInput`) undefined.
+  - `helm`: `moby/term` needs `unix.Termios`/`TIOCGWINSZ` ioctls.
+  - `miller`: the Go compiler rejects a generated parser table
+    (`function too big: ... exceeds 65536 blocks`).
+  - `nfpm`: `go-git/go-git` `isSymlinkWindowsNonAdmin` undefined.
+  - `opa`: `reeflective/readline` `GetSize` undefined.
+  - `seqkit`: `vbauerster/mpb` `cwriter` needs `unix.IoctlGetWinsize`/`IoctlGetTermios`.
+  - `task`: `atotto/clipboard`, `u-root/pkg/ls` (`Stat_t.Rdev`, `unix.Major`),
+    `bubbletea` v2 undefined.
+  - `trdsql`: `modernc.org/libc` has no wasip1 packages (build constraints exclude
+    every file), so `modernc.org/sqlite` cannot build.
+  - `vale`: `smacker/go-tree-sitter` is cgo (all grammars excluded), plus
+    `adrg/xdg` and `otiai10/copy` (`syscall.Mkfifo`).
+
+  Not built because of the tag format, not the code: `staticcheck`, `jmespath/jp`
+  and `golang/tools` (`gopls/v...`) have tags without a `v` prefix, but the matrix
+  clones `v<version>`. A `tag:` field in the matrix would admit them (follow-up).
 - **C tools (`wasip1-c.yml`).** Built with OUR toolchain, not a prebuilt wasi-sdk:
   the `llvm.org` bottle (clang, wasm-ld, llvm-ar), plus two cross parts built from
   source in the pantry overlay following wasi-sdk's `cmake/wasi-sdk-sysroot.cmake`:

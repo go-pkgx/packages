@@ -25,6 +25,10 @@ on:
         description: "build ONLY the projects named in recipes, not their dependency closure. For a REPAIR run: the dependencies are already published, and walking to them costs a version resolution each and can drag a toolchain in behind them."
         required: false
         default: ""
+      rebuild:
+        description: "`1` publishes a build of an ALREADY-PUBLISHED version as the next `_N` instead of replacing its tag — for a recipe fix that changes the binary without changing the upstream version. fftw gained SIMD codelets and went out as the same 3.3.11, so nothing could tell the two apart. NOT implied by a manual dispatch (which always forces): a counter minted on every retry would litter the registry. ⛔ upstream pkgx cannot parse `_N`, so a project carrying one is unreadable to an upstream client."
+        required: false
+        default: ""
       source_mirror:
         description: "keep every source archive this run downloads in this registry, addressed by its sha256. Blank = keep nothing. 57% of the pantry builds from tarballs GitHub GENERATES on request rather than stores, so for those it is the first stored artefact they have ever had."
         required: false
@@ -141,6 +145,36 @@ jobs:
         # factory inviting the host in through the front door.
         run: |
           command -v python >/dev/null || ln -sf "$(command -v python3)" /usr/local/bin/python || true
+
+      # ⛔⛔ WHICH TOOLCHAIN BUILT THIS, RECORDED WITH THE RUN.
+      #
+      # `macos-15` is a rolling label: it pins the macOS generation and the
+      # Xcode inside it drifts. Measured 2026-11-03 by rebuilding
+      # sourceware.org/bzip2 1.0.8 and comparing it with the bottle it
+      # replaced — the SDK path baked into libbz2.a had moved from
+      # Xcode_15.4.app to Xcode_16.4.app, and nothing in any log said so. It
+      # was found by sweeping the BOTTLE, which is the expensive way to learn
+      # what your own builder is.
+      #
+      # This does not pin anything and changes no build. Pinning Xcode is the
+      # real remedy for the drift and it is a decision with a bill: some
+      # recipes may need 16.x, and darwin.yml already carries the scar of a
+      # toolchain split (macos-14's libc++ has no `std::atomic_ref`). Record
+      # first, so that decision can be made from data.
+      #
+      # ⛔ The SDK path is deliberately NOT rewritten out of the bottles. It is
+      # PROVENANCE: two builds against different SDKs produce different code,
+      # and normalising the string would make them byte-identical in the one
+      # place that recorded the difference — improving the reproducibility
+      # metric by deleting its evidence. go-pkgx/bk#400.
+      - name: the toolchain this run built with
+        run: |
+          set -eu
+          echo "runner image  ${{ matrix.runner }}"
+          xcodebuild -version 2>/dev/null || echo "xcodebuild: unavailable"
+          echo "SDK path      $(xcrun --show-sdk-path)"
+          echo "SDK version   $(xcrun --show-sdk-version)"
+          echo "clang         $(cc --version | head -1)"
 
       - uses: actions/checkout@v7
 
@@ -269,7 +303,11 @@ jobs:
           echo "chunk ${{ matrix.chunk }} → $(printf '%s\n' $RECIPES | grep -c .) requested projects${FORCE:+ (FORCE rebuild)}"
           # RECIPES, NO_CLOSURE and PLATFORM are read from the env by `bk factory` itself.
           NO_CLOSURE="${{ github.event.inputs.no_closure }}"
-          export RECIPES NO_CLOSURE FORCE
+          # REBUILD is NOT derived from FORCE. A manual dispatch always forces,
+          # so deriving it would mint a `_N` on every retry of a lane that
+          # failed at the publish step. It is asked for explicitly or not at all.
+          REBUILD="${{ github.event.inputs.rebuild }}"
+          export RECIPES NO_CLOSURE FORCE REBUILD
           # --advisories on EVERY lane, not just linux. A darwin bottle with no
           # OpenVEX document beside its SBOM is a bottle whose consumer has to
           # re-triage what we already decided — and a flag added to one lane is
@@ -277,6 +315,7 @@ jobs:
           bk factory \
             --pantry pantry \
             --overrides overrides \
+            --overlay overlay \
             --advisories advisories \
             --to oci://ghcr.io/go-pkgx/packages \
             --bottles dist \
@@ -284,6 +323,39 @@ jobs:
             ${MAX_VERSIONS:+--max-versions "$MAX_VERSIONS"} \
             ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"} \
             ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
+
+      # ⛔⛔ A NAMED DISPATCH THAT BUILT NOTHING IS A FAILED DISPATCH.
+      #
+      # build.yml has had this since 2026-10-04 and darwin never did — the
+      # half-a-pair defect the comment above the factory call warns about,
+      # sitting directly under it.
+      #
+      # Measured 2026-11-03: `recipes=github.com/ggml-org/llama.cpp` ended
+      #   closure: skip github.com/ggml-org/llama.cpp: no recipe file
+      #   === summary (darwin/aarch64): 0 built, 0 skipped, 0 failed ===
+      # and the job was GREEN. The recipe lives in the overlay, which this
+      # lane did not pass to `bk factory` (fixed above), so the closure could
+      # not see it at all.
+      #
+      # ⛔ AND IT IS STRICTER THAN build.yml's, deliberately. That one fires on
+      # "0 built AND something failed", which this case would still have
+      # passed: the project was SKIPPED, not failed, so failures.txt was
+      # empty. A manual dispatch here always sets FORCE=1, so "built nothing
+      # because there was nothing to build" cannot be the explanation — 0
+      # files in dist means the lane did not do what it was asked.
+      - name: a named dispatch that built nothing
+        if: github.event.inputs.recipes != ''
+        run: |
+          built=0
+          [ -d dist ] && built=$(find dist -type f | wc -l | tr -d ' ')
+          failed=0
+          [ -s failures.txt ] && failed=$(grep -cvE '^[[:space:]]*$' failures.txt)
+          echo "$built file(s) in dist, $failed failure(s)"
+          if [ "$built" -eq 0 ]; then
+            echo "::error::this dispatch named its recipes and published nothing ($failed recorded failure(s)) — a project the closure SKIPS for a missing recipe records no failure at all, so check the log for 'closure: skip'"
+            [ -s failures.txt ] && cat failures.txt
+            exit 1
+          fi
 
       # The CATALOGUE for this platform: what `pkgs ls` and <TAB> read on a
       # Mac. darwin had none at all, so a Mac asking what exists got either

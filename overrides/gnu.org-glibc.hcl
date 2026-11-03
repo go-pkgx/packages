@@ -51,6 +51,29 @@ merge {
       }
     }
   }
+
+  # ⛔ AND AGAIN HERE, BECAUSE THE RECIPE DECLARES LDSO TWICE. `test.env` has
+  # its own x86-64/aarch64 table, independent of `build.env` above, and the
+  # first version of this override patched only the build half. The result
+  # would have been a glibc that BUILDS on s390x and then fails its own test
+  # on the first assertion:
+  #
+  #   test -f "$LIBDIR/$LDSO" || { echo "missing $LDSO"; exit 1; }
+  #
+  # with $LDSO empty, so the test is `test -f "$LIBDIR/"` -- a DIRECTORY,
+  # which is false -- and the message reads `missing ` with nothing after it.
+  # The same empty variable as the build defect, one block further down, and
+  # invisible for the same reason: nothing compares the two tables.
+  #
+  # overrides_test.go now does, over every override in this directory, so the
+  # next architecture cannot be added to one table and forgotten in the other.
+  test {
+    env {
+      s390x {
+        LDSO = "ld64.so.1"
+      }
+    }
+  }
 }
 
 edits = [
