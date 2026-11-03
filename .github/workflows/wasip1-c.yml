@@ -73,6 +73,12 @@ jobs:
           # mujs throws with setjmp/longjmp (exception-handling instructions, as lua);
           # m.js catches a TypeError, so it proves the engine runs them.
           - { runner: ubuntu-latest, platform: linux/x86-64, slug: github.com/ccxvii/mujs, version: "1.3.7", bin: mujs, smoke: '"$PWD/m.js"', stdin: /dev/null }
+          # fftw plans a transform rather than merely starting: `--version` would
+          # prove the module loads and nothing else, and a planner that cannot
+          # allocate or measure is exactly what a wasm port gets wrong. cof16 is
+          # a 16-point complex forward transform — small enough that ESTIMATE
+          # planning is instant, large enough to exercise a codelet.
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: fftw.org, version: "3.3.11", bin: fftw-wisdom, smoke: '-o /dev/null cof16', stdin: /dev/null }
           # linux/aarch64: the same rootfs, staged for aarch64 on GitHub's native
           # arm runner. The toolchain bottles (compiler-rt, wasi-libc, libcxx) are
           # published for linux/aarch64 hosts too; the wasm they produce is the same.
