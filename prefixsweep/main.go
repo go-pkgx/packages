@@ -68,8 +68,12 @@ func run(args []string, stdout, stderr io.Writer) error {
 	store := fs0.String("store", "", "install into this directory instead of a temporary one")
 	needle := fs0.String("needle", "", "sweep for this literal (e.g. the builder's cache root) instead of the package's own version directory; any hit fails the run")
 	absolute := fs0.Bool("absolute", false, "sweep for ANY absolute path outside an allowlist of platform paths, instead of a literal; any hit fails the run. A spelled -needle certifies only the lane it was written for — this asserts the property, so a lane nobody anticipated fails rather than passes")
+	compiledOnly := fs0.Bool("compiled", false, "with -absolute, search only artefacts a path is COMPILED into (bin/, *.so*, *.dylib, *.a). Measured over six linux bottles: 38 hits become 8, the 30 dropped are all documentation — man-page examples and header comments — and not one of them is a builder path")
 	if err := fs0.Parse(args); err != nil {
 		return err
+	}
+	if *compiledOnly && !*absolute {
+		return fmt.Errorf("-compiled narrows -absolute, so it needs -absolute")
 	}
 	if *needle != "" && *absolute {
 		// They answer different questions and the stricter one would hide the
@@ -142,7 +146,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 		var hits []hit
 		switch {
 		case *absolute:
-			hits, err = absoluteHits(home)
+			hits, err = absoluteHitsIn(home, *compiledOnly)
 		case *needle != "":
 			// ⛔ A CALLER-SUPPLIED NEEDLE REPLACES THE VERSION-DIRECTORY ONE. That
 			// one cannot see a builder path lacking the package's own directory,
