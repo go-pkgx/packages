@@ -576,6 +576,45 @@ hit fails the run** — that form is an assertion, not a census. It is how
 go-pkgx/bk#387 is checked: `-needle /Users/runner/Library/Caches/brewkit`
 must find nothing in a bottle built by a lane carrying bk's prefix-map shims.
 
+⛔ **A spelled needle certifies the lane it was written for and no other.**
+That darwin needle finds nothing on linux whatever the bottle contains,
+because that lane builds with `HOME=/github/home`. Measured 2026-11-03: four
+pre-fix linux bottles swept `4 clean` against `/home/runner`, which meant
+nothing at all. The s390x LinuxONE box is a third convention, and it is the
+lane where a stray absolute path actually costs something, because that
+runner is ours and its paths are not constant between rebuilds.
+
+### `-absolute` — the property, not a remembered string
+
+```console
+$ go run ./prefixsweep -platform darwin/aarch64 -absolute sourceware.org/bzip2
+absolute paths are reported unless they start with one of:
+  /usr/  /bin/  /sbin/  /etc/  /dev/  /var/  /private/var/  /System/ …
+
+⛔ BAKED  sourceware.org/bzip2   1.0.8 — 19 file(s)
+            v1.0.8/lib/libbz2.a
+                -> /Applications/Xcode_15.4.app/…/MacOSX.sdk
+            v1.0.8/bin/bunzip2
+                -> /Users/runner/.pkgx
+```
+
+It asserts **no absolute path outside the allowlist is baked into a shipped
+artefact**, so a lane nobody anticipated fails instead of passing. It also
+finds the *class* rather than the instance: the first run turned up
+`/Applications/Xcode_15.4.app/…/MacOSX.sdk`, a builder path pinning an Xcode
+version, which no needle anyone had written would have caught.
+
+⛔ **The allowlist prints on every run.** It is the part most likely to rot
+into a rubber stamp, and a clean result cannot be read without seeing what
+was forgiven — which is exactly how the `/home/runner` zero passed for a
+question nobody could see was wrong.
+
+Two false-positive classes it had to learn, both from real bottles: a `/`
+preceded by a path character is a **relative** load path (`@rpath/…`,
+`@loader_path/../..`), not an absolute one; and the path alphabet must be
+strict, because the loose one used elsewhere in this tool swallowed `sed`
+expressions out of `bzgrep` and C comment rules out of `bzlib.h`.
+
 ⛔ **It takes the needle from the directory that LANDED, not from the version
 requested.** A bottle is installed under the directory it *carries*, and a
 rebuild published as `3.3.11_1` unpacks to `v3.3.11`. The first form of this
