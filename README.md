@@ -546,6 +546,53 @@ the same question came up for the same package and there was no `npmtag` —
 not on `PATH`, not in any repository — so the answer was re-derived with
 `curl`. The scratchpad is not durable; a repository is.
 
+### `./prefixsweep` — does a bottle's content name its own version directory?
+
+It installs each named project into a throwaway store and reads every regular
+file in the installed tree, whole, looking for the package's own
+`v<version>` as a **path component**.
+
+```console
+$ go run ./prefixsweep -platform darwin/aarch64 fftw.org zlib.net
+⛔ BAKED  fftw.org    3.3.11_1 — 9 file(s)
+            v3.3.11/lib/libfftw3.3.dylib
+                -> @rpath/fftw.org/v3.3.11/lib/libfftw3.3.dylib
+⛔ BAKED  zlib.net    1.3.2 — 1 file(s)
+            v1.3.2/lib/libz.1.3.2.dylib
+                -> @rpath/zlib.net/v1.3.2/lib/libz.1.dylib
+
+2 swept · 2 bake their own prefix · 0 clean · 0 unreadable
+```
+
+13 of 13 bottles swept on darwin/aarch64 bake their own prefix, every one
+through an `@rpath` load command. That is what settled go-pkgx/bk#386: the
+version directory sits in the literal remainder after `@rpath`, so renaming
+it makes `dyld` look for a path that no longer exists, and a rebuild
+published as `_N` has to be **built** under that name rather than repackaged
+into it.
+
+`-needle <literal>` sweeps for a caller-supplied string instead, and **any
+hit fails the run** — that form is an assertion, not a census. It is how
+go-pkgx/bk#387 is checked: `-needle /Users/runner/Library/Caches/brewkit`
+must find nothing in a bottle built by a lane carrying bk's prefix-map shims.
+
+⛔ **It takes the needle from the directory that LANDED, not from the version
+requested.** A bottle is installed under the directory it *carries*, and a
+rebuild published as `3.3.11_1` unpacks to `v3.3.11`. The first form of this
+tool searched for `v3.3.11_1` inside a tree named `v3.3.11`, found nothing,
+and printed `clean` — a scan that could not read, reporting zero.
+
+⛔ **And it reads binary files, because that is where baked prefixes live.**
+The measurement this tool replaces was a `grep -rl` that returned 0 files and
+was published on the issue as "fftw's bottle bakes nothing". That `grep`
+resolves to `ugrep` with `-I`: binary files skipped. All nine of fftw's hits
+are Mach-O images. A text-only search cannot see a baked prefix at all.
+
+⛔ **A project it could not read prints `UNREAD` and is never folded into
+`clean`**, and a run that swept nothing exits non-zero — "0 bake their own
+prefix" and "nothing was measured" print almost the same line, and only one
+of them is an answer.
+
 ### How the lanes bootstrap their tools, and why it is one line per workflow
 
 Every publishing lane starts by installing `bk`, `pkgx` or `pkgm` from source,

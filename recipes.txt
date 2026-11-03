@@ -670,6 +670,7 @@ github.com/fullstorydev/grpcui
 github.com/gabime/spdlog
 github.com/ggerganov/llama.cpp
 github.com/ggerganov/whisper.cpp
+github.com/ggml-org/llama.cpp
 github.com/giampaolo/psutil
 github.com/git-chglog
 github.com/git-ecosystem/git-credential-manager
