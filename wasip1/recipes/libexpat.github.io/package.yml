@@ -1,0 +1,34 @@
+distributable:
+  url: https://github.com/libexpat/libexpat/releases/download/R_{{ version.major }}_{{ version.minor }}_{{ version.patch }}/expat-{{ version }}.tar.gz
+  strip-components: 1
+
+versions:
+  github: libexpat/libexpat/releases
+
+# wasip1/wasm recipe: libexpat.a + headers + the xmlwf well-formedness checker.
+# Configure switches (expat-2.9.0 `./configure --help`):
+#  - --host=wasm32-wasi: config.sub accepts it; configure then cross-compiles and
+#    never tries to run a test program.
+#  - --without-docbook: no docbook2x/xmlto on the build host's closure.
+# No wasi-specific patch was needed: configure finds no mmap on wasi-libc
+# (expat_config.h: `/* #undef HAVE_MMAP */`), so xmlwf's filemap falls back to
+# read(2), and the library's entropy source (getrandom/arc4random) resolves to
+# wasi-libc's. Only the library and xmlwf are built (the other subdirectories,
+# examples/ and tests/, are not shipped).
+# Measured by hand under wasmtime: `xmlwf < good.xml` exits 0, `xmlwf < bad.xml`
+# prints "STDIN:1:8: mismatched tag" and exits 2 (xmlwf's own "not well-formed").
+
+build:
+  dependencies:
+    gnu.org/make: '*'
+  script:
+    - ./configure --prefix="{{ prefix }}" --host=wasm32-wasi --disable-shared --enable-static --without-docbook CC="$BK_CC" AR=llvm-ar RANLIB=llvm-ranlib CFLAGS="-O2"
+    - make --jobs {{ hw.concurrency }} -C lib libexpat.la
+    - make --jobs {{ hw.concurrency }} -C xmlwf xmlwf
+    - install -D xmlwf/xmlwf "{{ prefix }}/bin/xmlwf.wasm"
+    - install -D lib/.libs/libexpat.a "{{ prefix }}/lib/libexpat.a"
+    - install -D lib/expat.h "{{ prefix }}/include/expat.h"
+    - install -D lib/expat_external.h "{{ prefix }}/include/expat_external.h"
+
+provides:
+  - bin/xmlwf
