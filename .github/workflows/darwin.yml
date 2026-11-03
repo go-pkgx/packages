@@ -285,6 +285,7 @@ jobs:
           bk factory \
             --pantry pantry \
             --overrides overrides \
+            --overlay overlay \
             --advisories advisories \
             --to oci://ghcr.io/go-pkgx/packages \
             --bottles dist \
@@ -292,6 +293,39 @@ jobs:
             ${MAX_VERSIONS:+--max-versions "$MAX_VERSIONS"} \
             ${MIRROR_FROM:+--mirror-from "$MIRROR_FROM"} \
             ${SOURCE_MIRROR:+--source-mirror "$SOURCE_MIRROR"}
+
+      # ⛔⛔ A NAMED DISPATCH THAT BUILT NOTHING IS A FAILED DISPATCH.
+      #
+      # build.yml has had this since 2026-10-04 and darwin never did — the
+      # half-a-pair defect the comment above the factory call warns about,
+      # sitting directly under it.
+      #
+      # Measured 2026-11-03: `recipes=github.com/ggml-org/llama.cpp` ended
+      #   closure: skip github.com/ggml-org/llama.cpp: no recipe file
+      #   === summary (darwin/aarch64): 0 built, 0 skipped, 0 failed ===
+      # and the job was GREEN. The recipe lives in the overlay, which this
+      # lane did not pass to `bk factory` (fixed above), so the closure could
+      # not see it at all.
+      #
+      # ⛔ AND IT IS STRICTER THAN build.yml's, deliberately. That one fires on
+      # "0 built AND something failed", which this case would still have
+      # passed: the project was SKIPPED, not failed, so failures.txt was
+      # empty. A manual dispatch here always sets FORCE=1, so "built nothing
+      # because there was nothing to build" cannot be the explanation — 0
+      # files in dist means the lane did not do what it was asked.
+      - name: a named dispatch that built nothing
+        if: github.event.inputs.recipes != ''
+        run: |
+          built=0
+          [ -d dist ] && built=$(find dist -type f | wc -l | tr -d ' ')
+          failed=0
+          [ -s failures.txt ] && failed=$(grep -cvE '^[[:space:]]*$' failures.txt)
+          echo "$built file(s) in dist, $failed failure(s)"
+          if [ "$built" -eq 0 ]; then
+            echo "::error::this dispatch named its recipes and published nothing ($failed recorded failure(s)) — a project the closure SKIPS for a missing recipe records no failure at all, so check the log for 'closure: skip'"
+            [ -s failures.txt ] && cat failures.txt
+            exit 1
+          fi
 
       # The CATALOGUE for this platform: what `pkgs ls` and <TAB> read on a
       # Mac. darwin had none at all, so a Mac asking what exists got either
