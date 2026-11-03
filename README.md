@@ -786,8 +786,14 @@ spelling; the pkgx slug is `wasip1/wasm`.
   sysroot). `bk --platform wasip1/wasm build` adds the three and imposes
   `clang --target=wasm32-wasip1 --sysroot=… -resource-dir=… -mcpu=lime1
   --rtlib=compiler-rt` through `$BK_CC` (the shims re-exec it, so a recipe cannot
-  lose it). Each project has its own small recipe under `wasip1/recipes/<slug>/`
-  (static, no dlopen, no threads). Pilots, built, run under wasmtime 50 and
+  lose it). Each project has its own small recipe under
+  `wasip1/recipes/<slug>/package.hcl` (static, no dlopen, no threads) — HCL2,
+  which is the default recipe format, and `recipefile.Names` tries it first.
+  ⛔ **That makes bk `>= v0.50.0` a hard requirement for this lane**, not
+  hygiene: `bk build --recipe` read every path as YAML until then
+  (go-pkgx/bk#389), and an older pin does not warn — it fails with a yaml
+  unmarshal error about the first attribute of a perfectly good HCL file.
+  Pilots, built, run under wasmtime 50 and
   published as `wasip1/wasm`: `zlib.net` 1.3.2 (libz.a + minigzip), `sqlite.org`
   3.53.4 (the shell; a query is run) and `lua.org` 5.4.9 (errors are thrown with
   setjmp/longjmp, compiled to the standard exception-handling instructions with
