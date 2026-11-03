@@ -49,7 +49,13 @@ jobs:
       - name: build bk, pkgx and pkgm (static)
         # Pinned rather than @main because this lane publishes.
         run: |
-          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@v0.54.0
+          # ⛔ v0.58.0 IS THE FLOOR FOR THIS LANE, not a routine bump. Below it,
+          # bk's own compiler shim shadowed llvm-mingw and could not delegate:
+          # compilerShimsFor shims the TRIPLE-PREFIXED names and puts them first
+          # on PATH, and with no $BK_CC (which bk deliberately does not set for
+          # windows) the shim reduced `x86_64-w64-mingw32-gcc` to a bare `gcc`
+          # that llvm-mingw does not ship. go-pkgx/bk#405.
+          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@v0.58.0
           CGO_ENABLED=0 go install github.com/go-pkgx/pkgx@main
           CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

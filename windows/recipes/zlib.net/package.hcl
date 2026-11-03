@@ -16,7 +16,15 @@
 # ⛔ win32/Makefile.gcc, NOT ./configure. zlib's configure probes by compiling
 # and running, which a cross build cannot do; upstream ships this makefile for
 # exactly this case. `PREFIX=x86_64-w64-mingw32-` is how it is told which
-# toolchain to call — it prepends that to `gcc`, `ar` and `strip`.
+# toolchain to call — read at v1.3.1, it sets `CC = $(PREFIX)gcc`,
+# `AR = $(PREFIX)ar`, `RC = $(PREFIX)windres`, `STRIP = $(PREFIX)strip`, with
+# `AS` and `LD` derived from `CC`.
+#
+# ⛔ SO IT ASKS FOR `…-gcc`, AND THAT NAME IS REAL: the llvm-mingw bottle ships
+# it beside `…-clang` (listed from the bottle's own bin, not assumed). What
+# made this fail was on OUR side — bk's shim shadowed it and reduced it to a
+# bare `gcc` — and it needs bk >= v0.58.0 (go-pkgx/bk#405). Overriding CC here
+# would have papered over a bk defect that breaks EVERY windows C recipe.
 
 provides = [
   "bin/minigzip.exe",
