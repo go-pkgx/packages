@@ -54,18 +54,28 @@ func fakeELF() []byte {
 	return b
 }
 
-// bottleWith writes a .tar.gz holding the given members, as the factory's
-// dist directory does.
-func bottleWith(t *testing.T, dir, name string, members map[string][]byte) string {
+// member is one entry of a fixture archive. A SLICE rather than a map,
+// because the order entries are written in is exactly what the count must not
+// depend on — and a map fixture made that untestable while also making the
+// test itself flaky. CI found it: the same archive reported "1 member" or
+// "2 members" depending on which entry Go's map iteration emitted first.
+type member struct {
+	name string
+	body []byte
+}
+
+// bottleWith writes a .tar.gz holding the given members in the given order,
+// as the factory's dist directory does.
+func bottleWith(t *testing.T, dir, name string, members ...member) string {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gz)
-	for n, body := range members {
-		if err := tw.WriteHeader(&tar.Header{Name: n, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+	for _, m := range members {
+		if err := tw.WriteHeader(&tar.Header{Name: m.name, Mode: 0o755, Size: int64(len(m.body)), Typeflag: tar.TypeReg}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := tw.Write(body); err != nil {
+		if _, err := tw.Write(m.body); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -86,10 +96,10 @@ func bottleWith(t *testing.T, dir, name string, members map[string][]byte) strin
 // install prefix, which is why the match is on the suffix.
 func TestFindsThePEInsideTheBottle(t *testing.T) {
 	dir := t.TempDir()
-	bottleWith(t, dir, "zlib.net-1.3.2", map[string][]byte{
-		"zlib.net/v1.3.2/bin/minigzip.exe": fakePE(pe.IMAGE_FILE_MACHINE_AMD64),
-		"zlib.net/v1.3.2/lib/libz.a":       []byte("!<arch>\n"),
-	})
+	bottleWith(t, dir, "zlib.net-1.3.2",
+		member{"zlib.net/v1.3.2/bin/minigzip.exe", fakePE(pe.IMAGE_FILE_MACHINE_AMD64)},
+		member{"zlib.net/v1.3.2/lib/libz.a", []byte("!<arch>\n")},
+	)
 	var out bytes.Buffer
 	if err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out); err != nil {
 		t.Fatalf("run() = %v\n%s", err, out.String())
@@ -101,14 +111,61 @@ func TestFindsThePEInsideTheBottle(t *testing.T) {
 	}
 }
 
+// ⛔⛔ THE COUNT MUST NOT DEPEND ON WHERE THE ANSWER WAS FOUND. memberOf
+// returned as soon as it matched, so "examined N member(s)" meant "N seen
+// before the hit" — a denominator that moves with the archive's ordering,
+// which is the exact kind of figure this tool was written to replace. CI
+// caught it as a flake because the fixture was a map.
+func TestTheCountDoesNotDependOnWhereTheHitIs(t *testing.T) {
+	exe := member{"zlib.net/v1.3.2/bin/minigzip.exe", fakePE(pe.IMAGE_FILE_MACHINE_AMD64)}
+	lib := member{"zlib.net/v1.3.2/lib/libz.a", []byte("!<arch>\n")}
+	hdr := member{"zlib.net/v1.3.2/include/zlib.h", []byte("/* zlib */\n")}
+
+	for _, c := range []struct {
+		name    string
+		members []member
+	}{
+		{"hit first", []member{exe, lib, hdr}},
+		{"hit middle", []member{lib, exe, hdr}},
+		{"hit last", []member{lib, hdr, exe}},
+	} {
+		var out bytes.Buffer
+		dir := t.TempDir()
+		bottleWith(t, dir, "zlib.net-1.3.2", c.members...)
+		if err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+		if !strings.Contains(out.String(), "examined 3 member(s)") {
+			t.Errorf("%s: output %q, want all three counted", c.name, out.String())
+		}
+	}
+}
+
+// And the same one level up: a second bottle after the hit is still opened
+// and still counted.
+func TestEveryArchiveIsOpened(t *testing.T) {
+	dir := t.TempDir()
+	bottleWith(t, dir, "a-zlib.net-1.3.2",
+		member{"zlib.net/v1.3.2/bin/minigzip.exe", fakePE(pe.IMAGE_FILE_MACHINE_AMD64)})
+	bottleWith(t, dir, "b-other-1.0",
+		member{"other/v1.0/bin/other", []byte("x")})
+
+	var out bytes.Buffer
+	if err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out); err != nil {
+		t.Fatalf("run() = %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "opened 2 archive(s)") {
+		t.Errorf("output %q, want both archives counted", out.String())
+	}
+}
+
 // ⛔⛔ THE DEFECT THIS TOOL REPLACES: an ELF passing for a Windows build. A
 // cross build that fell back to the host compiler produces a working ELF and
 // a green job, and the first person to find out runs it on Windows.
 func TestAnELFIsRefused(t *testing.T) {
 	dir := t.TempDir()
-	bottleWith(t, dir, "zlib.net-1.3.2", map[string][]byte{
-		"zlib.net/v1.3.2/bin/minigzip.exe": fakeELF(),
-	})
+	bottleWith(t, dir, "zlib.net-1.3.2",
+		member{"zlib.net/v1.3.2/bin/minigzip.exe", fakeELF()})
 	err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("an ELF passed as a Windows binary")
@@ -122,9 +179,8 @@ func TestAnELFIsRefused(t *testing.T) {
 // lane runs nowhere, and both are PEs, so the format check alone would pass.
 func TestAPEForTheWrongMachineIsRefused(t *testing.T) {
 	dir := t.TempDir()
-	bottleWith(t, dir, "zlib.net-1.3.2", map[string][]byte{
-		"zlib.net/v1.3.2/bin/minigzip.exe": fakePE(pe.IMAGE_FILE_MACHINE_ARM64),
-	})
+	bottleWith(t, dir, "zlib.net-1.3.2",
+		member{"zlib.net/v1.3.2/bin/minigzip.exe", fakePE(pe.IMAGE_FILE_MACHINE_ARM64)})
 	err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("an arm64 PE passed in an x86-64 lane")
@@ -150,9 +206,8 @@ func TestAnEmptyDistIsNotAMissingMember(t *testing.T) {
 
 func TestAMissingMemberNamesTheDenominator(t *testing.T) {
 	dir := t.TempDir()
-	bottleWith(t, dir, "zlib.net-1.3.2", map[string][]byte{
-		"zlib.net/v1.3.2/lib/libz.a": []byte("!<arch>\n"),
-	})
+	bottleWith(t, dir, "zlib.net-1.3.2",
+		member{"zlib.net/v1.3.2/lib/libz.a", []byte("!<arch>\n")})
 	var out bytes.Buffer
 	err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out)
 	if err == nil {

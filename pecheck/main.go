@@ -90,8 +90,11 @@ func run(dir, member, arch string, want uint16, out io.Writer) error {
 	var found []byte
 	var foundIn string
 
+	// Every archive is opened, including those after the hit: see memberOf
+	// for why a count that stops at the answer is not a count. dist holds a
+	// handful of bottles, so the whole walk is cheaper than the explanation.
 	err := filepath.WalkDir(dir, func(p string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() || found != nil {
+		if err != nil || d.IsDir() {
 			return err
 		}
 		ext := archiveExt(p)
@@ -104,7 +107,7 @@ func run(dir, member, arch string, want uint16, out io.Writer) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", p, err)
 		}
-		if b != nil {
+		if b != nil && found == nil {
 			found, foundIn = b, p
 		}
 		return nil
@@ -146,9 +149,20 @@ func archiveExt(p string) string {
 }
 
 // memberOf returns the bytes of the member whose path ends in want, and how
-// many members it looked at. A bottle's paths are prefixed by the install
-// prefix, so the match is on the SUFFIX: "bin/minigzip.exe" must find
+// many members the archive holds. A bottle's paths are prefixed by the
+// install prefix, so the match is on the SUFFIX: "bin/minigzip.exe" must find
 // "zlib.net/v1.3.2/bin/minigzip.exe".
+//
+// ⛔⛔ IT READS TO THE END EVEN AFTER A HIT, because the count is the point.
+// The first version returned as soon as it matched, so "examined N member(s)"
+// meant "N seen BEFORE the match" — a number that moves with the order the
+// archive happens to list its entries, which is precisely the kind of figure
+// this tool exists to replace. CI caught it: the same archive reported 1 or 2
+// depending on which member the writer emitted first.
+//
+// A denominator that depends on where the answer was found is not a
+// denominator. Scanning on costs one pass over a tar we have already
+// decompressed.
 func memberOf(p, ext, want string) ([]byte, int, error) {
 	f, err := os.Open(p)
 	if err != nil {
@@ -162,11 +176,12 @@ func memberOf(p, ext, want string) ([]byte, int, error) {
 	defer closeFn()
 
 	n := 0
+	var found []byte
 	tr := tar.NewReader(dec)
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
-			return nil, n, nil
+			return found, n, nil
 		}
 		if err != nil {
 			return nil, n, err
@@ -175,7 +190,7 @@ func memberOf(p, ext, want string) ([]byte, int, error) {
 			continue
 		}
 		n++
-		if !matches(h.Name, want) {
+		if found != nil || !matches(h.Name, want) {
 			continue
 		}
 		b, err := io.ReadAll(io.LimitReader(tr, maxMember+1))
@@ -185,7 +200,7 @@ func memberOf(p, ext, want string) ([]byte, int, error) {
 		if len(b) > maxMember {
 			return nil, n, fmt.Errorf("member %s exceeds %d bytes", h.Name, maxMember)
 		}
-		return b, n, nil
+		found = b
 	}
 }
 
