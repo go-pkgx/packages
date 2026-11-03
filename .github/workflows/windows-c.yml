@@ -49,7 +49,13 @@ jobs:
       - name: build bk, pkgx and pkgm (static)
         # Pinned rather than @main because this lane publishes.
         run: |
-          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@v0.54.0
+          # ⛔ v0.58.0 IS THE FLOOR FOR THIS LANE, not a routine bump. Below it,
+          # bk's own compiler shim shadowed llvm-mingw and could not delegate:
+          # compilerShimsFor shims the TRIPLE-PREFIXED names and puts them first
+          # on PATH, and with no $BK_CC (which bk deliberately does not set for
+          # windows) the shim reduced `x86_64-w64-mingw32-gcc` to a bare `gcc`
+          # that llvm-mingw does not ship. go-pkgx/bk#405.
+          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@v0.58.0
           CGO_ENABLED=0 go install github.com/go-pkgx/pkgx@main
           CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
@@ -72,25 +78,41 @@ jobs:
             --dist /dist "${{ matrix.slug }}"
       # WHAT RAN, FROM WHERE — the same negative claim the wasm lane makes: a
       # name that prints nothing is a tool that is NOT in the rootfs.
+      #
+      # ⛔ `always()`, BECAUSE THIS IS THE EVIDENCE FOR THE STEP ABOVE. It ran
+      # after the build and therefore only ever ran when nothing was wrong.
+      # The first real failure here was
+      #
+      #   x86_64-w64-mingw32-gcc -O3 -Wall -c -o adler32.o adler32.c
+      #   bk gcc: gcc is not on PATH outside …/build.libexec
+      #
+      # — a question about which compiler names the llvm-mingw bottle actually
+      # ships, asked of a step that had just been skipped for failing to
+      # answer it. A diagnostic that runs only on success is not a diagnostic.
+      #
+      # So it also LISTS the bottle's bin rather than probing names guessed in
+      # advance: `command -v` can only confirm a name someone already thought
+      # of, and the whole question here is what is there.
       - name: what ran, from where
+        if: always()
         run: |
           builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/windows/recipes" "$PWD/advisories" \
-            /bin/sh -c 'command -v sh make install x86_64-w64-mingw32-gcc x86_64-w64-mingw32-ar; echo "PATH=$PATH"'
+            /bin/sh -c 'command -v sh make install x86_64-w64-mingw32-clang x86_64-w64-mingw32-gcc; echo "--- llvm-mingw bin:"; ls /pkgx/llvm.org/mingw-w64/v*/bin; echo "PATH=$PATH"'
       # ⛔ IS IT ACTUALLY A WINDOWS BINARY? A cross build that silently fell
       # back to the host compiler produces a working ELF and a green job, and
-      # the first person to find out is whoever runs it on Windows. objdump
-      # reports the object format, so `pei-x86-64` is the claim and anything
-      # else fails here.
+      # the first person to find out is whoever runs it on Windows.
+      #
+      # ⛔ AND THE CHECK LOOKS INSIDE THE BOTTLE. This was a `find` for a loose
+      # .exe under dist, piped into `objdump | grep -o`. It reported
+      #
+      #   ::error::minigzip.exe was not built
+      #
+      # for a build that had just SUCCEEDED, because dist holds the packaged
+      # bottle and there is no loose file to find. A pipeline cannot tell "the
+      # build produced nothing" from "I looked in the wrong place", which is
+      # the one distinction this step exists to make — so it is a Go tool with
+      # tests, it opens the archives, and it prints its denominator.
       - name: the artefact is a PE, not an ELF
         run: |
-          set -eu
-          exe=$(find "$RUNNER_TEMP/rootfs/dist" -name '${{ matrix.bin }}' | head -1)
-          [ -n "$exe" ] || { echo "::error::${{ matrix.bin }} was not built"; exit 1; }
-          echo "found $exe"
-          fmt=$(builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/windows/recipes" "$PWD/advisories" \
-            /bin/sh -c "x86_64-w64-mingw32-objdump -f '${exe#"$RUNNER_TEMP/rootfs"}'" | grep -o 'file format .*')
-          echo "$fmt"
-          case "$fmt" in
-            *pei-x86-64*) echo "PE confirmed" ;;
-            *) echo "::error::not a Windows PE: $fmt"; exit 1 ;;
-          esac
+          go run ./pecheck -dir "$RUNNER_TEMP/rootfs/dist" \
+            -member "bin/${{ matrix.bin }}" -arch x86-64

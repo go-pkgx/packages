@@ -280,14 +280,46 @@ func knownReason(patch string) (string, bool) {
 	return "", false
 }
 
+// copyTree copies the pantry so patches can be applied to a scratch copy.
+//
+// ⛔⛔ IT SKIPS .git, AND THAT IS A FIX, NOT AN OPTIMISATION. This shelled out
+// to `cp -R src/. dst` and copied the whole clone, so it raced git's own
+// background maintenance:
+//
+//	logicalise: copy pantry: exit status 1: cp: cannot stat
+//	  '…/.git/objects/maintenance.lock': No such file or directory
+//
+// git created the lock and removed it between cp's readdir and its stat. The
+// failure is a FLAKE in CI and a real fault in the field, where the pantry is
+// a live clone that git may maintain at any moment — and it fails the whole
+// run for a file nothing here was ever going to read.
+//
+// Nothing in logicalise looks inside .git: it applies patches to recipes and
+// compares them. Not copying the one directory that mutates underneath the
+// copy removes the race at its source rather than retrying around it, and it
+// is the bulk of a pantry clone besides.
 func copyTree(src string) (string, error) {
 	dst, err := osMkdirTemp("", "patched")
 	if err != nil {
 		return "", err
 	}
-	c := exec.Command("cp", "-R", src+"/.", dst)
-	if out, err := c.CombinedOutput(); err != nil {
-		return "", fmt.Errorf("copy pantry: %v: %s", err, out)
+	// Entry by entry rather than a hand-rolled walk: `cp -R` already copies
+	// modes and recreates symlinks the way this needs, and reimplementing
+	// that in Go to express ONE exclusion would trade a race for six new
+	// error branches to get wrong. The loop is in Go; the copying is a
+	// program, as it was.
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return "", fmt.Errorf("copy pantry: %w", err)
+	}
+	for _, e := range entries {
+		if e.Name() == ".git" {
+			continue
+		}
+		c := exec.Command("cp", "-R", filepath.Join(src, e.Name()), dst)
+		if out, err := c.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("copy pantry: %v: %s", err, out)
+		}
 	}
 	return dst, nil
 }
