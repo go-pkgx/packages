@@ -101,7 +101,7 @@ func TestFindsThePEInsideTheBottle(t *testing.T) {
 		member{"zlib.net/v1.3.2/lib/libz.a", []byte("!<arch>\n")},
 	)
 	var out bytes.Buffer
-	if err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out); err != nil {
+	if err := check(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out); err != nil {
 		t.Fatalf("run() = %v\n%s", err, out.String())
 	}
 	for _, want := range []string{"opened 1 archive(s)", "examined 2 member(s)", "OK — PE"} {
@@ -132,7 +132,7 @@ func TestTheCountDoesNotDependOnWhereTheHitIs(t *testing.T) {
 		var out bytes.Buffer
 		dir := t.TempDir()
 		bottleWith(t, dir, "zlib.net-1.3.2", c.members...)
-		if err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out); err != nil {
+		if err := check(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out); err != nil {
 			t.Fatalf("%s: %v", c.name, err)
 		}
 		if !strings.Contains(out.String(), "examined 3 member(s)") {
@@ -151,7 +151,7 @@ func TestEveryArchiveIsOpened(t *testing.T) {
 		member{"other/v1.0/bin/other", []byte("x")})
 
 	var out bytes.Buffer
-	if err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out); err != nil {
+	if err := check(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out); err != nil {
 		t.Fatalf("run() = %v\n%s", err, out.String())
 	}
 	if !strings.Contains(out.String(), "opened 2 archive(s)") {
@@ -166,7 +166,7 @@ func TestAnELFIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	bottleWith(t, dir, "zlib.net-1.3.2",
 		member{"zlib.net/v1.3.2/bin/minigzip.exe", fakeELF()})
-	err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &bytes.Buffer{})
+	err := check(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("an ELF passed as a Windows binary")
 	}
@@ -181,7 +181,7 @@ func TestAPEForTheWrongMachineIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	bottleWith(t, dir, "zlib.net-1.3.2",
 		member{"zlib.net/v1.3.2/bin/minigzip.exe", fakePE(pe.IMAGE_FILE_MACHINE_ARM64)})
-	err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &bytes.Buffer{})
+	err := check(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("an arm64 PE passed in an x86-64 lane")
 	}
@@ -195,7 +195,7 @@ func TestAPEForTheWrongMachineIsRefused(t *testing.T) {
 // build published nothing; a missing member means it published the wrong
 // thing. They are fixed in different places.
 func TestAnEmptyDistIsNotAMissingMember(t *testing.T) {
-	err := run(t.TempDir(), "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &bytes.Buffer{})
+	err := check(t.TempDir(), "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &bytes.Buffer{})
 	if err == nil {
 		t.Fatal("an empty dist passed")
 	}
@@ -209,7 +209,7 @@ func TestAMissingMemberNamesTheDenominator(t *testing.T) {
 	bottleWith(t, dir, "zlib.net-1.3.2",
 		member{"zlib.net/v1.3.2/lib/libz.a", []byte("!<arch>\n")})
 	var out bytes.Buffer
-	err := run(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out)
+	err := check(dir, "bin/minigzip.exe", "x86-64", pe.IMAGE_FILE_MACHINE_AMD64, &out)
 	if err == nil {
 		t.Fatal("a bottle without the binary passed")
 	}

@@ -12,7 +12,7 @@
 // the wrong place", and that is the whole question this step exists to answer.
 //
 // So it looks INSIDE the bottles, and it reports its denominator: how many
-// archives it opened and how many members it examined. "Not found" is only
+// archives it opened and how many members they hold. "Not found" is only
 // meaningful next to "and here is what was there".
 //
 // A cross build that silently fell back to the host compiler produces a
@@ -42,7 +42,14 @@ import (
 // declare any size at all, and this step runs in CI with the rest of the job
 // behind it. 512 MiB is far above any binary we publish and far below the
 // runner's memory.
-const maxMember = 512 << 20
+//
+// A var so a test can shrink it: a test that had to build half a gigabyte to
+// prove the bound works would never be run, and a bound nothing exercises is
+// a comment.
+var maxMember int64 = 512 << 20
+
+// osExit is a seam so a test can exercise main without ending the process.
+var osExit = os.Exit
 
 // machines maps our arch spelling to the PE machine type that proves it.
 var machines = map[string]uint16{
@@ -55,23 +62,29 @@ var machines = map[string]uint16{
 var archiveExts = []string{bottle.ExtTarXz, bottle.ExtTarZst, bottle.ExtTarGz}
 
 func main() {
-	dir := flag.String("dir", "", "directory holding the built bottle(s)")
-	member := flag.String("member", "", "archive member to check, eg. bin/minigzip.exe")
-	arch := flag.String("arch", "x86-64", "expected arch: "+archList())
-	flag.Parse()
+	if err := run(os.Args[1:], os.Stdout, os.Stderr); err != nil {
+		fmt.Fprintf(os.Stderr, "::error::%v\n", err)
+		osExit(1)
+	}
+}
+
+func run(args []string, stdout, stderr io.Writer) error {
+	fs := flag.NewFlagSet("pecheck", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dir := fs.String("dir", "", "directory holding the built bottle(s)")
+	member := fs.String("member", "", "archive member to check, eg. bin/minigzip.exe")
+	arch := fs.String("arch", "x86-64", "expected arch: "+archList())
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 	if *dir == "" || *member == "" {
-		fmt.Fprintln(os.Stderr, "usage: pecheck -dir <dist> -member <bin/x.exe> [-arch x86-64]")
-		os.Exit(2)
+		return fmt.Errorf("usage: pecheck -dir <dist> -member <bin/x.exe> [-arch %s]", archList())
 	}
 	want, ok := machines[*arch]
 	if !ok {
-		fmt.Fprintf(os.Stderr, "pecheck: unknown arch %q (known: %s)\n", *arch, archList())
-		os.Exit(2)
+		return fmt.Errorf("unknown arch %q (known: %s)", *arch, archList())
 	}
-	if err := run(*dir, *member, *arch, want, os.Stdout); err != nil {
-		fmt.Fprintf(os.Stderr, "::error::%v\n", err)
-		os.Exit(1)
-	}
+	return check(*dir, *member, *arch, want, stdout)
 }
 
 func archList() string {
@@ -83,9 +96,9 @@ func archList() string {
 	return strings.Join(out, ", ")
 }
 
-// run finds member inside the bottles under dir and asserts it is a PE for
+// check finds member inside the bottles under dir and asserts it is a PE for
 // want. It prints what it opened either way.
-func run(dir, member, arch string, want uint16, out io.Writer) error {
+func check(dir, member, arch string, want uint16, out io.Writer) error {
 	var archives, members int
 	var found []byte
 	var foundIn string
@@ -197,7 +210,7 @@ func memberOf(p, ext, want string) ([]byte, int, error) {
 		if err != nil {
 			return nil, n, err
 		}
-		if len(b) > maxMember {
+		if int64(len(b)) > maxMember {
 			return nil, n, fmt.Errorf("member %s exceeds %d bytes", h.Name, maxMember)
 		}
 		found = b
