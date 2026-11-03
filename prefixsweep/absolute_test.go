@@ -181,3 +181,54 @@ func TestADirectoryThatCannotBeWalkedFailsTheAbsoluteSweep(t *testing.T) {
 		t.Error("an undescendable directory was reported as holding nothing")
 	}
 }
+
+// ⛔⛔ THE FILTER THAT MAKES -absolute GATEABLE, and the measurement that says
+// it is safe: over six linux bottles it turned 38 hits into 8, and not one of
+// the 30 dropped was a builder path. They were curl man-page examples,
+// a comment in sqlite3.h and a Romanian man page.
+func TestCompiledOnlyDropsDocumentationAndKeepsBuilderPaths(t *testing.T) {
+	home := t.TempDir()
+	// A builder path compiled into a binary, and the same SHAPE of path
+	// written by an author into a man page and a header.
+	mustWrite(t, filepath.Join(home, "v1/bin/tool"),
+		"/github/home/.pkgx/x/v1+brewing/share/locale\x00")
+	mustWrite(t, filepath.Join(home, "v1/lib/libx.so.1"),
+		"/opt/x/v1+brewing\x00")
+	mustWrite(t, filepath.Join(home, "v1/share/man/man1/tool.1"),
+		"for example /home/clarkkent/.ssh/id_rsa is read\n")
+	mustWrite(t, filepath.Join(home, "v1/include/x.h"),
+		"/* e.g. /home/fred/data.db */\n")
+
+	all, err := absoluteHitsIn(home, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 4 {
+		t.Fatalf("unfiltered got %d hits, want all four: %v", len(all), all)
+	}
+
+	only, err := absoluteHitsIn(home, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(only) != 2 {
+		t.Fatalf("compiled-only got %d hits, want the binary and the library: %v", len(only), only)
+	}
+	for _, h := range only {
+		if strings.Contains(h.Rel, "man") || strings.Contains(h.Rel, "include") {
+			t.Errorf("documentation survived the filter: %v", h)
+		}
+	}
+}
+
+// -compiled on its own is a request nobody can answer: it narrows -absolute.
+func TestCompiledNeedsAbsolute(t *testing.T) {
+	var out, errOut strings.Builder
+	err := run([]string{"-platform", "darwin/aarch64", "-compiled", "p"}, &out, &errOut)
+	if err == nil {
+		t.Fatal("-compiled without -absolute was accepted")
+	}
+	if !strings.Contains(err.Error(), "needs -absolute") {
+		t.Errorf("the refusal does not explain itself: %v", err)
+	}
+}
