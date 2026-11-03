@@ -67,8 +67,15 @@ func run(args []string, stdout, stderr io.Writer) error {
 	max := fs0.Int("n", 0, "stop after this many projects (0 = all)")
 	store := fs0.String("store", "", "install into this directory instead of a temporary one")
 	needle := fs0.String("needle", "", "sweep for this literal (e.g. the builder's cache root) instead of the package's own version directory; any hit fails the run")
+	absolute := fs0.Bool("absolute", false, "sweep for ANY absolute path outside an allowlist of platform paths, instead of a literal; any hit fails the run. A spelled -needle certifies only the lane it was written for — this asserts the property, so a lane nobody anticipated fails rather than passes")
 	if err := fs0.Parse(args); err != nil {
 		return err
+	}
+	if *needle != "" && *absolute {
+		// They answer different questions and the stricter one would hide the
+		// other's result: -needle says "this string is gone", -absolute says
+		// "no builder path of any shape is left".
+		return fmt.Errorf("-needle and -absolute ask different questions; run them separately")
 	}
 	if *platform == "" {
 		return fmt.Errorf("-platform is required (os/arch)")
@@ -103,6 +110,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 		dir = d
 	}
 
+	// ⛔ SAY WHAT WAS SEARCHED FOR, BEFORE ANY RESULT. A clean run is only
+	// readable if the reader can see the question: `-needle /home/runner`
+	// printed "4 clean" against four linux bottles that were full of builder
+	// paths, because the lane builds with HOME=/github/home.
+	if *absolute {
+		reportAllowed(stdout)
+	}
+
 	var swept, baked, unreadable int
 	for _, project := range projects {
 		v, err := pickVersion(project, "*", osn, arch)
@@ -125,14 +140,17 @@ func run(args []string, stdout, stderr io.Writer) error {
 		// before this line existed.
 		home := filepath.Join(dir, filepath.FromSlash(project))
 		var hits []hit
-		if *needle != "" {
+		switch {
+		case *absolute:
+			hits, err = absoluteHits(home)
+		case *needle != "":
 			// ⛔ A CALLER-SUPPLIED NEEDLE REPLACES THE VERSION-DIRECTORY ONE. That
 			// one cannot see a builder path lacking the package's own directory,
 			// and a path normalised to /build/... no longer contains it at all, so
 			// re-running the default sweep on a fixed bottle would print a vacuous
 			// zero (go-pkgx/bk#387).
 			hits, err = findNeedle(home, []byte(*needle))
-		} else {
+		default:
 			var component string
 			component, err = installedComponent(home)
 			if err == nil {
@@ -169,9 +187,13 @@ func run(args []string, stdout, stderr io.Writer) error {
 	if swept == 0 {
 		return fmt.Errorf("no project was swept, so this measured nothing")
 	}
-	// With -needle the sweep is an ASSERTION: any hit is a failure, so "no
-	// builder path is shipped" is a test rather than an observation.
-	if *needle != "" && baked > 0 {
+	// With -needle or -absolute the sweep is an ASSERTION: any hit is a
+	// failure, so "no builder path is shipped" is a test rather than an
+	// observation.
+	switch {
+	case *absolute && baked > 0:
+		return fmt.Errorf("%d project(s) bake an absolute path outside the allowlist", baked)
+	case *needle != "" && baked > 0:
 		return fmt.Errorf("%d project(s) contain %q", baked, *needle)
 	}
 	return nil
