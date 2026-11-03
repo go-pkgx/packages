@@ -72,10 +72,26 @@ jobs:
             --dist /dist "${{ matrix.slug }}"
       # WHAT RAN, FROM WHERE — the same negative claim the wasm lane makes: a
       # name that prints nothing is a tool that is NOT in the rootfs.
+      #
+      # ⛔ `always()`, BECAUSE THIS IS THE EVIDENCE FOR THE STEP ABOVE. It ran
+      # after the build and therefore only ever ran when nothing was wrong.
+      # The first real failure here was
+      #
+      #   x86_64-w64-mingw32-gcc -O3 -Wall -c -o adler32.o adler32.c
+      #   bk gcc: gcc is not on PATH outside …/build.libexec
+      #
+      # — a question about which compiler names the llvm-mingw bottle actually
+      # ships, asked of a step that had just been skipped for failing to
+      # answer it. A diagnostic that runs only on success is not a diagnostic.
+      #
+      # So it also LISTS the bottle's bin rather than probing names guessed in
+      # advance: `command -v` can only confirm a name someone already thought
+      # of, and the whole question here is what is there.
       - name: what ran, from where
+        if: always()
         run: |
           builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/windows/recipes" "$PWD/advisories" \
-            /bin/sh -c 'command -v sh make install x86_64-w64-mingw32-gcc x86_64-w64-mingw32-ar; echo "PATH=$PATH"'
+            /bin/sh -c 'command -v sh make install x86_64-w64-mingw32-clang x86_64-w64-mingw32-gcc; echo "--- llvm-mingw bin:"; ls /pkgx/llvm.org/mingw-w64/v*/bin; echo "PATH=$PATH"'
       # ⛔ IS IT ACTUALLY A WINDOWS BINARY? A cross build that silently fell
       # back to the host compiler produces a working ELF and a green job, and
       # the first person to find out is whoever runs it on Windows. objdump
