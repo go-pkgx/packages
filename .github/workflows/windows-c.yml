@@ -100,19 +100,19 @@ jobs:
             /bin/sh -c 'command -v sh make install x86_64-w64-mingw32-clang x86_64-w64-mingw32-gcc; echo "--- llvm-mingw bin:"; ls /pkgx/llvm.org/mingw-w64/v*/bin; echo "PATH=$PATH"'
       # ⛔ IS IT ACTUALLY A WINDOWS BINARY? A cross build that silently fell
       # back to the host compiler produces a working ELF and a green job, and
-      # the first person to find out is whoever runs it on Windows. objdump
-      # reports the object format, so `pei-x86-64` is the claim and anything
-      # else fails here.
+      # the first person to find out is whoever runs it on Windows.
+      #
+      # ⛔ AND THE CHECK LOOKS INSIDE THE BOTTLE. This was a `find` for a loose
+      # .exe under dist, piped into `objdump | grep -o`. It reported
+      #
+      #   ::error::minigzip.exe was not built
+      #
+      # for a build that had just SUCCEEDED, because dist holds the packaged
+      # bottle and there is no loose file to find. A pipeline cannot tell "the
+      # build produced nothing" from "I looked in the wrong place", which is
+      # the one distinction this step exists to make — so it is a Go tool with
+      # tests, it opens the archives, and it prints its denominator.
       - name: the artefact is a PE, not an ELF
         run: |
-          set -eu
-          exe=$(find "$RUNNER_TEMP/rootfs/dist" -name '${{ matrix.bin }}' | head -1)
-          [ -n "$exe" ] || { echo "::error::${{ matrix.bin }} was not built"; exit 1; }
-          echo "found $exe"
-          fmt=$(builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/windows/recipes" "$PWD/advisories" \
-            /bin/sh -c "x86_64-w64-mingw32-objdump -f '${exe#"$RUNNER_TEMP/rootfs"}'" | grep -o 'file format .*')
-          echo "$fmt"
-          case "$fmt" in
-            *pei-x86-64*) echo "PE confirmed" ;;
-            *) echo "::error::not a Windows PE: $fmt"; exit 1 ;;
-          esac
+          go run ./pecheck -dir "$RUNNER_TEMP/rootfs/dist" \
+            -member "bin/${{ matrix.bin }}" -arch x86-64
