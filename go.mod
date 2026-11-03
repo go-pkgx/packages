@@ -1,10 +1,10 @@
 module github.com/go-pkgx/packages
 
-go 1.27.2
+go 1.27.3
 
 require (
 	github.com/go-pkgx/bk v0.35.0
-	github.com/go-pkgx/bottle v0.56.0
+	github.com/go-pkgx/bottle v0.64.0
 	github.com/hashicorp/hcl/v2 v2.25.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -21,6 +21,7 @@ require (
 	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
 	github.com/emirpasic/gods v1.18.1 // indirect
 	github.com/go-attest/sign v0.3.0 // indirect
+	github.com/go-compressions/xz v0.1.0 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.9.2 // indirect
 	github.com/go-git/go-git/v5 v5.19.3 // indirect
