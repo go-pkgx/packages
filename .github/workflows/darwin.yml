@@ -146,6 +146,36 @@ jobs:
         run: |
           command -v python >/dev/null || ln -sf "$(command -v python3)" /usr/local/bin/python || true
 
+      # ⛔⛔ WHICH TOOLCHAIN BUILT THIS, RECORDED WITH THE RUN.
+      #
+      # `macos-15` is a rolling label: it pins the macOS generation and the
+      # Xcode inside it drifts. Measured 2026-11-03 by rebuilding
+      # sourceware.org/bzip2 1.0.8 and comparing it with the bottle it
+      # replaced — the SDK path baked into libbz2.a had moved from
+      # Xcode_15.4.app to Xcode_16.4.app, and nothing in any log said so. It
+      # was found by sweeping the BOTTLE, which is the expensive way to learn
+      # what your own builder is.
+      #
+      # This does not pin anything and changes no build. Pinning Xcode is the
+      # real remedy for the drift and it is a decision with a bill: some
+      # recipes may need 16.x, and darwin.yml already carries the scar of a
+      # toolchain split (macos-14's libc++ has no `std::atomic_ref`). Record
+      # first, so that decision can be made from data.
+      #
+      # ⛔ The SDK path is deliberately NOT rewritten out of the bottles. It is
+      # PROVENANCE: two builds against different SDKs produce different code,
+      # and normalising the string would make them byte-identical in the one
+      # place that recorded the difference — improving the reproducibility
+      # metric by deleting its evidence. go-pkgx/bk#400.
+      - name: the toolchain this run built with
+        run: |
+          set -eu
+          echo "runner image  ${{ matrix.runner }}"
+          xcodebuild -version 2>/dev/null || echo "xcodebuild: unavailable"
+          echo "SDK path      $(xcrun --show-sdk-path)"
+          echo "SDK version   $(xcrun --show-sdk-version)"
+          echo "clang         $(cc --version | head -1)"
+
       - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v7
