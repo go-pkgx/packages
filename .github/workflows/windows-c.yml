@@ -1,0 +1,96 @@
+# windows-c: C projects cross-built for windows/x86-64 from linux, with
+# llvm-mingw, in the same FROM-scratch rootfs the other sovereign lanes use.
+#
+# ⛔ THE GAP THIS FILLS. `windows.yml` builds from `windows/go-projects.txt`
+# and `windows-rust.yml` from `windows/rust-projects.txt`; both compile a
+# language toolchain's own output. A C project in the pantry had no Windows
+# lane at all, so `windows/x86-64` has Go and Rust binaries and not one C
+# library. Measured 2026-11-03: `zlib.net` resolves for linux and darwin and
+# `NOT published here` for windows.
+#
+# ⛔ THE COMPILER COMES FROM THE RECIPE. For every other target bk puts
+# `llvm.org` into the environment itself; for a windows cross build it
+# deliberately does not — "its compiler comes from the recipe's llvm-mingw
+# dep" (bk buildscript/wrapper.go). So each recipe here declares
+# `llvm.org/mingw-w64` and names `x86_64-w64-mingw32-*` itself. A recipe that
+# forgets gets "C compiler cannot create executables", not a missing-dep error.
+#
+# Recipes: windows/recipes/<slug>/package.hcl — a Windows build is its own
+# small recipe, as wasip1's is, rather than a conditional in the host recipe.
+#
+# workflow_dispatch only, like the other factories.
+name: windows-c
+on:
+  workflow_dispatch:
+permissions: { contents: read, packages: write }
+env:
+  GOPROXY: https://proxy.golang.org,direct
+  GONOPROXY: github.com/go-pkgx/*
+  PKGX_DIST: oci://ghcr.io/go-pkgx/packages
+  PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      # Modest on purpose: parallel matrices in this repository have starved
+      # other lanes (37 concurrent jobs caused cancellations).
+      max-parallel: 4
+      matrix:
+        include:
+          # bin: the .exe under <prefix>/bin that must be a PE for this to
+          # count as a Windows build at all.
+          - { runner: ubuntu-latest, platform: linux/x86-64, slug: zlib.net, version: "1.3.2", bin: minigzip.exe }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with: { go-version: '1.27.3' }
+      - name: build bk, pkgx and pkgm (static)
+        # Pinned rather than @main because this lane publishes.
+        run: |
+          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@v0.54.0
+          CGO_ENABLED=0 go install github.com/go-pkgx/pkgx@main
+          CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: stage the sovereign rootfs
+        run: |
+          sudo rm -rf "$RUNNER_TEMP/rootfs"
+          bk builder \
+            --out "$RUNNER_TEMP/rootfs" \
+            --platform "${{ matrix.platform }}" \
+            --toolchain builder/toolchain.txt \
+            --bk "$(command -v bk)" \
+            --pkgx "$(command -v pkgx)" \
+            --container
+      - name: build ${{ matrix.slug }} ${{ matrix.version }} for windows/x86-64, in the rootfs
+        run: |
+          chmod +x builder/sovereign-bk.sh
+          builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/windows/recipes" "$PWD/advisories" \
+            /usr/local/bin/bk --platform windows/x86-64 build --libc=pkgx \
+            --recipe "/recipes/${{ matrix.slug }}/package.hcl" --version "${{ matrix.version }}" \
+            --dist /dist "${{ matrix.slug }}"
+      # WHAT RAN, FROM WHERE — the same negative claim the wasm lane makes: a
+      # name that prints nothing is a tool that is NOT in the rootfs.
+      - name: what ran, from where
+        run: |
+          builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/windows/recipes" "$PWD/advisories" \
+            /bin/sh -c 'command -v sh make install x86_64-w64-mingw32-gcc x86_64-w64-mingw32-ar; echo "PATH=$PATH"'
+      # ⛔ IS IT ACTUALLY A WINDOWS BINARY? A cross build that silently fell
+      # back to the host compiler produces a working ELF and a green job, and
+      # the first person to find out is whoever runs it on Windows. objdump
+      # reports the object format, so `pei-x86-64` is the claim and anything
+      # else fails here.
+      - name: the artefact is a PE, not an ELF
+        run: |
+          set -eu
+          exe=$(find "$RUNNER_TEMP/rootfs/dist" -name '${{ matrix.bin }}' | head -1)
+          [ -n "$exe" ] || { echo "::error::${{ matrix.bin }} was not built"; exit 1; }
+          echo "found $exe"
+          fmt=$(builder/sovereign-bk.sh "$RUNNER_TEMP/rootfs" "$PWD/windows/recipes" "$PWD/advisories" \
+            /bin/sh -c "x86_64-w64-mingw32-objdump -f '${exe#"$RUNNER_TEMP/rootfs"}'" | grep -o 'file format .*')
+          echo "$fmt"
+          case "$fmt" in
+            *pei-x86-64*) echo "PE confirmed" ;;
+            *) echo "::error::not a Windows PE: $fmt"; exit 1 ;;
+          esac
