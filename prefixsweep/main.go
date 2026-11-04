@@ -69,6 +69,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 	needle := fs0.String("needle", "", "sweep for this literal (e.g. the builder's cache root) instead of the package's own version directory; any hit fails the run")
 	absolute := fs0.Bool("absolute", false, "sweep for ANY absolute path outside an allowlist of platform paths, instead of a literal; any hit fails the run. A spelled -needle certifies only the lane it was written for — this asserts the property, so a lane nobody anticipated fails rather than passes")
 	compiledOnly := fs0.Bool("compiled", false, "with -absolute, search only artefacts a path is COMPILED into (bin/, *.so*, *.dylib, *.a). Measured over six linux bottles: 38 hits become 8, the 30 dropped are all documentation — man-page examples and header comments — and not one of them is a builder path")
+	constraint := fs0.String("constraint", "*", "which build to sweep, as a pkgx constraint (`=3.3.11` for one exact build). The default sweeps the newest, which is what a user gets; an exact pin is how to ask whether a REBUILD came out clean, since the newest is by then the one you are trying to replace")
 	if err := fs0.Parse(args); err != nil {
 		return err
 	}
@@ -124,7 +125,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	var swept, baked, unreadable int
 	for _, project := range projects {
-		v, err := pickVersion(project, "*", osn, arch)
+		v, err := pickVersion(project, *constraint, osn, arch)
 		if err != nil {
 			fmt.Fprintf(stdout, "SKIP      %-34s %v\n", project, err)
 			unreadable++
