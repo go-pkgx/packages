@@ -23,7 +23,7 @@
 # ⛔ SO IT ASKS FOR `…-gcc`, AND THAT NAME IS REAL: the llvm-mingw bottle ships
 # it beside `…-clang` (listed from the bottle's own bin, not assumed). What
 # made this fail was on OUR side — bk's shim shadowed it and reduced it to a
-# bare `gcc` — and it needs bk >= v0.58.0 (go-pkgx/bk#405). Overriding CC here
+# bare `gcc` — and it needs bk >= v0.58.0 (go-zpkg/bk#405). Overriding CC here
 # would have papered over a bk defect that breaks EVERY windows C recipe.
 
 provides = [

@@ -12,7 +12,7 @@ Two ways to get one. They stage the same thing; pick by what will consume it.
 | consumed by | a micro-VM (`weft microvm run`), or `chroot` | `docker run`, CI |
 
 ```
-bk builder --out ./rootfs --platform linux/aarch64 \
+zbk builder --out ./rootfs --platform linux/aarch64 \
            --toolchain builder/toolchain.txt \
            --bk ./bk-linux-arm64 --pkgx ./pkgx-linux-arm64 --microvm
 ```
@@ -50,7 +50,7 @@ Each of these was found by running the thing, not by reading code:
 
 | symptom | fix |
 |---|---|
-| `context deadline exceeded` on a 969 MiB bottle | a 5-minute *whole-request* timeout could never fetch one — bounded a stall instead (go-pkgx/bottle#12) |
+| `context deadline exceeded` on a 969 MiB bottle | a 5-minute *whole-request* timeout could never fetch one — bounded a stall instead (go-zpkg/bottle#12) |
 | `PROTOCOL_ERROR` mid-blob from ghcr | HTTP/2 forced by mistake; bottle pulls are one long body (bottle#13) |
 | `expected 1762228910, got 1247805440: unexpected EOF` | a cut transfer lost 1.19 GiB — resume with `Range`, verify size+digest (bottle#14) |
 | `x509: certificate signed by unknown authority` | no system trust store on scratch — bk installs bottle's embedded bundle, including on go-git's own client (bottle#15, bk#26) |
@@ -69,7 +69,7 @@ this table is a list and not a lookup:
 | symptom | fix |
 |---|---|
 | `mkdir: libc.so.6: cannot open shared object file`, again | the glibc bottle puts libc.so.6 in `lib/glibc-2.44/` and `lib/` holds nothing else, so `eval "$(pkgx +…)"` exported a directory with no shared object in it. `pkgx -- cmd` was right all along because it hands `bottle.LibPath` to OUR loader (pkgx#60). The fix is **conditional**: exporting our glibc on a distribution pairs it with the HOST's `ld.so` and breaks a private contract — `undefined symbol: __pointer_chk_guard` (pkgx#62) |
-| `bottle: … is unsigned (no signature referrer)` while staging | the loopback seed registry answers **404** on `/v2/<repo>/referrers/<digest>`: it does not serve the Referrers API, so bk signs and has nowhere to put it. `PKGX_VERIFY=0` for that registry — and it must travel through `sudo --preserve-env` with `PKGX_DIST`, or staging sees it and the chroot does not |
+| `bottle: … is unsigned (no signature referrer)` while staging | the loopback seed registry answers **404** on `/v2/<repo>/referrers/<digest>`: it does not serve the Referrers API, so bk signs and has nowhere to put it. `ZPKG_VERIFY=0` for that registry — and it must travel through `sudo --preserve-env` with `ZPKG_DIST`, or staging sees it and the chroot does not |
 | `no s390x loader (ld64.so.1) in the staged glibc` | `bottle.LoaderNameFor` had no entry. s390x's loader is **not** named after its architecture — the neighbours read `ld-linux-<arch>.so.N` and extending that pattern gives a file that does not exist (bottle#105) |
 | `builder: 42 packages` and nothing installed | a self-hosted runner reuses `$RUNNER_TEMP`, and `InstallFor` reads an existing `<project>/v<ver>` as "already present". A tree left by a run that died is inherited in silence. Remove it before staging — with `sudo`, since the chroot wrote it as root. `bk builder` now says when it is reusing (bk#277) |
 | `mkdir`, then `sed`, want `libselinux.so.1` | their configure AUTO-DETECTS the builder's SELinux (`with_selinux=maybe` in gnulib's `m4/selinux-selinux-h.m4`). `--without-selinux` in the override. Do not find these one failed build at a time: `bk builder` reports every NEEDED soname the tree lacks, with who asks (bk#276) |
@@ -100,7 +100,7 @@ build at it:
   "http": { "address": "0.0.0.0", "port": "5111" },
   "extensions": { "sync": { "enable": true, "registries": [
     { "urls": ["https://ghcr.io"], "onDemand": true, "tlsVerify": true,
-      "content": [ { "prefix": "/go-pkgx/packages/**" } ] }
+      "content": [ { "prefix": "/go-zpkg/packages/**" } ] }
   ] } }
 }
 ```
@@ -108,7 +108,7 @@ build at it:
 ```
 pkgx zot serve ~/.cache/pkgx-registry/config.json &
 docker build -f builder/Containerfile \
-  --build-arg DIST=oci://http://host.docker.internal:5111/go-pkgx/packages \
+  --build-arg DIST=oci://http://host.docker.internal:5111/go-zpkg/packages \
   -t bk-builder builder
 ```
 

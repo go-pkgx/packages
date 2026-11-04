@@ -5,7 +5,7 @@
 //
 //   - overrides/<name>-new.patch, applied to a fresh pkgxdev/pantry clone, is
 //     what `bk` BUILDS from;
-//   - go-pkgx/pantry-overlay/projects/<project>/package.hcl is what a consumer
+//   - go-zpkg/pantry-overlay/projects/<project>/package.hcl is what a consumer
 //     RESOLVES over HTTP (bottle's fetchRecipe tries the overlay, then upstream,
 //     and nothing else).
 //
@@ -41,8 +41,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/go-pkgx/bk/logical"
-	"github.com/go-pkgx/bottle"
+	"github.com/go-zpkg/bottle"
+	"github.com/go-zpkg/zbk/logical"
 )
 
 // overlayBase names the overlay's recipes through the GitHub contents API
@@ -69,7 +69,7 @@ import (
 // is a property of the delivery path, not of this check, and it is not what
 // this check is for — a maintainer forgetting a half is about what is
 // COMMITTED.
-const overlayBase = "https://api.github.com/repos/go-pkgx/pantry-overlay/contents/projects"
+const overlayBase = "https://api.github.com/repos/go-zpkg/pantry-overlay/contents/projects"
 
 // httpGet is a seam so the tests do not reach the network.
 var httpGet = func(url string) (int, []byte, error) {
@@ -149,7 +149,7 @@ func main() {
 // the same build.
 func runAgainstPantry(pantryDir, overlayHint, overridesDir string, out io.Writer) int {
 	// The pantry on disk is no longer the recipe the factory builds. Since the
-	// overrides became logical (go-pkgx/packages#268) most of them are applied
+	// overrides became logical (go-zpkg/packages#268) most of them are applied
 	// as a recipe is READ and change nothing on the filesystem, so a check that
 	// reads package.yml is comparing the overlay against an UNOVERRIDDEN
 	// recipe. It reported 180 disagreements the moment the last unified diff
@@ -164,7 +164,7 @@ func runAgainstPantry(pantryDir, overlayHint, overridesDir string, out io.Writer
 	// set for a directory that is not there — the comment above says why that
 	// matters and the check was still missing.
 	//
-	// Measured 2026-09-28, the same trees twice: from go-pkgx/packages, where
+	// Measured 2026-09-28, the same trees twice: from go-zpkg/packages, where
 	// `overrides/` resolves, 26 projects disagree and the run passes; from one
 	// directory away it is 175, and 149 of those are our own openssl pin
 	// reported as drift. A gate whose answer depends on the shell's working
@@ -217,7 +217,7 @@ func runAgainstPantry(pantryDir, overlayHint, overridesDir string, out io.Writer
 		if err != nil {
 			// Not in the pantry at ALL. Upstream does not carry this project,
 			// so the overlay's copy is the only recipe there is — bk builds it
-			// from there (go-pkgx/bk#231) and a consumer resolves it from
+			// from there (go-zpkg/bk#231) and a consumer resolves it from
 			// there. There are no two halves to compare.
 			//
 			// There is still a way for it to go wrong, and it is the one that
@@ -279,8 +279,8 @@ func runAgainstPantry(pantryDir, overlayHint, overridesDir string, out io.Writer
 	//
 	// That reason used to be given for the WHOLE build section, and for
 	// `build.dependencies` it is FALSE. The factory's CLOSURE reads both
-	// halves — the union in closureOf since go-pkgx/bk#224, the merge in
-	// closureGraph since go-pkgx/bk#232 — and the closure decides the build
+	// halves — the union in closureOf since go-zpkg/bk#224, the merge in
+	// closureGraph since go-zpkg/bk#232 — and the closure decides the build
 	// ORDER, which decides which bottles exist when. The overlay's own
 	// llvm.org entry says as much in a comment, while this said the opposite.
 	//
@@ -345,7 +345,7 @@ const consumerMark = "CONSUMER "
 // "Nothing reads a build section out of the overlay" was the stated reason,
 // and for build.script and build.env it is true. For build.dependencies it is
 // FALSE: the factory's closure reads both halves — the union in closureOf
-// since go-pkgx/bk#224, the merge in closureGraph since go-pkgx/bk#232 — and
+// since go-zpkg/bk#224, the merge in closureGraph since go-zpkg/bk#232 — and
 // the closure decides the build ORDER, which decides which bottles exist when.
 // The overlay's own llvm.org entry says so in a comment.
 //
@@ -373,7 +373,7 @@ var closureKeys = []string{"build.dependencies"}
 // what upstream recommends, while its own distributable downloads from
 // SourceForge — would have belonged nowhere near this list.
 var deliberate = map[string]bool{
-	// go-pkgx/pantry-overlay#30: the published bottle links gettext on darwin
+	// go-zpkg/pantry-overlay#30: the published bottle links gettext on darwin
 	// and upstream's recipe names it only as a build dependency.
 	"gnu.org/libiconv": true,
 	// The published perl bottle NEEDs libcrypt.so.1; glibc dropped it, and
@@ -550,7 +550,7 @@ func builtRecipe(set *logical.Set, pantryDir, project string) (map[string]any, e
 // builds.
 //
 // The consumer's side is the overlay MERGED over upstream, not the overlay
-// alone (go-pkgx/bottle#103). An entry states only what it changes now, so
+// alone (go-zpkg/bottle#103). An entry states only what it changes now, so
 // reading it on its own says a reduced entry has no `versions` and no
 // `provides` — which is true of the FILE and false of the recipe. Comparing
 // the file was right while every entry was a full copy, and became wrong the

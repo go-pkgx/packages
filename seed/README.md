@@ -20,13 +20,13 @@ So the order is a human artefact with a machine-checkable property, and both
 halves matter:
 
 ```
-bk closure --cycles --build --pantry P --overlay O --overrides overrides $(…)
+zbk closure --cycles --build --pantry P --overlay O --overrides overrides $(…)
 ```
 
 names the components, and
 
 ```
-bk closure --build --check-order seed/order.txt --pantry P --overlay O --overrides overrides $(…)
+zbk closure --build --check-order seed/order.txt --pantry P --overlay O --overrides overrides $(…)
 ```
 
 separates what the file decided from what it got wrong:
@@ -81,7 +81,7 @@ RECIPES="lz4.org" ./seed/dispatch-gen1.sh   one package, to prove the rootfs
 It differs from `dispatch-seed.sh` in two inputs: `bootstrap` is empty (the
 toolchain is bottles now) and `sovereign=1` (`bk builder` stages a rootfs
 **from the seed registry** and the build happens inside it, under `chroot`).
-`seed_dist` stays, and `--to` follows `PKGX_DIST` on purpose: generation 1
+`seed_dist` stays, and `--to` follows `ZPKG_DIST` on purpose: generation 1
 replaces generation 0 in the same throwaway registry, which is what build.yml
 means by "thrown away once the sovereign rebuild replaces it". Nothing built
 against a host distribution reaches ghcr in either generation.

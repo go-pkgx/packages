@@ -22,12 +22,12 @@ set -euo pipefail
 root="${1:?rootfs}"; recipes="${2:?recipes}"; advisories="${3:?advisories}"; shift 3
 : "${1:?program}"
 
-# builder/Containerfile's ENV, and the reason is measured: without PKGX_DIR=/pkgx
+# builder/Containerfile's ENV, and the reason is measured: without ZPKG_DIR=/pkgx
 # pkgx falls back to $HOME/.pkgx, and the tree's coreutils (mkdir, install, …)
 # then fail with "error while loading shared libraries: libc.so.6" (first wasip1-c
-# run in the rootfs, go-pkgx/packages run 40388148703). build.yml exports the same
+# run in the rootfs, go-zpkg/packages run 40388148703). build.yml exports the same
 # pair before calling sovereign-build.sh.
-export PKGX_DIR=/pkgx HOME=/root
+export ZPKG_DIR=/pkgx HOME=/root
 
 mkdir -p "$root/recipes" "$root/advisories" "$root/dist" "$root/dev" "$root/proc" "$root/tmp" "$root/etc"
 chmod 1777 "$root/tmp"
@@ -37,7 +37,7 @@ SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 # --preserve-env is sudo's flag, so it goes when sudo does (see sovereign-build.sh).
 PRESERVE=""
-[ -n "$SUDO" ] && PRESERVE="--preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_VERIFY,PKGX_PANTRY_OVERLAY,SOURCE_DATE_EPOCH"
+[ -n "$SUDO" ] && PRESERVE="--preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,ZPKG_DIR,HOME,ZPKG_DIST,ZPKG_CACHE,ZPKG_VERIFY,ZPKG_PANTRY_OVERLAY,SOURCE_DATE_EPOCH"
 
 # shellcheck disable=SC2016  # the inner script is literal: it runs in the new namespace.
 # shellcheck disable=SC2086  # $PRESERVE is one flag or nothing.

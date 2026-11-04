@@ -13,7 +13,7 @@ name: index-audit
 # 137 such entries accumulated unnoticed, found by tripping over one of them in
 # a build. They are at 0 now. This is what keeps them there.
 #
-# What it gates on is DIRECT EVIDENCE: since go-pkgx/bottle#37 each platform's
+# What it gates on is DIRECT EVIDENCE: since go-zpkg/bottle#37 each platform's
 # manifest carries an uncontended tag of its own, so a manifest that is in the
 # registry and absent from its version's index is the race, visible, with no
 # inference. It cannot have a false positive.
@@ -36,7 +36,7 @@ name: index-audit
 # curl.se carry only darwin ones and gnu.org/gperf none at all — which first
 # read like publishers that disagree. They do not: bottle's push is the single
 # publish path for a build and a mirror alike, and it has tagged every platform
-# manifest since go-pkgx/bottle#37. What carries no tag is what was published
+# manifest since go-zpkg/bottle#37. What carries no tag is what was published
 # BEFORE that, and the set shrinks on its own as the catalogue is rebuilt.
 #
 # Not on pull_request: the crawl walks the whole catalogue over the network for

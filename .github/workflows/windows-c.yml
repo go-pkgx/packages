@@ -25,9 +25,9 @@ on:
 permissions: { contents: read, packages: write }
 env:
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
-  PKGX_DIST: oci://ghcr.io/go-pkgx/packages
-  PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+  GONOPROXY: github.com/go-zpkg/*
+  ZPKG_DIST: oci://ghcr.io/go-pkgx/packages
+  ZPKG_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects
 
 jobs:
   build:
@@ -54,15 +54,21 @@ jobs:
           # compilerShimsFor shims the TRIPLE-PREFIXED names and puts them first
           # on PATH, and with no $BK_CC (which bk deliberately does not set for
           # windows) the shim reduced `x86_64-w64-mingw32-gcc` to a bare `gcc`
-          # that llvm-mingw does not ship. go-pkgx/bk#405.
-          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@v0.58.0
-          CGO_ENABLED=0 go install github.com/go-pkgx/pkgx@main
-          CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
+          # that llvm-mingw does not ship. go-zpkg/bk#405.
+          #
+          # ⛔ v0.59.0 now, and not because anything here needed a newer
+          # factory: Go verifies the path a module DECLARES, and v0.58.0
+          # declares `github.com/go-pkgx/bk`. v0.59.0 is the first tag
+          # declaring `github.com/go-zpkg/zbk`, so it is the floor for every
+          # pin in this repository. The #405 requirement above still holds.
+          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.59.0
+          CGO_ENABLED=0 go install github.com/go-zpkg/zpkgx@main
+          CGO_ENABLED=0 go install github.com/go-zpkg/zpkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: stage the sovereign rootfs
         run: |
           sudo rm -rf "$RUNNER_TEMP/rootfs"
-          bk builder \
+          zbk builder \
             --out "$RUNNER_TEMP/rootfs" \
             --platform "${{ matrix.platform }}" \
             --toolchain builder/toolchain.txt \

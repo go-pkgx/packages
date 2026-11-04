@@ -692,7 +692,7 @@ edits   = [{ path = "dependencies[\"openssl.org\"]", set = "^3" }]
 // OVERLAY has been a refusal since the beginning; the sibling input was read
 // the same way and reported nothing.
 //
-// Measured 2026-09-28, the same two trees twice: run from go-pkgx/packages,
+// Measured 2026-09-28, the same two trees twice: run from go-zpkg/packages,
 // where the default `overrides` resolves, 26 projects disagree and the gate
 // passes; run one directory away it is 175, and 149 of those are our own
 // openssl pin reported as drift. A gate whose answer depends on the shell's

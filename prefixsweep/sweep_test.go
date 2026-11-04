@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-pkgx/bottle"
+	"github.com/go-zpkg/bottle"
 )
 
 // fakeRegistry drives run() through the two seams, so everything the sweep
@@ -366,7 +366,7 @@ func TestMainReportsFailureThroughTheExitCode(t *testing.T) {
 	}
 }
 
-// ⛔ THE NEEDLE SWEEP (go-pkgx/bk#387). Each test below fails for the reason it
+// ⛔ THE NEEDLE SWEEP (go-zpkg/bk#387). Each test below fails for the reason it
 // names: the positive one gives hits > 0 on a fixture that holds the cache
 // root, so the zero in the negative one means something.
 const cacheRoot = "/Users/runner/Library/Caches/brewkit"

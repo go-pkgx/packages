@@ -56,7 +56,7 @@ env:
   # having built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 
 jobs:
   # ⛔ THE MATRIX AND THE CHUNK COUNT ARE ONE NUMBER NOW. They were two: a
@@ -119,20 +119,20 @@ jobs:
       # by the code that answers it best today.
       - name: install bk and pkgs
         run: |
-          go install github.com/go-pkgx/bk/cmd/bk@main
-          go install github.com/go-pkgx/pkgx/cmd/pkgs@main
+          go install github.com/go-zpkg/zbk/cmd/zbk@main
+          go install github.com/go-zpkg/zpkgx/cmd/zpkgs@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       # PULL the published catalogue rather than build one: this audits what
       # is PUBLISHED, so the list of subjects has to come from the registry
-      # and not from a pantry checkout that may be ahead of it. PKGX_VERIFY
+      # and not from a pantry checkout that may be ahead of it. ZPKG_VERIFY
       # is on by default, so an unsigned catalogue stops the job here.
       - name: the published catalogue for ${{ inputs.platform || 'linux/x86-64' }}
         env:
-          PKGX_DIR: ${{ runner.temp }}/pkgx
+          ZPKG_DIR: ${{ runner.temp }}/pkgx
           PLATFORM: ${{ inputs.platform || 'linux/x86-64' }}
         run: |
-          pkgs catalog update --platform "$PLATFORM"
+          zpkgs catalog update --platform "$PLATFORM"
           # os/arch -> os-arch is the name `pkgs catalog update` writes, and
           # the baseline is PER PLATFORM: a reference known on linux must not
           # mask a new one on darwin.
@@ -174,7 +174,7 @@ jobs:
       # in the fleet the one whose gate could never be wired.
       - name: chunk ${{ matrix.chunk }} of ${{ inputs.chunks || '14' }} on ${{ inputs.platform || 'linux/x86-64' }}
         env:
-          PKGX_DIR: ${{ runner.temp }}/pkgx
+          ZPKG_DIR: ${{ runner.temp }}/pkgx
         run: |
           go run ./sonamesweep \
             -catalog "$RUNNER_TEMP/pkgx/catalog/$SLUG.json" \

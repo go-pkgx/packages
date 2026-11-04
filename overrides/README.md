@@ -104,14 +104,14 @@ and argued about together.
 ## A project upstream does not carry is not an override at all
 
 It is a recipe of ours, and it lives in
-[`pantry-overlay`](https://github.com/go-pkgx/pantry-overlay) — which is also
+[`pantry-overlay`](https://github.com/go-zpkg/pantry-overlay) — which is also
 what a consumer resolves over HTTP. `bk factory` reads it from there when the
 pantry has no such project, so nothing about it belongs in this directory.
 
 This used to be eight `*-new.patch` files, each duplicating a recipe the
 overlay already held: the same thing written twice, once as a diff for the
 builder and once as HCL for the consumer. Exactly 8 of the overlay's 183
-projects are absent upstream, and they were the same eight (go-pkgx/bk#231).
+projects are absent upstream, and they were the same eight (go-zpkg/bk#231).
 
 The two halves still have to agree for everything else, and four projects were
 once published, signed and unreachable to every consumer because only the build
@@ -125,7 +125,7 @@ and gates the half a consumer reads.
    recipe — and not a `bk` behaviour gap. Fix `bk` instead if it is.
 3. Write `overrides/<slug>.hcl`. Say **why**, and say what would make it
    unnecessary.
-4. `go run github.com/go-pkgx/bk/cmd/bk@main overrides --pantry <fresh clone>`
+4. `go run github.com/go-zpkg/zbk/cmd/zbk@main overrides --pantry <fresh clone>`
    to see it apply.
 5. Validate it builds.
 6. Propose the equivalent change upstream; when it lands, `bk overrides` will
@@ -180,5 +180,5 @@ overrides address different KEYS and cannot interact that way.
 recipe, writes them out, reads them back, applies them to a pristine recipe and
 demands the same document the patch produced — and demands that applying them
 twice changes nothing, which is the property 24 operations across 22 projects
-failed before go-pkgx/bk#229. It runs in CI, and with nothing to convert it
+failed before go-zpkg/bk#229. It runs in CI, and with nothing to convert it
 says so and passes.

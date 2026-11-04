@@ -25,7 +25,7 @@ env:
   # having built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 
 jobs:
   setup:
@@ -81,7 +81,7 @@ jobs:
           done
           # The proxy policy is the workflow-level env:, so it covers this and
           # every other go invocation here, and ./goproxycheck keeps it level.
-          go install github.com/go-pkgx/bk/cmd/bk@main
+          go install github.com/go-zpkg/zbk/cmd/zbk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Cross-build chunk ${{ matrix.chunk }} → Windows packages
         env:
@@ -128,7 +128,7 @@ jobs:
             # a publish failure must not abort the chunk). windows/x86-64 is as
             # os/arch-generic to `bk publish` as linux/darwin are.
             if SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
-               bk publish --to oci://ghcr.io/go-pkgx/packages --project "$slug" \
+               zbk publish --to oci://ghcr.io/go-pkgx/packages --project "$slug" \
                  --version "$ver" --platform windows/x86-64 "${SIGN_ARGS[@]}" \
                  --advisories "$GITHUB_WORKSPACE/advisories" \
                  "$d/v$ver.tar.gz"; then
@@ -174,12 +174,12 @@ jobs:
         with: { go-version: '1.27.3' }
       - name: install bk
         run: |
-          go install github.com/go-pkgx/bk/cmd/bk@main
+          go install github.com/go-zpkg/zbk/cmd/zbk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: clone pantry and overlay
         run: |
           git clone --depth 1 https://github.com/pkgxdev/pantry
-          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+          git clone --depth 1 https://github.com/go-zpkg/pantry-overlay overlay
       - name: publish the catalogue
         env:
           OCI_USERNAME: ${{ github.actor }}
@@ -188,7 +188,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: |
           set -eu
-          bk catalog \
+          zbk catalog \
             --pantry pantry \
             --overlay overlay \
             --overrides overrides \

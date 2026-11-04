@@ -32,7 +32,7 @@ on:
       source_mirror:
         description: "keep every source archive this run downloads in this registry, addressed by its sha256. Blank = keep nothing. 57% of the pantry builds from tarballs GitHub GENERATES on request rather than stores, so for those it is the first stored artefact they have ever had."
         required: false
-        default: "oci://ghcr.io/go-pkgx"
+        default: "oci://ghcr.io/go-zpkg"
       arch:
         description: "restrict the matrix to one arch: blank = both, `x86-64`, `aarch64`. A targeted repair usually concerns one of them, and building the other reruns an hour of macOS runner for nothing — the openssl-v1 repairs ran on aarch64 while x86-64 stayed on the pre-repair version, so the two halves genuinely diverge."
         required: false
@@ -56,7 +56,7 @@ env:
   # built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 
 jobs:
   setup:
@@ -166,7 +166,7 @@ jobs:
       # PROVENANCE: two builds against different SDKs produce different code,
       # and normalising the string would make them byte-identical in the one
       # place that recorded the difference — improving the reproducibility
-      # metric by deleting its evidence. go-pkgx/bk#400.
+      # metric by deleting its evidence. go-zpkg/bk#400.
       - name: the toolchain this run built with
         run: |
           set -eu
@@ -183,7 +183,7 @@ jobs:
 
       # OUR pkgx, not upstream's — the same choice build.yml makes, and for the
       # same reason. Upstream resolves from its own bundled pantry and its own
-      # dist, so neither overrides/ nor PKGX_PANTRY_OVERLAY reaches it: bk asks
+      # dist, so neither overrides/ nor ZPKG_PANTRY_OVERLAY reaches it: bk asks
       # for `+perl.org~5.42` (the pin texinfo's XS modules need), upstream
       # intersects it with ITS idea of openssl's `perl.org: 5`, and answers
       #   Error: "no intersection possible for perl.org"
@@ -193,12 +193,12 @@ jobs:
       # reported as successful.
       - name: install pkgx (bk sources its toolchain via `pkgx +deps`)
         run: |
-          go install github.com/go-pkgx/pkgx@main
+          go install github.com/go-zpkg/zpkgx@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: install bk
         run: |
-          go install github.com/go-pkgx/bk/cmd/bk@main
+          go install github.com/go-zpkg/zbk/cmd/zbk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: clone pantry
@@ -210,7 +210,7 @@ jobs:
       # against.
       - name: clone the pantry overlay
         run: |
-          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+          git clone --depth 1 https://github.com/go-zpkg/pantry-overlay overlay
           echo "overlay $(git -C overlay rev-parse HEAD)"
 
       - name: hide the host's libraries from the build
@@ -278,8 +278,8 @@ jobs:
           # against upstream's dist and upstream's recipes — a different closure
           # from the one we publish, and the reason a recipe corrected in the
           # overlay (openssl ^1.1 → ^3) still failed here.
-          PKGX_DIST: oci://ghcr.io/go-pkgx/packages
-          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+          ZPKG_DIST: oci://ghcr.io/go-pkgx/packages
+          ZPKG_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects
         run: |
           # FORCE on a manual dispatch, exactly as build.yml does. Without it a
           # dispatch SKIPS the version it was asked for whenever that version is
@@ -312,7 +312,7 @@ jobs:
           # OpenVEX document beside its SBOM is a bottle whose consumer has to
           # re-triage what we already decided — and a flag added to one lane is
           # the half-a-pair defect this repository has paid for before.
-          bk factory \
+          zbk factory \
             --pantry pantry \
             --overrides overrides \
             --overlay overlay \
@@ -382,7 +382,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: |
           set -eu
-          bk catalog \
+          zbk catalog \
             --pantry pantry \
             --overlay overlay \
             --overrides overrides \

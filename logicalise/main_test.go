@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-pkgx/bk/logical"
-	"github.com/go-pkgx/bk/overrides"
+	"github.com/go-zpkg/zbk/logical"
+	"github.com/go-zpkg/zbk/overrides"
 )
 
 // gitPantry builds the shape overrides.Apply needs: a git worktree, because it
@@ -482,7 +482,7 @@ func TestCloneCmd(t *testing.T) {
 }
 
 // An override that compounds on a second pass must be refused. 24 real
-// operations across 22 projects did exactly that before go-pkgx/bk#229, and
+// operations across 22 projects did exactly that before go-zpkg/bk#229, and
 // the migration this tool exists for depends on both formats being applied to
 // the same recipe at once.
 //

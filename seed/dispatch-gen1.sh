@@ -14,7 +14,7 @@
 #   sovereign=1     `bk builder` stages a rootfs FROM the seed registry and
 #                   the build happens inside it, under chroot
 #
-# seed_dist stays. `--to` follows PKGX_DIST on purpose, so generation 1
+# seed_dist stays. `--to` follows ZPKG_DIST on purpose, so generation 1
 # replaces generation 0 in the same throwaway registry — build.yml calls the
 # seed "thrown away once the sovereign rebuild replaces it". Nothing built
 # against a host distribution reaches ghcr, in either generation.
@@ -34,7 +34,7 @@ ref=${1:-main}
 # DIRECTORIES and Tcl/9.1.0/ holds nothing but a release candidate (#262).
 recipes=${RECIPES:-$(sed 's|^tcl-lang\.org$|tcl-lang.org@=9.0.4|' "$here/order.txt" \
   | grep -vE '^[[:space:]]*(#|$)' | tr '\n' ' ' | sed 's/ *$//')}
-exec gh workflow run build.yml --repo go-pkgx/packages --ref "$ref" \
+exec gh workflow run build.yml --repo go-zpkg/packages --ref "$ref" \
   -f recipes="$recipes" \
   -f arch=s390x \
   -f seed_dist=oci://127.0.0.1:5000/seed \

@@ -23,7 +23,7 @@ on:
         required: false
         default: ""
       clean_build_root:
-        description: "`1` removes the whole brewkit build root before starting. bk drops a tree once its bottle is published (go-pkgx/bk#217), but what a run INHERITS from earlier ones it cannot drop — and a seed on a small machine dies on that litter, reporting `no space left on device` against whichever project asked next. Destructive: a FAILED build's tree is kept on purpose, and this discards those too, so use it when the disk matters more than the last failure's evidence."
+        description: "`1` removes the whole brewkit build root before starting. bk drops a tree once its bottle is published (go-zpkg/bk#217), but what a run INHERITS from earlier ones it cannot drop — and a seed on a small machine dies on that litter, reporting `no space left on device` against whichever project asked next. Destructive: a FAILED build's tree is kept on purpose, and this discards those too, so use it when the disk matters more than the last failure's evidence."
         required: false
         default: ""
       pin_to_dependents:
@@ -57,7 +57,7 @@ on:
       source_mirror:
         description: "keep every source archive this run downloads in this registry, addressed by its sha256. Blank = keep nothing. 57% of the pantry builds from tarballs GitHub GENERATES on request rather than stores, so for those it is the first stored artefact they have ever had."
         required: false
-        default: "oci://ghcr.io/go-pkgx"
+        default: "oci://ghcr.io/go-zpkg"
       seed_dist:
         description: "read AND publish to this registry instead of ghcr, e.g. oci://127.0.0.1:5000/seed. For BOOTSTRAPPING an architecture nothing publishes: bottles made against a host distribution must not reach the real registry, so they go to a throwaway one on the runner and never leave it. Blank = ghcr, as always."
         required: false
@@ -67,7 +67,7 @@ on:
         required: false
         default: ""
       test_only:
-        description: "`1` builds NOTHING: run each named project's own `test:` block against the version already in the registry, and record the outcome in tests.txt. The factory tests a bottle when it publishes it and never again, so this is the only way to notice one that STOPPED working — a dependency whose signature went bad takes every consumer down silently (go-pkgx/bk#250)."
+        description: "`1` builds NOTHING: run each named project's own `test:` block against the version already in the registry, and record the outcome in tests.txt. The factory tests a bottle when it publishes it and never again, so this is the only way to notice one that STOPPED working — a dependency whose signature went bad takes every consumer down silently (go-zpkg/bk#250)."
         required: false
         default: ""
       mirror_from:
@@ -91,7 +91,7 @@ env:
   # having built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 
 jobs:
   # Split recipes.txt into CHUNK-sized slices and emit a matrix over both linux
@@ -303,7 +303,7 @@ jobs:
         with: { go-version: '1.27.3' }
 
       # OUR pkgx, not upstream's. Upstream resolves dependencies from its own
-      # bundled pantry, so neither overrides/ nor PKGX_PANTRY_OVERLAY reaches it:
+      # bundled pantry, so neither overrides/ nor ZPKG_PANTRY_OVERLAY reaches it:
       # bk passes `+perl.org~5.42` (the pin texinfo's XS modules need) and
       # upstream intersects it with ITS idea of openssl's `perl.org: 5`, answering
       # "no intersection possible for perl.org" — with no way to correct the
@@ -316,7 +316,7 @@ jobs:
           # start there at all —
           #   /usr/local/bin/pkgx: error while loading shared libraries:
           #     libc.so.6: cannot open shared object file
-          CGO_ENABLED=0 go install github.com/go-pkgx/pkgx@main
+          CGO_ENABLED=0 go install github.com/go-zpkg/zpkgx@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: install bk
@@ -324,7 +324,7 @@ jobs:
         # else the module proxy serves a stale cached @main and CI runs an old bk.
         run: |
           # Static for the same reason as pkgx: bk is installed into the rootfs.
-          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@main
+          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       # --depth 1 of a moving branch, so WHICH pantry is a property of the
@@ -336,7 +336,7 @@ jobs:
 
       # The overlay is the half a CONSUMER resolves from, and it declares edges
       # upstream does not: perl.org NEEDs libcrypt.so.1, our overlay names the
-      # provider, upstream's recipe says nothing. Until go-pkgx/bk#224 the
+      # provider, upstream's recipe says nothing. Until go-zpkg/bk#224 the
       # factory's closure walk read the pantry alone, so such a provider was
       # never built while every consumer asked the registry for it — and the
       # s390x seed only worked because its order had been computed by hand with
@@ -346,7 +346,7 @@ jobs:
       # pantry's recipe with the overrides applied. It widens the closure.
       - name: clone the pantry overlay
         run: |
-          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+          git clone --depth 1 https://github.com/go-zpkg/pantry-overlay overlay
           echo "overlay $(git -C overlay rev-parse HEAD)"
 
       # The sovereign path: a rootfs assembled from OUR bottles, entered with
@@ -389,19 +389,19 @@ jobs:
         env:
           SEED_DIST: ${{ github.event.inputs.seed_dist }}
         run: |
-          # The cache accelerates BLOB pulls only. It must not become PKGX_DIST:
+          # The cache accelerates BLOB pulls only. It must not become ZPKG_DIST:
           # zot cannot serve the tag listing of a repository it has not synced
           # yet, so resolution falls back to the upstream dist, takes a version
           # string from there, and asks the cache for a tag our registry does not
           # use — `gnu.org/bash` is published as `5.3`, not `5.3.0`:
           #   install gnu.org/bash 5.3.0: …/gnu.org/bash:5.3.0: not found
-          # Listing stays on ghcr; PKGX_CACHE is consulted for the bottle itself.
+          # Listing stays on ghcr; ZPKG_CACHE is consulted for the bottle itself.
           if [ -n "$SEED_DIST" ]; then
             # A bootstrap pass reads and writes ONE registry, and it is not
             # ghcr. No cache either: the cache fronts ghcr, and mixing the two
             # would let a real bottle answer a seed's question.
             echo "seeding into $SEED_DIST — ghcr is not consulted and not written"
-            echo "PKGX_DIST=$SEED_DIST" >> "$GITHUB_ENV"
+            echo "ZPKG_DIST=$SEED_DIST" >> "$GITHUB_ENV"
             # And no signature verification against it.
             #
             # Not a workaround: a throwaway registry on LOOPBACK, written and
@@ -458,7 +458,7 @@ jobs:
             case "$seed_host" in
               127.*|localhost|::1)
                 echo "verification off: a loopback throwaway registry is not a trust boundary"
-                echo "PKGX_VERIFY=0" >> "$GITHUB_ENV"
+                echo "ZPKG_VERIFY=0" >> "$GITHUB_ENV"
                 ;;
               *)
                 echo "::notice::seed_dist host '$seed_host' is not loopback, so signature verification STAYS ON — the throwaway-registry argument does not reach it"
@@ -466,10 +466,10 @@ jobs:
             esac
             exit 0
           fi
-          echo "PKGX_DIST=oci://ghcr.io/go-pkgx/packages" >> "$GITHUB_ENV"
+          echo "ZPKG_DIST=oci://ghcr.io/go-pkgx/packages" >> "$GITHUB_ENV"
           if curl -fsS -m 3 http://10.46.81.1:5111/v2/ >/dev/null 2>&1; then
             echo "pull-through cache answers — bottles will be pulled through it"
-            echo "PKGX_CACHE=oci://http://10.46.81.1:5111/go-pkgx/packages" >> "$GITHUB_ENV"
+            echo "ZPKG_CACHE=oci://http://10.46.81.1:5111/go-zpkg/packages" >> "$GITHUB_ENV"
           else
             echo "no cache on this runner — bottles come straight from ghcr"
           fi
@@ -477,9 +477,9 @@ jobs:
       - name: stage the sovereign rootfs
         if: env.SOVEREIGN_ON == '1'
         env:
-          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+          ZPKG_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects
         run: |
-          CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
+          CGO_ENABLED=0 go install github.com/go-zpkg/zpkgm@main
           # A SELF-HOSTED runner reuses $RUNNER_TEMP between jobs, and
           # bottle.InstallFor treats the mere EXISTENCE of <project>/v<ver> as
           # "already present":
@@ -517,10 +517,10 @@ jobs:
           # `|| true`: this is diagnosis, not the gate. The staging below is
           # the verdict, and a pre-flight that could fail a job the real step
           # would have passed is a second opinion nobody asked for.
-          bk builder --dry-run \
+          zbk builder --dry-run \
             --platform "${{ matrix.platform }}" \
             --toolchain builder/toolchain.txt || true
-          bk builder \
+          zbk builder \
             --out "$RUNNER_TEMP/rootfs" \
             --platform "${{ matrix.platform }}" \
             --toolchain builder/toolchain.txt \
@@ -635,7 +635,7 @@ jobs:
         env:
           PLATFORM: ${{ matrix.platform }}
           OCI_USERNAME: ${{ github.actor }}
-          # The workflow's native token — no long-lived PAT; the go-pkgx/packages
+          # The workflow's native token — no long-lived PAT; the go-zpkg/packages
           # packages are owned by this repo, so GITHUB_TOKEN writes natively.
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           # bk resolves a project's versions from api.github.com, and sends
@@ -663,14 +663,14 @@ jobs:
           # openssl.org satisfies ^1.1" — which is exactly how
           # github.com/containers/crun died, through python.org, on a runner
           # where every other correction WAS applied.
-          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+          ZPKG_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects
           VERSIONS: ${{ github.event.inputs.versions }}
           BOOTSTRAP: ${{ github.event.inputs.bootstrap }}
           # A VARIABLE bk reads through envBool, never
           # ${TEST_ONLY:+--test-only} on the command line below: `:+` tests
           # for non-empty and "0" is not empty, so that form turns the flag
           # ON when a dispatch said off. envBool exists because FORCE=0 had
-          # to mean off (go-pkgx/bk#251), and this joins FORCE, NO_CLOSURE
+          # to mean off (go-zpkg/bk#251), and this joins FORCE, NO_CLOSURE
           # and PIN_TO_DEPENDENTS in reading it that way.
           TEST_ONLY: ${{ github.event.inputs.test_only }}
           JOBS: ${{ matrix.jobs }}
@@ -709,7 +709,7 @@ jobs:
           # it on the fifty-seventh project and reported
           #   kernel.org/linux-headers: fetch: write …: no space left on device
           # naming a project that had done nothing wrong. bk now removes a
-          # published build tree (go-pkgx/bk#217); what a run INHERITS from
+          # published build tree (go-zpkg/bk#217); what a run INHERITS from
           # earlier ones it cannot remove, and only a number shows that.
           if [ -n "${{ github.event.inputs.clean_build_root }}" ]; then
             echo "clearing the build root a previous run left behind:"
@@ -745,7 +745,7 @@ jobs:
           REBUILD="${{ github.event.inputs.rebuild }}"
           export RECIPES FORCE MAX_VERSIONS NO_CLOSURE PIN_TO_DEPENDENTS LOCK REBUILD
           # A glibc-pinned build links the pkgx glibc bottle directly, which bakes
-          # an ABSOLUTE PT_INTERP pointing into $PKGX_DIR. Under the default
+          # an ABSOLUTE PT_INTERP pointing into $ZPKG_DIR. Under the default
           # ($HOME/.pkgx) that is the RUNNER's home — a path no consumer has, so
           # the bottle could only start through an explicit loader invocation.
           # Build such bottles under the canonical /pkgx prefix instead: the same
@@ -755,7 +755,7 @@ jobs:
           # AND-list alone, but because a bare `[ false ] && x` as the LAST
           # command executed sets the script's exit status to 1 and fails the
           # step. An `if` is harmless wherever it is moved to.)
-          if [ -n "$GLIBC" ]; then export PKGX_DIR=/pkgx; fi
+          if [ -n "$GLIBC" ]; then export ZPKG_DIR=/pkgx; fi
           # Sovereign by default. The two arches are proven — lz4.org built in
           # the staged rootfs on x86-64 and on the EMULATED aarch64 pool, the
           # bottles carrying PT_INTERP into /pkgx and no distribution strings at
@@ -768,7 +768,7 @@ jobs:
             # its absence was measured, and two divergent copies of that is how
             # one of them silently stops being sovereign.
             # A chunk is best-effort by design, so it must NOT fail on "0 built".
-            export PKGX_DIR=/pkgx HOME=/root
+            export ZPKG_DIR=/pkgx HOME=/root
             # A chunk is best-effort: the tally and the failure artifacts are
             # the result, and a recipe that genuinely does not build must not
             # paint the whole lot red. The proof job keeps the strict posture.
@@ -786,14 +786,14 @@ jobs:
             # remaining trace is the job log — which is exactly the evidence a
             # campaign needs to tell a broken recipe from a broken factory.
             cp -r "$RUNNER_TEMP/rootfs/dist" dist 2>/dev/null || true
-            # tests.txt joins them: go-pkgx/bk#248 has the factory record
+            # tests.txt joins them: go-zpkg/bk#248 has the factory record
             # each published package's own test: block, and a record written
             # inside the rootfs is a record nobody reads.
             for f in failures.txt failures-detail.txt tests.txt; do
               cp "$RUNNER_TEMP/rootfs/$f" "$f" 2>/dev/null || true
             done
           else
-            # --to follows PKGX_DIST rather than naming ghcr again: the two
+            # --to follows ZPKG_DIST rather than naming ghcr again: the two
             # must not be able to disagree, and a seed pass that READ a
             # throwaway registry while PUBLISHING to the real one is exactly
             # the accident this lane exists to make impossible.
@@ -802,12 +802,12 @@ jobs:
             # Validated ONCE before the first build — a record that does not
             # parse stops a publish, and the fortieth bottle of a chunk is six
             # hours into the run.
-            bk factory \
+            zbk factory \
               --pantry pantry \
               --overrides overrides \
               --overlay overlay \
               --advisories advisories \
-              --to "$PKGX_DIST" \
+              --to "$ZPKG_DIST" \
               --bottles dist \
               ${BOOTSTRAP:+--bootstrap} \
               ${GLIBC:+--glibc "$GLIBC"} \
@@ -857,7 +857,7 @@ jobs:
       # It exists because a registry cannot be enumerated. Measured against
       # ghcr: /v2/_catalog answers 403 to an anonymous client and only a
       # project's own tag list is served, so nothing can ask "what packages
-      # are there" (go-pkgx/bottle#114). The answer is an artefact in the
+      # are there" (go-zpkg/bottle#114). The answer is an artefact in the
       # registry, published as an ordinary bottle.
       #
       # ONE CHUNK, not every chunk. It is derived from the PANTRY, not from
@@ -869,7 +869,7 @@ jobs:
       # catalogue withheld on a red run is a catalogue that goes stale
       # exactly when someone is looking for why.
       #
-      # It follows PKGX_DIST like everything else here, so a seed run writes
+      # It follows ZPKG_DIST like everything else here, so a seed run writes
       # its catalogue into the seed registry and not into the real one.
       #
       # --overrides, because an override changes a recipe's DEPENDENCIES and
@@ -886,8 +886,8 @@ jobs:
       # has a fraction of what linux/x86-64 has, and one list would tell most
       # readers that packages are available which, for them, are not.
       #
-      # SIGNING_KEY, because a client with PKGX_VERIFY on — the default —
-      # refuses an unsigned catalogue (go-pkgx/bottle#118). The catalogue is
+      # SIGNING_KEY, because a client with ZPKG_VERIFY on — the default —
+      # refuses an unsigned catalogue (go-zpkg/bottle#118). The catalogue is
       # the list of names a person then TYPES, so whoever decides its
       # contents decides what <TAB> offers; it gets the same signature as any
       # other bottle. A seed run has no key and says so in its own output.
@@ -901,7 +901,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: |
           set -eu
-          bk catalog \
+          zbk catalog \
             --pantry pantry \
             --overlay overlay \
             --overrides overrides \
@@ -931,7 +931,7 @@ jobs:
           fi
           du -sh "$HOME/.local/share/brewkit" 2>/dev/null || echo "  (no build root)"
           # The ten biggest directories left behind, at ANY depth. bk
-          # removes a tree once its bottle is PUBLISHED (go-pkgx/bk#217),
+          # removes a tree once its bottle is PUBLISHED (go-zpkg/bk#217),
           # so what remains is what FAILED — kept on purpose, and worth
           # seeing the size of.
           #
@@ -1017,7 +1017,7 @@ jobs:
             bkbin=$(command -v bk 2>/dev/null || true)
             if [ -n "$bkbin" ]; then
               bkver=$(go version -m "$bkbin" 2>/dev/null |
-                awk '$1=="mod" && $2=="github.com/go-pkgx/bk" {print $3}')
+                awk '$1=="mod" && $2=="github.com/go-zpkg/zbk" {print $3}')
             fi
             printf '%-10s %s\n' bk "${bkver:-(unread)}"
             echo
@@ -1144,7 +1144,7 @@ jobs:
           if-no-files-found: ignore
 
       # What each published package's OWN test: block said — four states, one
-      # line each (go-pkgx/bk#248). Separate from failures.txt on purpose: a
+      # line each (go-zpkg/bk#248). Separate from failures.txt on purpose: a
       # failing test is not a failing build, and the factory's exit status is
       # untouched by it. Of 12 test failures measured over 120 packages only 2
       # were a bottle nobody can run, which is why this is a record and not a

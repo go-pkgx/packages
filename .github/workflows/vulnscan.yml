@@ -50,7 +50,7 @@ env:
   # having built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 
 jobs:
   scan:
@@ -64,7 +64,7 @@ jobs:
       # proxy cache. Both tools are ours and both are moving: the question
       # "what are we vulnerable to" should be answered by the code that
       # answers it best today, not by whatever a tag froze.
-      # ⛔ pkgs, NOT pkgx, FOR THE CATALOGUE. go-pkgx/pkgx#113 moved the nine
+      # ⛔ pkgs, NOT pkgx, FOR THE CATALOGUE. go-zpkg/pkgx#113 moved the nine
       # verbs to a second binary so that the first word after `pkgx` is a
       # package again: a bare `ls` there now reaches gnu.org/coreutils. This
       # job asked pkgx for `catalog`, and the scheduled run of 2026-10-19
@@ -76,8 +76,8 @@ jobs:
       # split forgot to sweep.
       - name: install bk and pkgs
         run: |
-          go install github.com/go-pkgx/bk/cmd/bk@main
-          go install github.com/go-pkgx/pkgx/cmd/pkgs@main
+          go install github.com/go-zpkg/zbk/cmd/zbk@main
+          go install github.com/go-zpkg/zpkgx/cmd/zpkgs@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: clone pantry
@@ -87,15 +87,15 @@ jobs:
       # --platform --versions` would also produce one, at a tag listing plus a
       # platform check for each of ~1900 projects — per platform, daily. That
       # is catalogue.yml's weekly job, not this one's. `pkgs catalog update`
-      # fetches the result as a single signed OCI pull, and PKGX_VERIFY is on
+      # fetches the result as a single signed OCI pull, and ZPKG_VERIFY is on
       # by default, so a catalogue nobody signed stops the job here.
       #
       # ⛔ BOTH PLATFORMS, which `--platform` is what makes possible from one
-      # ubuntu runner (go-pkgx/pkgx#106, v0.18.0). The two catalogues are not
+      # ubuntu runner (go-zpkg/pkgx#106, v0.18.0). The two catalogues are not
       # the same document and do not even list the same projects — on
       # 2026-10-18, 1407 of 1915 projects carried a linux/x86-64 bottle
       # against 1373 of 1936 for darwin/aarch64 (`go run ./internal/catstat`
-      # in go-pkgx/pkgx) — so a linux-only scan would have reported "clean"
+      # in go-zpkg/pkgx) — so a linux-only scan would have reported "clean"
       # about a platform it never asked about.
       #
       # It will also make their AGES visible, which nothing currently prints:
@@ -121,7 +121,7 @@ jobs:
       #
       # ⛔ AND THE LIST IS NO LONGER WRITTEN DOWN, which was the actual
       # defect: adding the four by hand closed that day's gap and left the
-      # mechanism that caused it. `pkgs catalog platforms` (go-pkgx/pkgx#119,
+      # mechanism that caused it. `pkgs catalog platforms` (go-zpkg/pkgx#119,
       # shipped) asks the registry, which has always known — a platform that
       # is not published is refused with "platform not in index" — and
       # ./vulnsweep fetches and scans every platform it names. A seventh is
@@ -152,7 +152,7 @@ jobs:
       # pull request, by a person.
       - name: every published platform
         env:
-          PKGX_DIR: ${{ runner.temp }}/pkgx
+          ZPKG_DIR: ${{ runner.temp }}/pkgx
         run: |
           go run ./vulnsweep \
             -pantry "$RUNNER_TEMP/pantry" \

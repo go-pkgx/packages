@@ -17,12 +17,12 @@ const conforming = `name: x
 on: { workflow_dispatch: {} }
 env:
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 jobs:
   b:
     runs-on: ubuntu-latest
     steps:
-      - run: go install github.com/go-pkgx/bk/cmd/bk@main
+      - run: go install github.com/go-zpkg/zbk/cmd/zbk@main
 `
 
 func complaints(t *testing.T, src string) []string {
@@ -44,8 +44,8 @@ func TestTheConformingFilePasses(t *testing.T) {
 
 func TestAnInlineAssignmentIsRefused(t *testing.T) {
 	src := strings.Replace(conforming,
-		"- run: go install github.com/go-pkgx/bk/cmd/bk@main",
-		"- run: GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main", 1)
+		"- run: go install github.com/go-zpkg/zbk/cmd/zbk@main",
+		"- run: GOPROXY=direct go install github.com/go-zpkg/zbk/cmd/zbk@main", 1)
 	bad := complaints(t, src)
 	if len(bad) != 1 {
 		t.Fatalf("want exactly the inline complaint, got %d:\n%s", len(bad), strings.Join(bad, "\n"))
@@ -78,10 +78,10 @@ func TestACommentExplainingThePolicyIsNotAnAssignment(t *testing.T) {
 // only said so by failing.
 func TestAnAssignmentAfterAQuotedHashIsStillFound(t *testing.T) {
 	src := strings.Replace(conforming,
-		"      - run: go install github.com/go-pkgx/bk/cmd/bk@main",
+		"      - run: go install github.com/go-zpkg/zbk/cmd/zbk@main",
 		"      - run: |\n"+
 			"          echo \"chunk #1\"\n"+
-			"          GOPROXY=direct go install github.com/go-pkgx/bk/cmd/bk@main", 1)
+			"          GOPROXY=direct go install github.com/go-zpkg/zbk/cmd/zbk@main", 1)
 	// First: the fixture really does carry the `#` into the script, so a
 	// failure below is about the guard and not about YAML again.
 	var d doc
@@ -99,7 +99,7 @@ func TestAnAssignmentAfterAQuotedHashIsStillFound(t *testing.T) {
 
 func TestAMissingPolicyIsRefused(t *testing.T) {
 	src := strings.Replace(conforming,
-		"env:\n  GOPROXY: https://proxy.golang.org,direct\n  GONOPROXY: github.com/go-pkgx/*\n", "", 1)
+		"env:\n  GOPROXY: https://proxy.golang.org,direct\n  GONOPROXY: github.com/go-zpkg/*\n", "", 1)
 	bad := complaints(t, src)
 	if len(bad) != 2 {
 		t.Fatalf("want a complaint per missing key, got %d:\n%s", len(bad), strings.Join(bad, "\n"))
@@ -118,7 +118,7 @@ func TestAMissingPolicyIsRefused(t *testing.T) {
 // let through: GOPROXY alone sends OUR modules through the proxy too, which is
 // the staleness the `direct` was there to prevent.
 func TestGOPROXYWithoutGONOPROXYIsRefused(t *testing.T) {
-	src := strings.Replace(conforming, "  GONOPROXY: github.com/go-pkgx/*\n", "", 1)
+	src := strings.Replace(conforming, "  GONOPROXY: github.com/go-zpkg/*\n", "", 1)
 	bad := complaints(t, src)
 	if len(bad) != 1 || !strings.Contains(bad[0], "does not set GONOPROXY") {
 		t.Fatalf("want the GONOPROXY complaint, got %d:\n%s", len(bad), strings.Join(bad, "\n"))
@@ -142,8 +142,8 @@ func TestAWrongValueIsRefusedAndQuoted(t *testing.T) {
 // declaration nobody needs is one nobody keeps right.
 func TestAFileThatBootstrapsNothingNeedsNoPolicy(t *testing.T) {
 	src := strings.Replace(conforming,
-		"env:\n  GOPROXY: https://proxy.golang.org,direct\n  GONOPROXY: github.com/go-pkgx/*\n", "", 1)
-	src = strings.Replace(src, "go install github.com/go-pkgx/bk/cmd/bk@main", "go test ./...", 1)
+		"env:\n  GOPROXY: https://proxy.golang.org,direct\n  GONOPROXY: github.com/go-zpkg/*\n", "", 1)
+	src = strings.Replace(src, "go install github.com/go-zpkg/zbk/cmd/zbk@main", "go test ./...", 1)
 	if bad := complaints(t, src); len(bad) != 0 {
 		t.Errorf("`go test ./...` is not a bootstrap; got:\n%s", strings.Join(bad, "\n"))
 	}
@@ -153,8 +153,8 @@ func TestAFileThatBootstrapsNothingNeedsNoPolicy(t *testing.T) {
 // `go install` would have passed three of the fourteen sites.
 func TestGoRunOfARemoteModuleCounts(t *testing.T) {
 	src := strings.Replace(conforming,
-		"env:\n  GOPROXY: https://proxy.golang.org,direct\n  GONOPROXY: github.com/go-pkgx/*\n", "", 1)
-	src = strings.Replace(src, "go install github.com/go-pkgx/bk/cmd/bk@main", "go run github.com/go-pkgx/bk/cmd/bk@main overrides", 1)
+		"env:\n  GOPROXY: https://proxy.golang.org,direct\n  GONOPROXY: github.com/go-zpkg/*\n", "", 1)
+	src = strings.Replace(src, "go install github.com/go-zpkg/zbk/cmd/zbk@main", "go run github.com/go-zpkg/zbk/cmd/zbk@main overrides", 1)
 	if bad := complaints(t, src); len(bad) != 2 {
 		t.Errorf("`go run x@main` is a bootstrap; got %d complaints:\n%s", len(bad), strings.Join(bad, "\n"))
 	}
@@ -169,7 +169,7 @@ runs:
   using: composite
   steps:
     - shell: bash
-      run: GOPROXY=direct go install github.com/go-pkgx/pkgm@main
+      run: GOPROXY=direct go install github.com/go-zpkg/zpkgm@main
 `
 	bad := complaints(t, src)
 	if len(bad) == 0 {

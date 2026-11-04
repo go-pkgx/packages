@@ -6,7 +6,7 @@ system libc. This is the consumer proof for Isolation Phase B: the bottles this
 factory publishes are self-sufficient enough to run with nothing underneath them
 but the kernel.
 
-The whole flow is a **pure-Go** `bk` subcommand — [`bk fromscratch`](https://github.com/go-pkgx/bk)
+The whole flow is a **pure-Go** `bk` subcommand — [`bk fromscratch`](https://github.com/go-zpkg/zbk)
 (package `cmd/bk`). No interpreter and no shell glue: `bk` already has the OCI
 bottle pull, pantry-recipe parsing and version resolution in Go, and reads ELF
 `DT_NEEDED` natively via `debug/elf`. The only external command is `docker`
@@ -17,20 +17,20 @@ from-scratch tooling.
 ## Usage
 
 ```sh
-go install github.com/go-pkgx/bk/cmd/bk@main
+go install github.com/go-zpkg/zbk/cmd/zbk@main
 git clone --depth 1 https://github.com/pkgxdev/pantry
 
 # Resolve + pull the closure, build a scratch image, and smoke-run it. `{V}` in
 # the entrypoint is replaced by the root project's resolved version dir. Args
 # after `--` are passed to the container (its real exit code is bk's).
-bk fromscratch -arch amd64 -tag myimg:lz4 \
+zbk fromscratch -arch amd64 -tag myimg:lz4 \
     -entrypoint '/pkgx/lz4.org/{V}/bin/lz4' -run lz4.org -- --version
 
-bk fromscratch -arch arm64 -tag myimg:perl \
+zbk fromscratch -arch arm64 -tag myimg:perl \
     -entrypoint '/pkgx/perl.org/{V}/bin/perl' -run perl.org -- --version
 
 # Just print the resolved proj:ver closure (diagnostic, no image):
-bk fromscratch -arch arm64 -resolve-only sqlite.org
+zbk fromscratch -arch arm64 -resolve-only sqlite.org
 ```
 
 `-arch` is `amd64` or `arm64` (aliases `x86-64` / `aarch64`). `-pantry` defaults

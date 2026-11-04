@@ -8,7 +8,7 @@ import (
 	"testing"
 	"testing/iotest"
 
-	"github.com/go-pkgx/bk/build"
+	"github.com/go-zpkg/zbk/build"
 )
 
 func writeOrder(t *testing.T, body string) string {

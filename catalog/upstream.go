@@ -112,7 +112,7 @@ func sortGaps(gs []gap) {
 }
 
 // manifestTag is the name a version's platform manifest is pushed under:
-// `<ver>--<os>-<arch>`, which go-pkgx/bottle#37 introduced so a version's index
+// `<ver>--<os>-<arch>`, which go-zpkg/bottle#37 introduced so a version's index
 // could be composed from tags no two publishers contend for.
 func manifestTag(g gap) string {
 	return g.version + "--" + strings.ReplaceAll(g.platform, "/", "-")
@@ -152,7 +152,7 @@ func splitByPlatformTag(lost []gap, have map[string]map[string]bool) (reindexabl
 // on one mutable tag and four publishers race on it; a writer whose read
 // predated another's write re-tags without that platform, verifies its own,
 // and exits happy. The bottle is pushed, valid, signed — and not listed. Since
-// go-pkgx/bottle#37 each platform's manifest also gets an uncontended tag of
+// go-zpkg/bottle#37 each platform's manifest also gets an uncontended tag of
 // its own, so the evidence of that race is sitting in the tag listing.
 //
 // It cannot have a false positive: the manifest is there or it is not.
@@ -162,7 +162,7 @@ func splitByPlatformTag(lost []gap, have map[string]map[string]bool) (reindexabl
 // zlib.net and curl.se carry only darwin ones and gnu.org/gperf none at all —
 // which first read like publishers that disagree. They do not: bottle's push
 // is the single publish path for a build and a mirror alike, and it has tagged
-// every platform manifest since go-pkgx/bottle#37. What has no tag is what was
+// every platform manifest since go-zpkg/bottle#37. What has no tag is what was
 // published BEFORE that, and the set shrinks on its own as the catalogue is
 // rebuilt.
 //

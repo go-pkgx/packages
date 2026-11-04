@@ -44,7 +44,7 @@
 // The catalogue names its platform; if that is not this machine's, this
 // exits 2 rather than producing an answer.
 //
-//	sonamesweep -catalog "$PKGX_DIR/catalog/linux-x86-64.json" -chunk 3 -chunks 14
+//	sonamesweep -catalog "$ZPKG_DIR/catalog/linux-x86-64.json" -chunk 3 -chunks 14
 package main
 
 import (
@@ -60,7 +60,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-pkgx/bottle"
+	"github.com/go-zpkg/bottle"
 )
 
 var osExit = os.Exit

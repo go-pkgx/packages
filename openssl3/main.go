@@ -19,7 +19,7 @@
 //
 // There are two halves and they are not interchangeable: `overrides/` patches
 // the pantry bk BUILDS from, while pkgx resolves an INSTALL by fetching the
-// recipe itself through PKGX_PANTRY_OVERLAY. Fixing only the build half leaves
+// recipe itself through ZPKG_PANTRY_OVERLAY. Fixing only the build half leaves
 // every CONSUMER of those packages broken.
 //
 // The rewrite is deliberately narrow: it touches ONLY the constraint value on a
@@ -172,7 +172,7 @@ func pinned(projectsDir string) ([]string, error) {
 // writeOverlay writes the corrected recipe WHOLE into a pantry-overlay tree.
 // The two halves are not interchangeable: `overrides/` patches the pantry that
 // bk BUILDS from, while pkgx resolves an INSTALL by fetching the recipe itself,
-// through PKGX_PANTRY_OVERLAY. Fixing only the build half leaves every consumer
+// through ZPKG_PANTRY_OVERLAY. Fixing only the build half leaves every consumer
 // of those packages broken at install time — measured three times over in the
 // sovereign builder, where gnutls, p11-kit and linux-pam each died on
 // "no version of openssl.org satisfies ^1.1" AFTER the build-side patches had

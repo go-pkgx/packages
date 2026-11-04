@@ -12,12 +12,12 @@ here=$(dirname "$0")
 ref=${1:-main}
 # tcl-lang.org is PINNED. Its recipe enumerates SourceForge DIRECTORIES, and
 # Tcl/9.1.0/ exists holding nothing but a release candidate — the 9.1.0 tarball
-# is a 404 (go-pkgx/packages#262). A per-project `project@constraint` word,
+# is a 404 (go-zpkg/packages#262). A per-project `project@constraint` word,
 # because --versions would pin all 76. The `=` is load-bearing: a bare version
 # is a RANGE.
 recipes=$(sed 's|^tcl-lang\.org$|tcl-lang.org@=9.0.4|' "$here/order.txt" \
   | grep -vE '^[[:space:]]*(#|$)' | tr '\n' ' ' | sed 's/ *$//')
-exec gh workflow run build.yml --repo go-pkgx/packages --ref "$ref" \
+exec gh workflow run build.yml --repo go-zpkg/packages --ref "$ref" \
   -f recipes="$recipes" \
   -f arch=s390x \
   -f seed_dist=oci://127.0.0.1:5000/seed \
