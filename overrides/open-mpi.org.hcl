@@ -23,15 +23,50 @@ why     = <<-WHY
   expired, and the way to find out is to build it — one runner, against a
   defect that currently has no other route to repair.
 
-  If Fortran is still the blocker, the next step is --disable-mpi-fortran:
-  fftw's MPI support uses the C API, so the Fortran bindings are not what it
-  needs. Delete this override if upstream retargets the platform list, or
-  replace it with the Fortran switch if the build proves the comment right.
+  Fortran turned out not to be the blocker. With the platform open, the build
+  reached `make` and died linking prrte:
+
+    ld: multiple errors: archive member invalid control bits in
+        'util/.libs/libprrteutil.a'; ... (26 archives)
+    clang: error: linker command failed with exit code 1
+
+  That is an ARCHIVER mismatch, not a language one. The recipe forces Apple's
+  linker on darwin ("prevent gcc from taking over", LD: /usr/bin/ld) while
+  gnu.org/binutils sits in the build environment and puts GNU `ar` on PATH --
+  configure says so itself: "checking for archiver @FILE support... @", which
+  Apple's ar does not have. GNU ar writes the archives, Apple ld refuses
+  them.
+
+  Reproduced in isolation, both directions, in seconds:
+
+    $ pkgx +gnu.org/binutils -- ar rcs libgnu.a foo.o
+    $ clang main.c libgnu.a -o out
+    ld: ignoring archive member 'foo.o' - 64-bit mach-o not 8-byte aligned
+    clang: error: linker command failed with exit code 1
+
+    $ /usr/bin/ar rcs libapple.a foo.o
+    $ clang main.c libapple.a -o out      # links
+
+  (The wording differs from CI's -- two ld versions complaining about the
+  same class of malformed archive -- and it reproduces on arm64 too, so this
+  is not about x86-64 being old.)
+
+  So AR and RANLIB are pinned to Apple's on darwin, to match the linker the
+  recipe already pins. Delete this override if upstream retargets the
+  platform list or stops mixing the two toolchains.
 WHY
 
 edits = [
   {
     path   = "platforms"
     append = ["darwin/x86-64"]
+  },
+  {
+    path = "build.env.darwin.AR"
+    set  = "/usr/bin/ar"
+  },
+  {
+    path = "build.env.darwin.RANLIB"
+    set  = "/usr/bin/ranlib"
   },
 ]
