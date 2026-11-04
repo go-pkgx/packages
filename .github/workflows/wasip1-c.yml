@@ -131,8 +131,10 @@ jobs:
             --out "$RUNNER_TEMP/rootfs" \
             --platform "${{ matrix.platform }}" \
             --toolchain builder/toolchain.txt \
-            --bk "$(command -v bk)" \
-            --pkgx "$(command -v pkgx)" \
+            # `zbk`/`zpkgx` since the rename: `pkgx` is upstream's binary and
+            # can be on the same PATH. See sovereign.yml.
+            --bk "$(command -v zbk)" \
+            --pkgx "$(command -v zpkgx)" \
             --container
       # The claim to check is a negative one: no distribution in the tree. The
       # build below runs `chroot` into it, so these are the only files it sees.

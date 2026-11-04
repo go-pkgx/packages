@@ -70,7 +70,13 @@ jobs:
 
       - name: build bk, pkgx and pkgm (static)
         run: |
-          for m in bk/cmd/bk pkgx pkgm; do
+          # ⛔⛔ ASSEMBLED FROM A VARIABLE, SO THE RENAME DID NOT SEE IT. The
+          # go-pkgx → go-zpkg pass is a rule table over literal text, and
+          # there is no string `go-zpkg/bk/cmd/bk` in this file to match —
+          # only `github.com/go-zpkg/$m`. The modules are `zbk/cmd/zbk`,
+          # `zpkgx` and `zpkgm`, and the binaries they install are `zbk`,
+          # `zpkgx` and `zpkgm`.
+          for m in zbk/cmd/zbk zpkgx zpkgm; do
             CGO_ENABLED=0 go install "github.com/go-zpkg/$m@main"
           done
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
@@ -112,8 +118,14 @@ jobs:
             --out "$RUNNER_TEMP/rootfs" \
             --platform "$PLATFORM" \
             --toolchain builder/toolchain.txt \
-            --bk "$(command -v bk)" \
-            --pkgx "$(command -v pkgx)" \
+            # ⛔⛔ `command -v pkgx` WOULD NOW FIND SOMEBODY ELSE'S PROGRAM.
+            # Ours is `zpkgx` since the rename, and `pkgx` is upstream's — a
+            # different implementation that can sit on the same PATH, which is
+            # the whole reason the rename happened. A lookup left as `pkgx`
+            # does not fail loudly; it either finds nothing or finds upstream
+            # and stages a rootfs with it.
+            --bk "$(command -v zbk)" \
+            --pkgx "$(command -v zpkgx)" \
             --container
           du -sh "$RUNNER_TEMP/rootfs"
 
