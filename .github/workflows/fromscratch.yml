@@ -73,7 +73,11 @@ jobs:
       - name: FROM-scratch coverage panel
         run: |
           set -uo pipefail
-          PKGM="$(command -v pkgm)"
+          # ⛔ `zpkgm`: the step above installs `github.com/go-zpkg/zpkgm`, so
+          # the binary on PATH is `zpkgm`. A lookup left as `pkgm` finds
+          # nothing, and `set -u` then fails a step whose message says nothing
+          # about a rename.
+          PKGM="$(command -v zpkgm)"
           # Corrected-recipe overlay (e.g. curl/wget openssl constraint) consulted
           # by the in-image `pkgm install` before the upstream pantry.
           OVERLAY="https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects"

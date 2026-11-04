@@ -524,8 +524,10 @@ jobs:
             --out "$RUNNER_TEMP/rootfs" \
             --platform "${{ matrix.platform }}" \
             --toolchain builder/toolchain.txt \
-            --bk "$(command -v bk)" \
-            --pkgx "$(command -v pkgx)" \
+            # `zbk`/`zpkgx` since the rename: `pkgx` is upstream's binary and
+            # can be on the same PATH. See sovereign.yml.
+            --bk "$(command -v zbk)" \
+            --pkgx "$(command -v zpkgx)" \
             --container
 
       # What the machine HAS, in a step of its own.
@@ -1013,13 +1015,18 @@ jobs:
             # binary that is there but carries no stamp makes the pipeline
             # print NOTHING and succeed, and an empty field beside a label
             # reads as an answer. Ask whether it is empty, and say so.
+            # ⛔ `zbk`, AND THE MODULE FILTER BELOW IS WHY IT MATTERS HERE.
+            # The lookup was `command -v bk`; the binary is `zbk` since the
+            # rename. Left as `bk` it finds nothing, prints `(unread)`, and
+            # this provenance record silently stops saying which factory built
+            # the run — the exact failure the comment above is about.
             bkver=""
-            bkbin=$(command -v bk 2>/dev/null || true)
+            bkbin=$(command -v zbk 2>/dev/null || true)
             if [ -n "$bkbin" ]; then
               bkver=$(go version -m "$bkbin" 2>/dev/null |
                 awk '$1=="mod" && $2=="github.com/go-zpkg/zbk" {print $3}')
             fi
-            printf '%-10s %s\n' bk "${bkver:-(unread)}"
+            printf '%-10s %s\n' zbk "${bkver:-(unread)}"
             echo
             echo "== host tools that stood in for bottles =="
             # Each of these can be what --bootstrap fell back to. Recording the

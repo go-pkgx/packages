@@ -15,6 +15,8 @@
 #
 #   for r in bk pkgm pkgx; do
 #     GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o builder/$r github.com/go-zpkg/$r/...
+#   where $r is zbk, zpkgx or zpkgm — assembled from a variable, so the
+#   go-pkgx → go-zpkg rename could not see it and this line is set by hand.
 #   done
 #   docker build -f builder/Containerfile -t bk-builder builder
 #
