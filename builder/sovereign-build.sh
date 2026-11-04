@@ -104,7 +104,12 @@ fi
 # its runner user is unprivileged, so $SUDO is set there — which is why a
 # path that cannot work has been in this file unnoticed.
 PRESERVE=""
-[ -n "$SUDO" ] && PRESERVE="--preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,LOCK,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,ZPKG_DIR,HOME,ZPKG_DIST,ZPKG_CACHE,ZPKG_VERIFY,ZPKG_PANTRY_OVERLAY"
+# ⛔⛔ A VARIABLE MISSING FROM THIS LIST IS SILENTLY DROPPED, AND NO_PUBLISH IS
+# THE ONE WHERE THAT COSTS SOMETHING IRREVERSIBLE. sudo clears the environment
+# except what --preserve-env names; a job that sets NO_PUBLISH=1 and is not
+# listed here does not fail, it PUBLISHES. Every other name on this line
+# changes what gets built; this one changes whether the result is pushed.
+[ -n "$SUDO" ] && PRESERVE="--preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,LOCK,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,NO_PUBLISH,OCI_TO,PLATFORM,ZPKG_DIR,HOME,ZPKG_DIST,ZPKG_CACHE,ZPKG_VERIFY,ZPKG_PANTRY_OVERLAY,VERSIONS,COMPRESS,KEEP_BUILD_TREES,PIN_TO_DEPENDENTS,REBUILD,TEST_ONLY,SOURCE_MIRROR,ADVISORIES_DIR"
 # shellcheck disable=SC2016  # the inner script is deliberately literal: it runs
 # in the new namespace, where these variables are the ones that matter.
 # shellcheck disable=SC2086  # $PRESERVE is one flag or nothing, and must not
