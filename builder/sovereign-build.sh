@@ -12,7 +12,7 @@
 # /overlay and passed to `bk factory --overlay`. It does not change what is
 # BUILT — the factory still compiles the pantry's recipe — it widens the
 # CLOSURE, so a dependency only our overlay declares is built rather than left
-# for consumers to resolve and not find (go-pkgx/bk#224).
+# for consumers to resolve and not find (go-zpkg/bk#224).
 #
 # The rootfs is what `bk builder --container` staged. Everything the build needs
 # beyond it is arranged here, and each piece is here because its absence was
@@ -28,7 +28,7 @@
 #
 # The environment is builder/Containerfile's ENV, and bk is invoked through pkgx
 # with its ENTRYPOINT's argv, so a caller cannot drift from what the image
-# promises. PKGX_DIR matters more than it looks: without it pkgx falls back to
+# promises. ZPKG_DIR matters more than it looks: without it pkgx falls back to
 # $HOME/.pkgx, re-downloads a toolchain the staged tree already holds, and bakes
 # PT_INTERP=/root/.pkgx/... into every bottle — an absolute path no consumer has.
 set -euo pipefail
@@ -52,12 +52,12 @@ log="${SOVEREIGN_LOG:-${RUNNER_TEMP:-/tmp}/bk.log}"
 SUDO=""
 if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
 
-# PKGX_VERIFY travels with PKGX_DIST, and the two are one decision.
+# ZPKG_VERIFY travels with ZPKG_DIST, and the two are one decision.
 #
 # A seed registry is a throwaway on loopback and its bottles are unsigned, so
 # build.yml turns verification off for it. That is set in the JOB's
 # environment — and the build happens on the far side of a `sudo … chroot`,
-# which carries only what this list names. PKGX_DIST was here; PKGX_VERIFY
+# which carries only what this list names. ZPKG_DIST was here; ZPKG_VERIFY
 # was not.
 #
 # So staging, which runs OUTSIDE the chroot, saw the variable and worked,
@@ -104,7 +104,7 @@ fi
 # its runner user is unprivileged, so $SUDO is set there — which is why a
 # path that cannot work has been in this file unnoticed.
 PRESERVE=""
-[ -n "$SUDO" ] && PRESERVE="--preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,LOCK,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,PKGX_DIR,HOME,PKGX_DIST,PKGX_CACHE,PKGX_VERIFY,PKGX_PANTRY_OVERLAY"
+[ -n "$SUDO" ] && PRESERVE="--preserve-env=OCI_USERNAME,OCI_PASSWORD,SIGNING_KEY,RECIPES,LOCK,FORCE,JOBS,QEMU_RESERVED_VA,MAX_VERSIONS,NO_CLOSURE,PLATFORM,ZPKG_DIR,HOME,ZPKG_DIST,ZPKG_CACHE,ZPKG_VERIFY,ZPKG_PANTRY_OVERLAY"
 # shellcheck disable=SC2016  # the inner script is deliberately literal: it runs
 # in the new namespace, where these variables are the ones that matter.
 # shellcheck disable=SC2086  # $PRESERVE is one flag or nothing, and must not

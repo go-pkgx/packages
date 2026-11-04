@@ -52,7 +52,7 @@ func TestTheNeedleIsTakenFromTheInstalledDirectoryNotTheRequestedVersion(t *test
 // ⛔ A BARE VERSION TOKEN IS NOT A BAKED PREFIX. `#define VERSION "v1.10.0"`
 // in a header says nothing about where the package was built. Counting it
 // would inflate the sweep with files that survive a rename perfectly well —
-// and the sweep's number is what decides go-pkgx/bk#386.
+// and the sweep's number is what decides go-zpkg/bk#386.
 func TestAVersionStringIsNotCountedAsABakedPath(t *testing.T) {
 	home := t.TempDir()
 	mustWrite(t, filepath.Join(home, "v1.10.0", "include", "lz4.h"),
@@ -97,7 +97,7 @@ func TestANeighbouringVersionIsNotThisOne(t *testing.T) {
 }
 
 // ⛔ BINARY CONTENT IS WHERE BAKED PREFIXES LIVE. The measurement I first
-// published on go-pkgx/bk#386 — "fftw's bottle bakes nothing" — came from a
+// published on go-zpkg/bk#386 — "fftw's bottle bakes nothing" — came from a
 // `grep -rl` that resolved to ugrep with `-I`, skipping binary files. Every
 // one of fftw's 9 hits is a Mach-O dylib, an executable or a -config script.
 // A text-only search cannot see a baked prefix at all.

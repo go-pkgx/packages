@@ -2,7 +2,7 @@ package main
 
 import "testing"
 
-// TestSemverTagRejectsPlatformTags: go-pkgx/bottle#37 tags each platform's
+// TestSemverTagRejectsPlatformTags: go-zpkg/bottle#37 tags each platform's
 // manifest `<ver>--<os>-<arch>` so a version's index can be composed from
 // uncontended names. Those tags are NOT versions, and the first measurement
 // after that change reported llvm.org's newest version as

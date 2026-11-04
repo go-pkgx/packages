@@ -34,7 +34,7 @@ env:
   # having built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 
 jobs:
   scratch:
@@ -46,7 +46,7 @@ jobs:
       # The pool's runner image is a plain debian cloud image: no git, and a
       # DIRECT fetch shells out to it ("unable to resolve git version: exec:
       # git: executable file not found"). Still required after 2026-10-12:
-      # GONOPROXY sends go-pkgx modules to their origin, which is a git clone,
+      # GONOPROXY sends go-zpkg modules to their origin, which is a git clone,
       # even though the dependencies now come from the proxy. jq and the
       # chroot's unshare come from the base system; git does not.
       - name: base tools
@@ -67,7 +67,7 @@ jobs:
       # proxy can serve a stale cached @main.
       - name: install pkgm (static)
         run: |
-          CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
+          CGO_ENABLED=0 go install github.com/go-zpkg/zpkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: FROM-scratch coverage panel
@@ -76,7 +76,7 @@ jobs:
           PKGM="$(command -v pkgm)"
           # Corrected-recipe overlay (e.g. curl/wget openssl constraint) consulted
           # by the in-image `pkgm install` before the upstream pantry.
-          OVERLAY="https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects"
+          OVERLAY="https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects"
           # <project> then its smoke args (space-separated). No `|`/`xargs` trim:
           # `xargs` with no command runs /bin/echo, and GNU echo eats a leading
           # --version as its own flag — the value must never be executed.

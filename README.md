@@ -1,9 +1,9 @@
 # packages
 
-[![build](https://github.com/go-pkgx/packages/actions/workflows/build.yml/badge.svg)](https://github.com/go-pkgx/packages/actions/workflows/build.yml)
+[![build](https://github.com/go-zpkg/packages/actions/workflows/build.yml/badge.svg)](https://github.com/go-zpkg/packages/actions/workflows/build.yml)
 
 A pure-Go package factory. Builds [pkgx pantry](https://github.com/pkgxdev/pantry)
-recipes with [`bk`](https://github.com/go-pkgx/bk) (the CGO-free re-implementation
+recipes with [`bk`](https://github.com/go-zpkg/zbk) (the CGO-free re-implementation
 of brewkit) and publishes **signed, attested packages** to
 `ghcr.io/go-pkgx/packages`.
 
@@ -19,11 +19,11 @@ Every package is pushed as an OCI artifact carrying, as **OCI referrers**:
 
 Signatures verify against the pinned public key
 `RWQ+rmH+fXy2iYr+gReQAOQtYWtH0A7UlxcAa2hpr+txNBwGqtpFsR6L`. On install,
-`bottle.VerifySignature` checks it; set **`PKGX_VERIFY=1`** to fail closed —
+`bottle.VerifySignature` checks it; set **`ZPKG_VERIFY=1`** to fail closed —
 an unsigned or badly-signed package is refused rather than installed.
 
 That covers what leaves. What went *in* was recorded by nothing until
-[`bk`#112](https://github.com/go-pkgx/bk/issues/112): of 1858 recipes with a
+[`bk`#112](https://github.com/go-zpkg/zbk/issues/112): of 1858 recipes with a
 distributable URL, exactly one declared a checksum and `bk` verified none, so a
 source tarball that changed upstream produced a different bottle, correctly
 signed, attesting a URL rather than the bytes that came back from it. The
@@ -107,7 +107,7 @@ whose coverage depends on how interesting they looked.
 adding the four by hand closed that day's gap and left the mechanism that
 caused it in place. The index has always known — `pkgs catalog update
 --platform linux/nonsense` is refused with *"platform not in index"* — and
-since go-pkgx/pkgx#119 shipped, `pkgs catalog platforms` asks it:
+since go-zpkg/pkgx#119 shipped, `pkgs catalog platforms` asks it:
 
 ```console
 $ pkgs catalog platforms
@@ -169,13 +169,13 @@ hierarchies and `spider` keep working. Where there is no Lmod,
 `pkgx env init --module` defines `module` and `ml`; where there is one it
 **refuses** to, because two implementations answering one command is how a
 support ticket becomes unanswerable. See
-[Environments and HPC](https://go-pkgx.github.io/docs/environments/).
+[Environments and HPC](https://go-zpkg.github.io/docs/environments/).
 
 ### Both halves, or neither
 
 A project upstream does not carry lives in two places that must agree:
 `overrides/<name>-new.patch`, applied to a fresh pantry clone, is what **`bk`
-builds** from; [`pantry-overlay`](https://github.com/go-pkgx/pantry-overlay) is
+builds** from; [`pantry-overlay`](https://github.com/go-zpkg/pantry-overlay) is
 what a consumer **resolves** over HTTP — `bottle`'s `fetchRecipe` tries the
 overlay, then upstream, and nothing else.
 
@@ -290,7 +290,7 @@ What is left is not one problem. `bk depgaps` separates the two, ranks each by h
 many recipes it blocks, and reads satisfiability through bottle's own semver so it
 agrees with what pkgx will decide at install:
 
-    bk depgaps --pantry pantry --overrides overrides --registry registry.json \
+    zbk depgaps --pantry pantry --overrides overrides --registry registry.json \
                --platform linux/x86-64
 
 - A **version line** the registry does not carry. `python.org ~3.12` blocked 23
@@ -334,7 +334,7 @@ of the registry. The ratio was not measurable; only these absolutes are.
   linker — so the output owes nothing to the debian container. `bk builder` stages the
   sovereign rootfs itself (static Go binaries plus toolchain bottles from this signed
   registry, nothing else), and `builder/` here is what builds that image. Design note:
-  [`bk/docs/from-scratch-toolchain.md`](https://github.com/go-pkgx/bk/blob/main/docs/from-scratch-toolchain.md).
+  [`bk/docs/from-scratch-toolchain.md`](https://github.com/go-zpkg/zbk/blob/main/docs/from-scratch-toolchain.md).
 
 `.github/workflows/sovereign.yml` is that claim as a job: stage the rootfs from
 `builder/toolchain.txt`, enter it with `chroot`, and run `bk` through pkgx exactly
@@ -360,15 +360,15 @@ To install from this registry you need `pkgm` (the pure-Go installer). One line:
 
 ```sh
 # Linux / macOS
-curl -fsSL https://go-pkgx.github.io/install.sh | sh -s -- pkgm v0.1.4
+curl -fsSL https://go-zpkg.github.io/install.sh | sh -s -- pkgm v0.1.4
 ```
 
 ```powershell
 # Windows (PowerShell)
-$env:PKGM_VERSION='v0.1.4'; irm https://go-pkgx.github.io/install.ps1 | iex
+$env:PKGM_VERSION='v0.1.4'; irm https://go-zpkg.github.io/install.ps1 | iex
 ```
 
-or, for Go users, `go install github.com/go-pkgx/pkgm@latest`. The installer
+or, for Go users, `go install github.com/go-zpkg/zpkgm@latest`. The installer
 grabs the static binary for your os/arch from that release and verifies it
 against the release `SHA256SUMS`; then `pkgm install lz4.org` verifies each
 bottle against this signed registry by default.
@@ -393,12 +393,12 @@ Packages are OCI artifacts, so any OCI client can pull them. On 2026-08-27:
 
 That is a moving target, and the command above is the point: it enumerates ghcr
 anonymously, so re-run it rather than trusting the paste.
-<https://go-pkgx.github.io/packages> browses the same data (its deploy is
+<https://go-zpkg.github.io/packages> browses the same data (its deploy is
 dispatched, so the site can lag the registry).
 
-Point the go-pkgx tools at the registry and verify against the pinned key:
+Point the go-zpkg tools at the registry and verify against the pinned key:
 
-    PKGX_DIST=oci://ghcr.io/go-pkgx/packages PKGX_VERIFY=1 pkgm install lz4.org
+    ZPKG_DIST=oci://ghcr.io/go-pkgx/packages ZPKG_VERIFY=1 pkgm install lz4.org
 
 or pull a package directly:
 
@@ -565,7 +565,7 @@ $ go run ./prefixsweep -platform darwin/aarch64 fftw.org zlib.net
 ```
 
 13 of 13 bottles swept on darwin/aarch64 bake their own prefix, every one
-through an `@rpath` load command. That is what settled go-pkgx/bk#386: the
+through an `@rpath` load command. That is what settled go-zpkg/bk#386: the
 version directory sits in the literal remainder after `@rpath`, so renaming
 it makes `dyld` look for a path that no longer exists, and a rebuild
 published as `_N` has to be **built** under that name rather than repackaged
@@ -573,7 +573,7 @@ into it.
 
 `-needle <literal>` sweeps for a caller-supplied string instead, and **any
 hit fails the run** — that form is an assertion, not a census. It is how
-go-pkgx/bk#387 is checked: `-needle /Users/runner/Library/Caches/brewkit`
+go-zpkg/bk#387 is checked: `-needle /Users/runner/Library/Caches/brewkit`
 must find nothing in a bottle built by a lane carrying bk's prefix-map shims.
 
 ⛔ **A spelled needle certifies the lane it was written for and no other.**
@@ -658,11 +658,11 @@ having run:
 ```yaml
 env:
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 ```
 
 Dependencies come from the proxy, which is a cache that survives an upstream
-host going down; `go-pkgx` modules still go straight to GitHub, so `@main` is
+host going down; `go-zpkg` modules still go straight to GitHub, so `@main` is
 the commit it says. Measured both ways on one machine in one minute with a
 clean module cache — `GOPROXY=direct` exit 1, the configuration above exit 0 —
 and the narrowness proved by pointing `GOPROXY` at a dead address, where our
@@ -680,7 +680,7 @@ Every platform — linux, darwin **and** windows — publishes to **both** chann
 
 - the **signed OCI registry** `ghcr.io/go-pkgx/packages` (SBOM + provenance +
   signature, via `bk publish`), and
-- the **GitHub Pages pkgx dist mirror** `https://go-pkgx.github.io/packages`.
+- the **GitHub Pages pkgx dist mirror** `https://go-zpkg.github.io/packages`.
 
 The four build workflows (`build.yml`, `darwin.yml`, `windows.yml`,
 `windows-rust.yml`) each publish their packages to the OCI registry *and* upload
@@ -694,7 +694,7 @@ carries all platforms side by side (`<project>/<os>/<arch>/…`).
 pkgx ships no Windows packages, so this repo cross-builds pantry projects to
 Windows PE packages and publishes them, like every other platform, to **both** the
 signed `ghcr.io/go-pkgx/packages` OCI registry and the
-`https://go-pkgx.github.io/packages` Pages mirror.
+`https://go-zpkg.github.io/packages` Pages mirror.
 
 - **`.github/workflows/windows.yml` (Go).** Go tools cross-build to Windows *for
   free* — `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build` yields a
@@ -720,8 +720,8 @@ Like `build.yml`, every one of these triggers on `workflow_dispatch` alone (no
 `go-projects-all.txt`, `rust-projects.txt`, `rust-projects-all.txt`); add rows to
 scale. Consume the Windows packages from either channel:
 
-    PKGX_DIST=https://go-pkgx.github.io/packages pkgx syft.exe --version
-    PKGX_DIST=oci://ghcr.io/go-pkgx/packages     pkgx syft.exe --version
+    ZPKG_DIST=https://go-zpkg.github.io/packages pkgx syft.exe --version
+    ZPKG_DIST=oci://ghcr.io/go-pkgx/packages     pkgx syft.exe --version
 
 ## wasip1/wasm
 
@@ -791,7 +791,7 @@ spelling; the pkgx slug is `wasip1/wasm`.
   which is the default recipe format, and `recipefile.Names` tries it first.
   ⛔ **That makes bk `>= v0.50.0` a hard requirement for this lane**, not
   hygiene: `bk build --recipe` read every path as YAML until then
-  (go-pkgx/bk#389), and an older pin does not warn — it fails with a yaml
+  (go-zpkg/bk#389), and an older pin does not warn — it fails with a yaml
   unmarshal error about the first attribute of a perfectly good HCL file.
   Pilots, built, run under wasmtime 50 and
   published as `wasip1/wasm`: `zlib.net` 1.3.2 (libz.a + minigzip), `sqlite.org`
@@ -836,4 +836,4 @@ spelling; the pkgx slug is `wasip1/wasm`.
 
 ## License
 
-BSD-3-Clause © the go-pkgx authors.
+BSD-3-Clause © the go-zpkg authors.

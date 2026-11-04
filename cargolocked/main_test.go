@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-pkgx/bk/logical"
+	"github.com/go-zpkg/zbk/logical"
 )
 
 // writeRecipe drops a package.yml under <pantry>/projects/<proj>/.

@@ -32,7 +32,7 @@ advisories:
       # artefact it was made about. Without it the OpenVEX document published
       # with the bottle does not say `not_affected` at all: it says
       # `under_investigation`, because a record that names no version says
-      # nothing about the one in hand (go-pkgx/bk#340). The prose below names
+      # nothing about the one in hand (go-zpkg/bk#340). The prose below names
       # 1.22.1 and always did — this is the machine-readable half of it.
       #
       # It is on BOTH events on purpose. The detection says which version was

@@ -21,7 +21,7 @@ env:
   # having built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
   TRIPLE: "x86_64-pc-windows-gnu"
 
 jobs:
@@ -77,7 +77,7 @@ jobs:
           done
           # The proxy policy is the workflow-level env:, so it covers this and
           # every other go invocation here, and ./goproxycheck keeps it level.
-          go install github.com/go-pkgx/bk/cmd/bk@main
+          go install github.com/go-zpkg/zbk/cmd/zbk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Toolchain (rust + mingw)
         run: |
@@ -152,7 +152,7 @@ jobs:
             # up-front check on linux — so a record that cannot be read does not
             # reach main unnoticed, and is not FIRST noticed here.
             if SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
-               bk publish --to oci://ghcr.io/go-pkgx/packages --project "$slug" \
+               zbk publish --to oci://ghcr.io/go-pkgx/packages --project "$slug" \
                  --version "$ver" --platform windows/x86-64 "${SIGN_ARGS[@]}" \
                  --advisories "$GITHUB_WORKSPACE/advisories" \
                  "$d/v$ver.tar.gz"; then

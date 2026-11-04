@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/go-pkgx/bottle"
+	"github.com/go-zpkg/bottle"
 )
 
 // fakePE builds the smallest byte sequence debug/pe accepts: a DOS stub whose

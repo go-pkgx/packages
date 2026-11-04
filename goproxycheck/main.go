@@ -1,4 +1,4 @@
-// Command goproxycheck asserts that every workflow bootstrapping a go-pkgx
+// Command goproxycheck asserts that every workflow bootstrapping a go-zpkg
 // tool states one module-proxy policy, in one place per file, and that no
 // command line contradicts it.
 //
@@ -7,13 +7,13 @@
 // On 2026-10-12 the darwin lane failed twice in a row, ninety seconds in,
 // having built nothing:
 //
-//	../../../go/pkg/mod/github.com/go-pkgx/bottle@v0.44.0/hcl.go:13:2:
+//	../../../go/pkg/mod/github.com/go-zpkg/bottle@v0.44.0/hcl.go:13:2:
 //	  reading gopkg.in/yaml.v3/go.mod at revision v3.0.1: git ls-remote ...
 //	  exit status 128:
 //	fatal: unable to access 'https://gopkg.in/yaml.v3/':
 //	  The requested URL returned error: 502
 //
-// The step was `GOPROXY=direct go install github.com/go-pkgx/pkgx@main`, and
+// The step was `GOPROXY=direct go install github.com/go-zpkg/zpkgx@main`, and
 // fourteen sites across eight workflows said exactly that. `direct` was
 // deliberate and the reason was written beside it — "pull current main from
 // GitHub, not a stale proxy cache" — because a lane that builds the fleet's
@@ -26,7 +26,7 @@
 //
 //	GOPROXY=direct                                      -> exit 1, the 502 above
 //	GOPROXY=https://proxy.golang.org,direct             -> exit 0
-//	  GONOPROXY=github.com/go-pkgx/*
+//	  GONOPROXY=github.com/go-zpkg/*
 //
 // Both arms in the same minute, so the difference is the configuration and
 // not the weather.
@@ -47,8 +47,8 @@
 // everything else from the proxy. Proven as a pair, pointing GOPROXY at a dead
 // address so only the direct path can answer:
 //
-//	GOPROXY=http://127.0.0.1:1 GONOPROXY=github.com/go-pkgx/*
-//	  go list -m github.com/go-pkgx/pkgx@main  -> exit 0, v0.16.1
+//	GOPROXY=http://127.0.0.1:1 GONOPROXY=github.com/go-zpkg/*
+//	  go list -m github.com/go-zpkg/zpkgx@main  -> exit 0, v0.16.1
 //	  go list -m gopkg.in/yaml.v3@v3.0.1       -> exit 1, connection refused
 //
 // The first says our modules really do bypass the proxy; the second says the
@@ -56,7 +56,7 @@
 // only the first would have passed for a configuration that bypassed the proxy
 // altogether, which is the status quo under a different name.
 //
-// Note what could NOT be measured: every go-pkgx repository had its main tip
+// Note what could NOT be measured: every go-zpkg repository had its main tip
 // equal to its newest tag that morning, so `@main` resolved to a tag and the
 // proxy and the origin agreed by construction. The dead-proxy pair is here
 // precisely because the natural experiment could not tell the two apart.
@@ -89,7 +89,7 @@ import (
 // exactly this.
 const (
 	WantGOPROXY   = "https://proxy.golang.org,direct"
-	WantGONOPROXY = "github.com/go-pkgx/*"
+	WantGONOPROXY = "github.com/go-zpkg/*"
 )
 
 // remoteModuleRun matches `go install`/`go run` of a module fetched from

@@ -3,7 +3,7 @@
 //
 // # WHY IT EXISTS
 //
-// go-pkgx/pkgx#113 moved nine verbs — ls, search, why, store, browse,
+// go-zpkg/pkgx#113 moved nine verbs — ls, search, why, store, browse,
 // catalog, env, compat, completion — out of `pkgx` and into a second binary,
 // so that the first word after `pkgx` is a PACKAGE again, as it is upstream.
 // `pkgx ls` now runs gnu.org/coreutils' ls.
@@ -110,7 +110,7 @@ func check(path string, stderr io.Writer) int {
 	n := 0
 	for i, line := range strings.Split(string(b), "\n") {
 		for _, m := range pkgxVerb.FindAllStringSubmatch(line, -1) {
-			fmt.Fprintf(stderr, "%s:%d: `pkgx %s` — that verb is pkgs's since go-pkgx/pkgx#113; write `pkgs %s`\n",
+			fmt.Fprintf(stderr, "%s:%d: `pkgx %s` — that verb is pkgs's since go-zpkg/pkgx#113; write `pkgs %s`\n",
 				path, i+1, m[1], m[1])
 			n++
 		}

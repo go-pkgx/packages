@@ -4,7 +4,7 @@
 // ⛔ IT DECIDES WHETHER A BOTTLE CAN BE RENAMED. `bottle.InstallFor` installs
 // a bottle under the directory the bottle CARRIES rather than under the
 // version that was requested, and the reason given is that "absolute paths
-// baked inside it point there". That premise decides go-pkgx/bk#386: if no
+// baked inside it point there". That premise decides go-zpkg/bk#386: if no
 // bottle bakes its own prefix, a rebuild published as `3.3.11_1` can simply be
 // installed under that name; if some do, renaming them is unsafe and the
 // rebuild counter has to be decided before the build instead.
@@ -33,7 +33,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/go-pkgx/bottle"
+	"github.com/go-zpkg/bottle"
 )
 
 var osExit = os.Exit
@@ -153,7 +153,7 @@ func run(args []string, stdout, stderr io.Writer) error {
 			// one cannot see a builder path lacking the package's own directory,
 			// and a path normalised to /build/... no longer contains it at all, so
 			// re-running the default sweep on a fixed bottle would print a vacuous
-			// zero (go-pkgx/bk#387).
+			// zero (go-zpkg/bk#387).
 			hits, err = findNeedle(home, []byte(*needle))
 		default:
 			var component string

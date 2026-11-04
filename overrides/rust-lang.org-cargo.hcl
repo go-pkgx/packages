@@ -20,11 +20,11 @@ edits = [
         "run" = <<EOT
 set -eu
 L=""
-for c in "$${PKGX_DIR:-$HOME/.pkgx}"/gnu.org/gcc/*/lib/gcc/*/*/libgcc.a; do
+for c in "$${ZPKG_DIR:-$HOME/.pkgx}"/gnu.org/gcc/*/lib/gcc/*/*/libgcc.a; do
   if [ -e "$c" ]; then L="$(dirname "$c")"; fi
 done
 if [ -z "$L" ]; then
-  echo "no libgcc.a under $${PKGX_DIR:-$HOME/.pkgx}/gnu.org/gcc — is gnu.org/gcc a build dep?" >&2
+  echo "no libgcc.a under $${ZPKG_DIR:-$HOME/.pkgx}/gnu.org/gcc — is gnu.org/gcc a build dep?" >&2
   exit 1
 fi
 export RUSTFLAGS="$${RUSTFLAGS:-} -L$L"
@@ -45,7 +45,7 @@ set -eu
 # newer 3.x is published: the closure stages what the range resolves to,
 # and the binary asks for a directory nobody put there. v3 is the level
 # pkgx maintains for exactly this.
-O="$${PKGX_DIR:-$HOME/.pkgx}/openssl.org/v3"
+O="$${ZPKG_DIR:-$HOME/.pkgx}/openssl.org/v3"
 if [ ! -e "$O/include/openssl/ssl.h" ]; then
   echo "no openssl 3 at $O — is openssl.org ^3 a build dep?" >&2
   exit 1

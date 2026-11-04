@@ -15,7 +15,7 @@ why     = <<-WHY
   as an LC_LOAD_DYLIB entry, so it looks for its own libraries in a build
   machine's home directory and finds them on no other machine. It cannot be
   superseded while its dependency refuses the platform
-  (go-pkgx/packages#417).
+  (go-zpkg/packages#417).
 
   "Increasingly ancient" is the part worth re-reading: that comment is about
   the hardware GitHub used to offer, and this factory's x86-64 lane runs on

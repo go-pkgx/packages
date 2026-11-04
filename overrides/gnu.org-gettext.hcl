@@ -10,7 +10,7 @@ edits = [
     #                      gnu.org/gettext/v1.0/bin/msgmerge
     #
     # named by `bk builder`'s soname census over the staged s390x rootfs
-    # (go-pkgx/bk#276). libgettextlib is the one that matters: msgfmt and its
+    # (go-zpkg/bk#276). libgettextlib is the one that matters: msgfmt and its
     # siblings are on the build path of every recipe with a po/ directory.
     #
     # --without-selinux is gnulib's (m4/selinux-selinux-h.m4, default

@@ -1,6 +1,6 @@
 // Command reduce turns each pantry-overlay entry into what it actually
 // CHANGES, now that the overlay merges over upstream instead of replacing it
-// (go-pkgx/bottle#103).
+// (go-zpkg/bottle#103).
 //
 // Every entry is a full copy of an upstream recipe, taken once so that two or
 // three lines could differ. That is a fork, and a fork drifts: `overlaycheck`

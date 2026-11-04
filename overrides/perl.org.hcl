@@ -36,7 +36,7 @@ why     = "an UNEXPLAINED upper bound on the compiler, `llvm.org: <19`, which no
 # ⛔ AND THE TEST DOES NOT BELONG ON x86-64, for a reason I weighed second.
 # x86-64 has a control — it builds perl today with 18.1.8 — but perl.org IS
 # PUBLISHED there, so forcing a rebuild replaces a production bottle under its
-# existing tag. That is exactly the tag-replacement go-pkgx/packages#393 is
+# existing tag. That is exactly the tag-replacement go-zpkg/packages#393 is
 # open about, and spending a production bottle to answer a question is the
 # wrong trade when a free venue exists.
 #
@@ -60,7 +60,7 @@ why     = "an UNEXPLAINED upper bound on the compiler, `llvm.org: <19`, which no
 # the `why` above and the bound comes back as `<19` WITH its reason, which is
 # strictly better than what is there now.
 #
-# Refs go-pkgx/packages#316.
+# Refs go-zpkg/packages#316.
 
 merge {
   build {

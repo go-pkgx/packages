@@ -23,7 +23,7 @@ edits = [
     # clang 21, which is NOT the llvm.org 23.1.2 this factory compiles with.
     # One measurement on a different compiler is not a licence to change what
     # the other two architectures are given: that is exactly the shape of the
-    # mistake that took the seed lane down this morning (go-pkgx/pkgx#60),
+    # mistake that took the seed lane down this morning (go-zpkg/pkgx#60),
     # where a fix for one lane broke a working one.
     #
     # `{{hw.target}}` is the BUILD TARGET's triple, so a cross build is keyed

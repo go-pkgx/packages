@@ -34,7 +34,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/go-pkgx/bottle"
+	"github.com/go-zpkg/bottle"
 )
 
 // maxMember bounds what one archive member may be read into memory. A bottle

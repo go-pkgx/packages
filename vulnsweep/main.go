@@ -10,7 +10,7 @@
 // into a file freezes while the population grows. Adding the four by hand
 // closed that day's gap and left the mechanism in place.
 //
-// `pkgs catalog platforms` (go-pkgx/pkgx#119) is the half that makes the list
+// `pkgs catalog platforms` (go-zpkg/pkgx#119) is the half that makes the list
 // derivable; this is the half that uses it. A seventh platform is scanned the
 // day it is published, by nobody's decision.
 //
@@ -64,7 +64,7 @@ func run(argv []string, stdout, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	pantry := fs.String("pantry", "", "the pantry checkout bk reads recipes from (required)")
 	advisories := fs.String("advisories", "advisories", "the advisory tree decisions are recorded in")
-	store := fs.String("store", "", "PKGX_DIR the catalogues are fetched into (required)")
+	store := fs.String("store", "", "ZPKG_DIR the catalogues are fetched into (required)")
 	if err := fs.Parse(argv); err != nil {
 		return 2
 	}

@@ -3,7 +3,7 @@ package main
 // `-absolute` asserts a PROPERTY instead of searching for a remembered string.
 //
 // ⛔⛔ A SPELLED NEEDLE CERTIFIES THE LANE IT WAS WRITTEN FOR AND NO OTHER.
-// The check agreed for go-pkgx/bk#387 was
+// The check agreed for go-zpkg/bk#387 was
 // `-needle /Users/runner/Library/Caches/brewkit`, which is right on darwin.
 // Run on linux it returns clean on every bottle whatever they contain,
 // because that lane builds with `HOME=/github/home` and the string was never

@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"github.com/go-pkgx/bk/logical"
+	"github.com/go-zpkg/zbk/logical"
 	"os"
 	"path/filepath"
 	"strings"

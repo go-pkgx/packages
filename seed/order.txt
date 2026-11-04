@@ -58,13 +58,13 @@ gnu.org/automake
 gnu.org/tar
 kernel.org/linux-headers@~7.2
 # gnu.org/libidn2 exists in the closure only through OUR override of
-# rsync.samba.org. `bk closure --build` could not see it until go-pkgx/bk#232:
+# rsync.samba.org. `bk closure --build` could not see it until go-zpkg/bk#232:
 # with --overlay it read the pantry half UNOVERRIDDEN, and rsync is one of the
 # six projects the overlay does not carry. Measured 2026-09-28 on a fresh
 # pantry: 77 projects with the fix, 76 without, and this is the one.
 gnu.org/libidn2
 rsync.samba.org
-# llvm.org BEFORE rust: `bk closure --check-order` (go-pkgx/bk) found this
+# llvm.org BEFORE rust: `bk closure --check-order` (go-zpkg/bk) found this
 # as an edge out of order OUTSIDE any cycle — llvm sits in the 27-project
 # component, rust/cargo/semverator in their own, so nothing forced it. It is
 # the seed failure of 2026-09-28: `cargo: resolve deps: GET

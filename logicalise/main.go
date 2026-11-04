@@ -5,7 +5,7 @@
 // edits a neighbouring line, and it says "does not apply" whether the thing it
 // edits has gone or upstream has already done the job. The logical form says
 // WHAT changes, addresses it by key rather than by line, and tells those two
-// apart. See go-pkgx/bk's `logical` package for the measurement that chose its
+// apart. See go-zpkg/bk's `logical` package for the measurement that chose its
 // verbs.
 //
 // The conversion is mechanical, so the only question worth asking is whether
@@ -32,8 +32,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/go-pkgx/bk/logical"
-	"github.com/go-pkgx/bk/overrides"
+	"github.com/go-zpkg/zbk/logical"
+	"github.com/go-zpkg/zbk/overrides"
 	"gopkg.in/yaml.v3"
 )
 

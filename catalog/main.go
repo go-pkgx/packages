@@ -20,7 +20,7 @@
 // to stdout — the same shape the viewer and the no-JS list.html consume, minus
 // the publish date (anonymous ghcr exposes no created_at without the org API).
 //
-//	GITHUB_REPOSITORY_OWNER=go-pkgx catalog > registry.json
+//	GITHUB_REPOSITORY_OWNER=go-zpkg catalog > registry.json
 package main
 
 import (
@@ -72,7 +72,7 @@ func run(stdout, stderr io.Writer, getenv func(string) string, d doer, readFile 
 	c := &client{
 		doer:     d,
 		ghcrBase: envOr(getenv, "GHCR_URL", "https://ghcr.io"),
-		owner:    envOr(getenv, "GITHUB_REPOSITORY_OWNER", "go-pkgx"),
+		owner:    envOr(getenv, "GITHUB_REPOSITORY_OWNER", "go-zpkg"),
 		stderr:   stderr,
 	}
 
@@ -566,7 +566,7 @@ func semverTag(t string) bool {
 		return false
 	}
 	// `<ver>--<os>-<arch>` names one platform's manifest, not a version.
-	// go-pkgx/bottle#37 started writing those so a version's index could be
+	// go-zpkg/bottle#37 started writing those so a version's index could be
 	// COMPOSED from uncontended tags instead of merged into blind — and the
 	// first thing it did here was make llvm.org's newest "version"
 	// 19.1.0--darwin-aarch64. Every count this tool feeds would have inflated

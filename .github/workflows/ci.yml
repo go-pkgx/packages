@@ -21,7 +21,7 @@ env:
   # having built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 
 jobs:
   # ⛔ NOTHING HERE HAD EVER ASKED — about OUR OWN CODE. vulnscan.yml asks a
@@ -93,7 +93,7 @@ jobs:
 
       # ⛔ NO WORKFLOW ASKS pkgx FOR A VERB THAT IS pkgs'S.
       #
-      # go-pkgx/pkgx#113 moved nine verbs to a second binary. The sweep
+      # go-zpkg/pkgx#113 moved nine verbs to a second binary. The sweep
       # missed this repository, and vulnscan.yml went on running `pkgx
       # catalog update` — caught five hours later by pkgx's own refusal, on
       # the first scheduled run, in a job whose value is being believed when
@@ -139,7 +139,7 @@ jobs:
       # find its corpus reports the same "no problems" as one that read it all.
       - name: every advisory record is usable
         run: |
-          go run github.com/go-pkgx/bk/cmd/bk@main advisories \
+          go run github.com/go-zpkg/zbk/cmd/zbk@main advisories \
             --dir advisories --list
 
       # A FRESH clone every time, because a patch already applied does not
@@ -150,7 +150,7 @@ jobs:
           git clone --depth 1 https://github.com/pkgxdev/pantry "$RUNNER_TEMP/pantry"
           # GONOPROXY (workflow env:): a proxy-cached `@main` can be an older
           # bk, and "unknown subcommand" is a confusing way to learn that.
-          go run github.com/go-pkgx/bk/cmd/bk@main overrides \
+          go run github.com/go-zpkg/zbk/cmd/zbk@main overrides \
             --dir overrides --pantry "$RUNNER_TEMP/pantry"
 
       # The step above leaves a pantry with every override applied — which is
@@ -172,7 +172,7 @@ jobs:
       # `..build.script: 15 items became 14`, because the comparison returned
       # the first difference in sorted key order and `build` sorts first.
       # The overrides are being moved from unified diffs to the logical HCL
-      # form (go-pkgx/bk#226): a diff says WHERE lines are and stops applying
+      # form (go-zpkg/bk#226): a diff says WHERE lines are and stops applying
       # when upstream edits a neighbour, while an override that says WHAT it
       # changes is addressed by key. 3 of 231 diffs had silently stopped
       # applying on 2026-09-24, and one that `git apply --check` accepted was
@@ -184,7 +184,7 @@ jobs:
       # out, READS THEM BACK, applies them to a pristine recipe, and demands
       # the same document the patch produced — and demands that applying them
       # TWICE changes nothing, which is the property 24 operations across 22
-      # projects failed before go-pkgx/bk#229.
+      # projects failed before go-zpkg/bk#229.
       #
       # It clones its own pantry rather than reusing the one above, which by
       # this point has been patched.
@@ -192,7 +192,7 @@ jobs:
         run: go run ./logicalise
 
       # A project upstream does not carry lives in ONE place now: the overlay,
-      # which bk builds from and a consumer resolves from (go-pkgx/bk#231). It
+      # which bk builds from and a consumer resolves from (go-zpkg/bk#231). It
       # used to live in two — a patch that created the recipe, and the overlay
       # — and four such projects were published, signed and unreachable to any
       # consumer because only the build half existed. Nothing said so: the
@@ -225,7 +225,7 @@ jobs:
       - name: the half a consumer resolves from agrees
         run: |
           rm -rf "$RUNNER_TEMP/overlay"
-          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay "$RUNNER_TEMP/overlay"
+          git clone --depth 1 https://github.com/go-zpkg/pantry-overlay "$RUNNER_TEMP/overlay"
           # --overrides, because the pantry on disk is no longer the recipe
           # the factory builds: the logical overrides are applied as a recipe
           # is READ and change nothing on the filesystem. Without it this
@@ -271,7 +271,7 @@ jobs:
 
       - name: the seed order honours every edge outside a cycle
         run: |
-          go run github.com/go-pkgx/bk/cmd/bk@main closure --build \
+          go run github.com/go-zpkg/zbk/cmd/zbk@main closure --build \
             --check-order seed/order.txt \
             --pantry "$RUNNER_TEMP/pantry" \
             --overlay "$RUNNER_TEMP/overlay" \

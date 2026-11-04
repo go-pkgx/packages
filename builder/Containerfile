@@ -14,7 +14,7 @@
 # Build it with the three binaries in the context:
 #
 #   for r in bk pkgm pkgx; do
-#     GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o builder/$r github.com/go-pkgx/$r/...
+#     GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o builder/$r github.com/go-zpkg/$r/...
 #   done
 #   docker build -f builder/Containerfile -t bk-builder builder
 #
@@ -24,21 +24,21 @@
 #     factory --platform linux/aarch64 --pantry /pantry --recipes lz4.org \
 #             --libc pkgx --bottles /out/dist --to oci://…
 FROM scratch
-ENV PKGX_DIR=/pkgx
+ENV ZPKG_DIR=/pkgx
 ENV HOME=/root
-# PKGX_DIST can point at a local pull-through cache so a rebuild does not fetch
+# ZPKG_DIST can point at a local pull-through cache so a rebuild does not fetch
 # gigabytes from ghcr again (see README): build with
-#   --build-arg DIST=oci://http://host.docker.internal:5111/go-pkgx/packages
+#   --build-arg DIST=oci://http://host.docker.internal:5111/go-zpkg/packages
 # Signature verification stays ON through the cache — it proxies the cosign
 # referrer as well as the bottle.
 ARG DIST=oci://ghcr.io/go-pkgx/packages
-ENV PKGX_DIST=$DIST
+ENV ZPKG_DIST=$DIST
 # Recipes are read from the upstream pantry, where a few still pin constraints
 # no published bottle satisfies (curl.se asks for openssl ^1.1; openssl is 3.x
 # and 4.x). overrides/ fixes those for BUILDS, but installing reads the pantry
 # directly — so the image consults our small corrected overlay first, exactly as
 # the from-scratch panel does.
-ENV PKGX_PANTRY_OVERLAY=https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+ENV ZPKG_PANTRY_OVERLAY=https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects
 
 COPY pkgm /pkgm
 COPY pkgx /usr/local/bin/pkgx

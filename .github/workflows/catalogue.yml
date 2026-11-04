@@ -36,7 +36,7 @@ env:
   # having built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 
 jobs:
   publish:
@@ -60,7 +60,7 @@ jobs:
           # other means:
           #
           #   $ pkgs catalog update --platform wasip1/wasm
-          #   no bottle for go-pkgx.dev/catalog v1 (wasip1/wasm): platform not in index
+          #   no bottle for go-zpkg.github.io/catalog v1 (wasip1/wasm): platform not in index
           #
           # pkgx itself has supported the platform throughout -- platformKeys,
           # the host slug, `bin/<name>.wasm` resolution and the OCI spelling
@@ -80,13 +80,13 @@ jobs:
       # that code.
       - name: install bk
         run: |
-          go install github.com/go-pkgx/bk/cmd/bk@main
+          go install github.com/go-zpkg/zbk/cmd/zbk@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: clone pantry and overlay
         run: |
           git clone --depth 1 https://github.com/pkgxdev/pantry
-          git clone --depth 1 https://github.com/go-pkgx/pantry-overlay overlay
+          git clone --depth 1 https://github.com/go-zpkg/pantry-overlay overlay
           echo "pantry  $(git -C pantry rev-parse HEAD)"
           echo "overlay $(git -C overlay rev-parse HEAD)"
 
@@ -99,7 +99,7 @@ jobs:
       # you" instead of naming it bare, and it is paid here — once a week,
       # in CI — rather than on the machine of everyone who presses <TAB>.
       #
-      # SIGNING_KEY, because a client with PKGX_VERIFY on, the default,
+      # SIGNING_KEY, because a client with ZPKG_VERIFY on, the default,
       # refuses an unsigned catalogue.
       - name: publish the catalogue for ${{ matrix.platform }}
         env:
@@ -115,7 +115,7 @@ jobs:
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
         run: |
           set -eu
-          bk catalog \
+          zbk catalog \
             --pantry pantry \
             --overlay overlay \
             --overrides overrides \

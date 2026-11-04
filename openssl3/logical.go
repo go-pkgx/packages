@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/go-pkgx/bk/logical"
+	"github.com/go-zpkg/zbk/logical"
 	"gopkg.in/yaml.v3"
 )
 

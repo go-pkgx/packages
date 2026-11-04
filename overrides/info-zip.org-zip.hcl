@@ -30,7 +30,7 @@ edits = [
       #
       #   unix/osdep.h:30:10: fatal error: sys/types.h: No such file or directory
       #
-      # the same shape as go-pkgx/bk#296, where a test sandbox lost the
+      # the same shape as go-zpkg/bk#296, where a test sandbox lost the
       # sysroot by naming a compiler instead of using the one bk had set.
       #
       # The fallback keeps the DISTRIBUTION path byte-for-byte what it was:
@@ -71,10 +71,10 @@ edits = [
     # It matters more than the count suggests. bk DOES verify a source
     # checksum when the recipe gives one, but 1 recipe of 904 gives one --
     # openssl.org, whose `sha` is a sibling `.sha256` on the SAME host, so it
-    # catches corruption and not substitution (go-pkgx/bk#282). For everything
+    # catches corruption and not substitution (go-zpkg/bk#282). For everything
     # else TLS is the only control there is, and here there was none at all.
     # The tarball is then extracted as root inside the chroot, and
-    # go-pkgx/bottle#107 is a traversal in that extractor.
+    # go-zpkg/bottle#107 is a traversal in that extractor.
     #
     # Measured before changing it, because a URL change that also changes the
     # content is a different defect: the same path over http and over https

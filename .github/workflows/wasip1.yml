@@ -26,8 +26,11 @@ env:
   # Deps from the module proxy, OUR modules straight from GitHub; kept uniform
   # across the workflows by ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
-  BK: github.com/go-pkgx/bk/cmd/bk@v0.35.0
+  GONOPROXY: github.com/go-zpkg/*
+  # ⛔ v0.59.0 is the first tag declaring `github.com/go-zpkg/zbk`. Go verifies
+  # the path a module DECLARES, so every earlier tag — v0.35.0 among them — is
+  # unfetchable under the new name.
+  BK: github.com/go-zpkg/zbk/cmd/zbk@v0.59.0
 
 jobs:
   build:
@@ -135,7 +138,7 @@ jobs:
           # Not best-effort, unlike windows.yml: the pilot exists to prove the
           # path, so a publish failure fails the job.
           SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
-            bk publish --to oci://ghcr.io/go-pkgx/packages --project "$slug" \
+            zbk publish --to oci://ghcr.io/go-pkgx/packages --project "$slug" \
               --version "$ver" --platform wasip1/wasm "${SIGN_ARGS[@]}" \
               --advisories "$GITHUB_WORKSPACE/advisories" \
               "out/v$ver.tar.gz"

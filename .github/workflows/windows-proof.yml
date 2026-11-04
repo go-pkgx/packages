@@ -1,7 +1,7 @@
 # End-to-end proof that pkgx Windows packages work, entirely in our own infra:
 # cross-build a REAL tool (sqlite3) into a pkgx Windows package with the same
 # llvm-mingw toolchain the pantry ships (llvm.org/mingw-w64), then FETCH + RUN it
-# on a real windows-latest runner via go-pkgx/pkgx. Self-contained: the dist is
+# on a real windows-latest runner via go-zpkg/pkgx. Self-contained: the dist is
 # served locally over http on the Windows runner, so this does not touch the
 # repo's GitHub Pages site (that is owned by windows.yml / windows-rust.yml).
 #
@@ -68,7 +68,7 @@ jobs:
       GOWORK: "off"
     steps:
       - uses: actions/checkout@v7
-        with: { repository: go-pkgx/pkgx, path: pkgx }
+        with: { repository: go-zpkg/pkgx, path: pkgx }
       - uses: actions/setup-go@v7
         with: { go-version: '1.27.3' }
       - name: Build pkgx.exe
@@ -82,9 +82,9 @@ jobs:
         run: |
           $srv = Start-Process python -PassThru -ArgumentList '-m','http.server','8213' -WorkingDirectory (Resolve-Path dist)
           Start-Sleep -Seconds 3
-          $env:PKGX_DIST   = "http://127.0.0.1:8213"
-          $env:PKGX_PANTRY = "http://127.0.0.1:8213"
-          $env:PKGX_DIR    = "$PWD\store"
+          $env:ZPKG_DIST   = "http://127.0.0.1:8213"
+          $env:ZPKG_PANTRY = "http://127.0.0.1:8213"
+          $env:ZPKG_DIR    = "$PWD\store"
           try {
             $out = (& .\pkgx\pkgx.exe sqlite.org ':memory:' "select 'win-sqlite '|| sqlite_version();" 2>&1 | Out-String).Trim()
             Write-Host "pkgx.exe sqlite.org => $out"

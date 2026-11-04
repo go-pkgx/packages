@@ -13,7 +13,7 @@ name: sovereign build
 #     C23 diagnostic from the runner's GCC — not from the llvm.org bottle we
 #     ship and intend to compile with.
 #
-# Both are the same defect wearing different clothes. go-pkgx owns its build and
+# Both are the same defect wearing different clothes. go-zpkg owns its build and
 # run environment and manages its own libc versions; this is what that looks
 # like as a job.
 
@@ -48,7 +48,7 @@ env:
   # having built nothing. Measured, and kept uniform across the workflows, by
   # ./goproxycheck.
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
+  GONOPROXY: github.com/go-zpkg/*
 
 jobs:
   sovereign:
@@ -71,7 +71,7 @@ jobs:
       - name: build bk, pkgx and pkgm (static)
         run: |
           for m in bk/cmd/bk pkgx pkgm; do
-            CGO_ENABLED=0 go install "github.com/go-pkgx/$m@main"
+            CGO_ENABLED=0 go install "github.com/go-zpkg/$m@main"
           done
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
@@ -89,26 +89,26 @@ jobs:
       # zot proxies the cosign referrer along with the bottle.
       - name: point at the pull-through cache if it answers
         run: |
-          # The cache accelerates BLOB pulls only. It must not become PKGX_DIST:
+          # The cache accelerates BLOB pulls only. It must not become ZPKG_DIST:
           # zot cannot serve the tag listing of a repository it has not synced
           # yet, so resolution falls back to the upstream dist, takes a version
           # string from there, and asks the cache for a tag our registry does not
           # use — `gnu.org/bash` is published as `5.3`, not `5.3.0`:
           #   install gnu.org/bash 5.3.0: …/gnu.org/bash:5.3.0: not found
-          # Listing stays on ghcr; PKGX_CACHE is consulted for the bottle itself.
-          echo "PKGX_DIST=oci://ghcr.io/go-pkgx/packages" >> "$GITHUB_ENV"
+          # Listing stays on ghcr; ZPKG_CACHE is consulted for the bottle itself.
+          echo "ZPKG_DIST=oci://ghcr.io/go-pkgx/packages" >> "$GITHUB_ENV"
           if curl -fsS -m 3 http://10.46.81.1:5111/v2/ >/dev/null 2>&1; then
             echo "pull-through cache answers — bottles will be pulled through it"
-            echo "PKGX_CACHE=oci://http://10.46.81.1:5111/go-pkgx/packages" >> "$GITHUB_ENV"
+            echo "ZPKG_CACHE=oci://http://10.46.81.1:5111/go-zpkg/packages" >> "$GITHUB_ENV"
           else
             echo "no cache on this runner — bottles come straight from ghcr"
           fi
 
       - name: stage the sovereign rootfs
         env:
-          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+          ZPKG_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects
         run: |
-          bk builder \
+          zbk builder \
             --out "$RUNNER_TEMP/rootfs" \
             --platform "$PLATFORM" \
             --toolchain builder/toolchain.txt \
@@ -135,13 +135,13 @@ jobs:
           OCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SIGNING_KEY: ${{ secrets.BOTTLE_SIGNING_KEY }}
           # builder/Containerfile's ENV lines, not just its ENTRYPOINT. Without
-          # PKGX_DIR the chroot inherits pkgx's $HOME/.pkgx default, which
+          # ZPKG_DIR the chroot inherits pkgx's $HOME/.pkgx default, which
           # (a) re-downloads the toolchain the staged tree already holds and
           # (b) bakes PT_INTERP=/root/.pkgx/... into the bottle — an absolute
           # path no consumer has. Measured on the first bottle this job built.
-          PKGX_DIR: /pkgx
+          ZPKG_DIR: /pkgx
           HOME: /root
-          PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+          ZPKG_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects
           # Our aarch64 pool is emulated by construction — the host is amd64 —
           # and qemu-user fakes uname AND /proc/cpuinfo, so nothing inside the
           # container can tell. The workflow knows, so it says.

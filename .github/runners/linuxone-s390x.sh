@@ -26,7 +26,7 @@
 #     ./linuxone-s390x.sh < token.txt     # or feed it on stdin
 #
 # Get one from  Settings -> Actions -> Runners -> New self-hosted runner  on
-# github.com/go-pkgx/packages. It expires in an hour, which is why it is not
+# github.com/go-zpkg/packages. It expires in an hour, which is why it is not
 # stored anywhere.
 #
 # # What it does NOT do
@@ -82,7 +82,7 @@
 # drop-in rather than in files the next `svc.sh install` would rewrite.
 set -euo pipefail
 
-REPO="${REPO:-https://github.com/go-pkgx/packages}"
+REPO="${REPO:-https://github.com/go-zpkg/packages}"
 LABELS="${LABELS:-self-hosted,linux,s390x}"
 NAME="${NAME:-linuxone-s390x}"  # what is registered today; build.yml selects on the LABELS, not this
 WORKDIR="${WORKDIR:-$HOME/actions-runner}"
@@ -155,10 +155,10 @@ systemctl is-active "$unit"
 
 echo
 echo "== verify, from anywhere"
-echo "    gh api repos/go-pkgx/packages/actions/runners -q '.runners[].name'"
+echo "    gh api repos/go-zpkg/packages/actions/runners -q '.runners[].name'"
 echo
 echo "== first build, once it answers"
-echo "    gh workflow run build --repo go-pkgx/packages \\"
+echo "    gh workflow run build --repo go-zpkg/packages \\"
 echo "      -f arch=s390x -f sovereign=0 -f recipes='gnu.org/make'"
 echo
 echo "sovereign=0 on purpose: the FROM-scratch rootfs needs glibc, llvm and"

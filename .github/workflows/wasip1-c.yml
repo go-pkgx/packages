@@ -32,9 +32,9 @@ on:
 permissions: { contents: read, packages: write }
 env:
   GOPROXY: https://proxy.golang.org,direct
-  GONOPROXY: github.com/go-pkgx/*
-  PKGX_DIST: oci://ghcr.io/go-pkgx/packages
-  PKGX_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-pkgx/pantry-overlay/main/projects
+  GONOPROXY: github.com/go-zpkg/*
+  ZPKG_DIST: oci://ghcr.io/go-pkgx/packages
+  ZPKG_PANTRY_OVERLAY: https://raw.githubusercontent.com/go-zpkg/pantry-overlay/main/projects
 
 jobs:
   build:
@@ -103,7 +103,7 @@ jobs:
       - name: build bk, pkgx and pkgm (static)
         # ⛔ bk MUST BE >= v0.50.0 HERE, and that is a hard requirement rather
         # than hygiene: this lane's recipes are `package.hcl`, and `bk build
-        # --recipe` read every path as YAML until v0.50.0 (go-pkgx/bk#389).
+        # --recipe` read every path as YAML until v0.50.0 (go-zpkg/bk#389).
         # An older pin does not warn — it fails with a yaml unmarshal error
         # about the first attribute of a perfectly good HCL file.
         #
@@ -111,15 +111,23 @@ jobs:
         # factories install from source at `main` on purpose, but a wasm
         # module built by an unreviewed bk is not something to discover after
         # the fact.
+        #
+        # ⛔ THE PIN MOVED TO v0.59.0 BECAUSE THE OLD ONE IS UNFETCHABLE, NOT
+        # BECAUSE ANYTHING NEEDED A NEWER FACTORY. Go verifies the path a
+        # module DECLARES, and v0.54.0 declares `github.com/go-pkgx/bk`:
+        # required under the new name it fails outright, not subtly. v0.59.0
+        # is the first tag that declares `github.com/go-zpkg/zbk`, so it is
+        # the floor for every pin in this repository — the >= v0.50.0
+        # requirement above is still satisfied, by a wide margin.
         run: |
-          CGO_ENABLED=0 go install github.com/go-pkgx/bk/cmd/bk@v0.54.0
-          CGO_ENABLED=0 go install github.com/go-pkgx/pkgx@main
-          CGO_ENABLED=0 go install github.com/go-pkgx/pkgm@main
+          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.59.0
+          CGO_ENABLED=0 go install github.com/go-zpkg/zpkgx@main
+          CGO_ENABLED=0 go install github.com/go-zpkg/zpkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: stage the sovereign rootfs
         run: |
           sudo rm -rf "$RUNNER_TEMP/rootfs"
-          bk builder \
+          zbk builder \
             --out "$RUNNER_TEMP/rootfs" \
             --platform "${{ matrix.platform }}" \
             --toolchain builder/toolchain.txt \
@@ -168,7 +176,7 @@ jobs:
       # It does not FAIL on a difference yet, because the two values live in
       # different jobs and comparing them needs an artefact round-trip. That is
       # the next step and it is worth taking: a difference here is a
-      # non-reproducible build, and go-pkgx/packages#393 is what one looks like
+      # non-reproducible build, and go-zpkg/packages#393 is what one looks like
       # when nobody is watching.
       - name: the module's digest, for comparison with the other host
         run: |
@@ -176,7 +184,7 @@ jobs:
           echo "digest ${{ matrix.slug }} ${{ matrix.version }} built on ${{ matrix.platform }}:"
           sha256sum "$mod"
 
-      # ⛔ ONE TAG, ONE PUBLISHER. go-pkgx/packages#393: both host jobs ran this
+      # ⛔ ONE TAG, ONE PUBLISHER. go-zpkg/packages#393: both host jobs ran this
       # step for the same `(project, version, platform)`, so the tag was written
       # twice and its content was whichever job finished last. For zlib.net,
       # lua.org and sqlite.org the two hosts produce identical wasm, so the
