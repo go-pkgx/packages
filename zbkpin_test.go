@@ -37,7 +37,34 @@ import (
 // ⛔ A REPEATED LESSON BECOMES A GATE, NOT A COMMENT. The comments beside
 // those pins were already accurate and already explained the floor; being
 // right in prose is what let them stay wrong in fact.
-const zbkIdentityFloor = "v0.64.0"
+//
+// ⛔⛔ THE FLOOR IS "WHAT A PUBLISHING LANE MUST BE ABLE TO DO", NOT "WHEN THE
+// HASH APPEARED". It moved to v0.65.0 for a reason that is not about
+// identity at all: from that tag the factory REFUSES to publish bytes that
+// differ from what a hashed tag already holds. A lane pinned at v0.64.0
+// computes the right identity and will still overwrite an address, rewriting
+// what every existing lock, install and signature refers to — the exact
+// failure the hashed layout was introduced to make impossible, through the
+// one door the hash does not cover (go-zpkg/zbk#416).
+//
+// So this constant rises whenever a zbk release adds something a publishing
+// lane must not be without. It is not a "latest" check and must never become
+// one: a lane pinned behind for a reason of its own is fine until it is
+// behind THIS.
+const zbkIdentityFloor = "v0.65.0"
+
+// zbkFloorReason says what THIS floor buys, and moves with it.
+//
+// ⛔⛔ A FIXED SENTENCE WOULD HAVE LIED THE FIRST TIME THE FLOOR MOVED. The
+// message used to read "a bottle built by it carries no usable build
+// identity", which was exactly right while the floor was v0.64.0 and became
+// false the moment it was v0.65.0 — a lane at v0.64.0 computes a perfectly
+// good identity and simply will not refuse to overwrite one. A failure that
+// names the wrong cause sends the reader to fix the wrong thing, and it reads
+// as authoritative because it came from a gate.
+const zbkFloorReason = "from v0.65.0 the factory refuses to publish bytes that differ from " +
+	"what a hashed tag already holds, so a lane below it can still overwrite an address " +
+	"(go-zpkg/zbk#416)"
 
 // zbkPinRE matches an install or run of our factory at an explicit version.
 // `@main` is deliberately NOT matched: this repository runs most lanes from
@@ -75,8 +102,7 @@ func TestEveryPinnedFactoryCanRecordABuildIdentity(t *testing.T) {
 				continue
 			}
 			if semver.Compare(got, zbkIdentityFloor) < 0 {
-				t.Errorf("%s pins zbk at %s, below %s: a bottle built by it carries no usable build identity, "+
-					"and `zpkgs builds` can only report it as \"nothing recorded\"", path, got, zbkIdentityFloor)
+				t.Errorf("%s pins zbk at %s, below %s — %s", path, got, zbkIdentityFloor, zbkFloorReason)
 			}
 		}
 	}
@@ -102,6 +128,6 @@ func TestTheModuleDependsOnAFactoryThatRecordsIdentities(t *testing.T) {
 		t.Fatal("go.mod does not require github.com/go-zpkg/zbk — if that is deliberate, this test should go with it")
 	}
 	if semver.Compare(m[1], zbkIdentityFloor) < 0 {
-		t.Errorf("go.mod requires zbk %s, below %s", m[1], zbkIdentityFloor)
+		t.Errorf("go.mod requires zbk %s, below %s — %s", m[1], zbkIdentityFloor, zbkFloorReason)
 	}
 }
