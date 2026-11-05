@@ -1,6 +1,6 @@
 # wasip1/wasm package factory (Go) — cross-builds pure-Go pantry projects to a
 # WASI preview-1 module and publishes them to the signed OCI registry
-# ghcr.io/go-pkgx/packages with OCI platform os=wasip1, architecture=wasm (the
+# ghcr.io/go-zpkg/packages with OCI platform os=wasip1, architecture=wasm (the
 # Docker+Wasm / CNCF wasm-oci-artifact spelling; bottle/oci.go passes the arch
 # `wasm` through unchanged). Consumer: an in-browser container engine.
 #
@@ -153,8 +153,29 @@ jobs:
           fi
           # Not best-effort, unlike windows.yml: the pilot exists to prove the
           # path, so a publish failure fails the job.
+          #
+          # ⛔⛔ THE DESTINATION IS go-zpkg, AND THAT IS WHY THIS LANE CAN
+          # PUBLISH AT ALL. Container packages are owned by an ORGANISATION
+          # and did not follow the repository transfer: pushing to
+          # ghcr.io/go-pkgx from a workflow running in go-zpkg gets
+          #
+          #   403 denied: permission_denied: The requested installation does
+          #   not exist
+          #
+          # — the token is valid, the destination exists, and GITHUB_TOKEN has
+          # no installation on the destination's owner. Every one of this
+          # lane's 30 jobs failed that way on 2026-11-05, after building and
+          # smoke-testing cleanly (packages#426).
+          #
+          # ⛔ AND THE NEW LOCATION IS BEING FILLED BY REBUILDING, NOT BY
+          # COPYING. Nothing in go-pkgx carries a build identity — it predates
+          # them — and copying identity-less artefacts into the new home would
+          # move the problem rather than leave it behind. Clients still read
+          # go-pkgx (bottle.DistBase) until the new one carries enough to be
+          # worth pointing them at; that switch is a separate, deliberate step
+          # and has a gate on it.
           SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
-            zbk publish --to oci://ghcr.io/go-pkgx/packages --project "$slug" \
+            zbk publish --to oci://ghcr.io/go-zpkg/packages --project "$slug" \
               --version "$ver" --platform wasip1/wasm "${SIGN_ARGS[@]}" \
               --advisories "$GITHUB_WORKSPACE/advisories" \
               "out/v$ver.tar.gz"
