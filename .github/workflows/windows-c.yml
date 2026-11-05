@@ -56,12 +56,19 @@ jobs:
           # windows) the shim reduced `x86_64-w64-mingw32-gcc` to a bare `gcc`
           # that llvm-mingw does not ship. go-zpkg/bk#405.
           #
-          # ⛔ v0.59.0 now, and not because anything here needed a newer
-          # factory: Go verifies the path a module DECLARES, and v0.58.0
+          # ⛔ v0.59.0 was the floor, and not because anything here needed a
+          # newer factory: Go verifies the path a module DECLARES, and v0.58.0
           # declares `github.com/go-pkgx/bk`. v0.59.0 is the first tag
-          # declaring `github.com/go-zpkg/zbk`, so it is the floor for every
-          # pin in this repository. The #405 requirement above still holds.
-          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.59.0
+          # declaring `github.com/go-zpkg/zbk`. The #405 requirement above
+          # still holds.
+          #
+          # ⛔⛔ v0.64.0 NOW, AND THIS TIME A FEATURE DOES REQUIRE IT. Builds
+          # carry an identity only from v0.62.0, that identity only became a
+          # real Merkle hash in v0.63.0, and v0.64.0 puts the signer's key id
+          # on the signature referrer. A lane left at v0.59.0 keeps publishing
+          # bottles with no identity, which `zpkgs builds` can only report as
+          # "nothing recorded".
+          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.64.0
           CGO_ENABLED=0 go install github.com/go-zpkg/zpkgx@main
           CGO_ENABLED=0 go install github.com/go-zpkg/zpkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

@@ -3,8 +3,8 @@ module github.com/go-zpkg/packages
 go 1.27.3
 
 require (
-	github.com/go-zpkg/bottle v0.68.0
-	github.com/go-zpkg/zbk v0.59.0
+	github.com/go-zpkg/bottle v0.82.0
+	github.com/go-zpkg/zbk v0.64.0
 	github.com/hashicorp/hcl/v2 v2.25.0
 	gopkg.in/yaml.v3 v3.0.1
 )

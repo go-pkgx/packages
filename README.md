@@ -17,10 +17,24 @@ Every package is pushed as an OCI artifact carrying, as **OCI referrers**:
   project, and
 - a **cosign-style + minisign signature** ([`go-attest/sign`](https://github.com/go-attest/sign)).
 
-Signatures verify against the pinned public key
-`RWQ+rmH+fXy2iYr+gReQAOQtYWtH0A7UlxcAa2hpr+txNBwGqtpFsR6L`. On install,
-`bottle.VerifySignature` checks it; set **`ZPKG_VERIFY=1`** to fail closed —
-an unsigned or badly-signed package is refused rather than installed.
+Signatures verify against a **trust set** — a set of keys and a threshold of
+them — whose default member is this factory's key
+`RWQ+rmH+fXy2iYr+gReQAOQtYWtH0A7UlxcAa2hpr+txNBwGqtpFsR6L`. Verification is
+fail-closed by default on **every** pull, the store cache included; a package
+with no signature, or too few that verify, is refused rather than installed.
+
+Each signature referrer also carries the signer's **key id**, so a verifier
+holding several trusted keys knows which to try first rather than brute-forcing
+them. It carries no signer *name*: a name on the artefact is written by whoever
+pushed it, and the name a reader sees comes from their own trust set.
+
+Two people who build the same inputs get the **same** bottle — deliberately,
+since an identity that varied with the builder could never be compared — so
+what tells them apart is who signed it. A second builder reproduces the bottle
+and attaches their own signature with `zbk sign`, which pushes no bottle and
+refuses when the rebuild produced different bytes. Setting
+`ZPKG_TRUST_THRESHOLD=2` then means *install nothing a second builder did not
+independently reproduce*.
 
 That covers what leaves. What went *in* was recorded by nothing until
 [`bk`#112](https://github.com/go-zpkg/zbk/issues/112): of 1858 recipes with a
@@ -396,7 +410,7 @@ anonymously, so re-run it rather than trusting the paste.
 <https://go-zpkg.github.io/packages> browses the same data (its deploy is
 dispatched, so the site can lag the registry).
 
-Point the go-zpkg tools at the registry and verify against the pinned key:
+Point the go-zpkg tools at the registry and verify against the trust set:
 
     ZPKG_DIST=oci://ghcr.io/go-pkgx/packages ZPKG_VERIFY=1 pkgm install lz4.org
 
