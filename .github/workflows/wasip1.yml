@@ -29,8 +29,17 @@ env:
   GONOPROXY: github.com/go-zpkg/*
   # ⛔ v0.59.0 is the first tag declaring `github.com/go-zpkg/zbk`. Go verifies
   # the path a module DECLARES, so every earlier tag — v0.35.0 among them — is
-  # unfetchable under the new name.
-  BK: github.com/go-zpkg/zbk/cmd/zbk@v0.59.0
+  # unfetchable under the new name. That is the FLOOR.
+  #
+  # ⛔⛔ AND IT IS NOW v0.64.0, BECAUSE A BOTTLE BUILT BY ANYTHING OLDER HAS NO
+  # IDENTITY. Builds gained a hash in v0.62.0 (v0.61.0 shipped a second,
+  # unverifiable definition of it), the hash became a real Merkle hash in
+  # v0.63.0, and v0.64.0 puts the signer's key id on the signature referrer so
+  # a verifier with several trusted keys can tell which made which signature.
+  # Pinned at v0.59.0, THIS LANE WOULD KEEP PUBLISHING BOTTLES THAT `zpkgs
+  # builds` can only describe as "nothing recorded" — which is exactly the
+  # shape of "a fix in the factory is not a fix in the registry".
+  BK: github.com/go-zpkg/zbk/cmd/zbk@v0.64.0
 
 jobs:
   build:

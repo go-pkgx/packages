@@ -119,8 +119,15 @@ jobs:
         # is the first tag that declares `github.com/go-zpkg/zbk`, so it is
         # the floor for every pin in this repository — the >= v0.50.0
         # requirement above is still satisfied, by a wide margin.
+        #
+        # ⛔⛔ v0.64.0 NOW, AND THIS TIME BECAUSE SOMETHING DOES NEED A NEWER
+        # FACTORY. A bottle built by anything before v0.62.0 carries no build
+        # identity at all; v0.63.0 made that identity a real Merkle hash, and
+        # v0.64.0 stamps the signer's key id on the signature referrer. Left
+        # at v0.59.0 this lane would go on publishing bottles that `zpkgs
+        # builds` can only describe as "nothing recorded".
         run: |
-          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.59.0
+          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.64.0
           CGO_ENABLED=0 go install github.com/go-zpkg/zpkgx@main
           CGO_ENABLED=0 go install github.com/go-zpkg/zpkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
