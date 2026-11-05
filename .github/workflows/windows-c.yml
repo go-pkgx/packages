@@ -68,7 +68,12 @@ jobs:
           # on the signature referrer. A lane left at v0.59.0 keeps publishing
           # bottles with no identity, which `zpkgs builds` can only report as
           # "nothing recorded".
-          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.64.0
+          #
+          # ⛔⛔ v0.65.0 now, for a SECOND reason: from that tag the factory
+          # refuses to publish bytes that differ from what a hashed tag
+          # already holds. A lane at v0.64.0 computes a good identity and will
+          # still overwrite an address (go-zpkg/zbk#416).
+          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.65.0
           CGO_ENABLED=0 go install github.com/go-zpkg/zpkgx@main
           CGO_ENABLED=0 go install github.com/go-zpkg/zpkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"

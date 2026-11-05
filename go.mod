@@ -3,9 +3,10 @@ module github.com/go-zpkg/packages
 go 1.27.3
 
 require (
-	github.com/go-zpkg/bottle v0.82.0
-	github.com/go-zpkg/zbk v0.64.0
+	github.com/go-zpkg/bottle v0.83.0
+	github.com/go-zpkg/zbk v0.65.0
 	github.com/hashicorp/hcl/v2 v2.25.0
+	golang.org/x/mod v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -41,7 +42,6 @@ require (
 	github.com/xanzy/ssh-agent v0.3.3 // indirect
 	github.com/zclconf/go-cty v1.19.0 // indirect
 	golang.org/x/crypto v0.58.0 // indirect
-	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
