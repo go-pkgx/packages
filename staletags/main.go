@@ -200,7 +200,9 @@ func (c client) do(method, u string, out any) error {
 
 var errNotFound = errors.New("not found")
 
-const apiBase = "https://api.github.com"
+// apiBase is a var so the tests can point the client at an httptest server.
+// Nothing else reassigns it.
+var apiBase = "https://api.github.com"
 
 func (c client) versions(org, pkg string) ([]pkgVersion, error) {
 	var all []pkgVersion

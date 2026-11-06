@@ -28,10 +28,13 @@ type options struct {
 	yes      bool
 }
 
+// osExit is a seam: the tests drive main() and must not end the test binary.
+var osExit = os.Exit
+
 func main() {
 	if err := run(os.Args[1:], os.Stdout); err != nil {
 		fmt.Fprintln(os.Stderr, "staletags:", err)
-		os.Exit(1)
+		osExit(1)
 	}
 }
 
@@ -78,16 +81,21 @@ flags:
 			"move -expect deliberately", o.workflow, len(projs), o.expect)
 	}
 
+	// ⛔ EVERY INPUT IS JUDGED BEFORE ANY CREDENTIAL IS READ. This check sat
+	// after tokenFrom, so on a machine with no ~/.github-token — CI, for one —
+	// a mistyped slug was reported as a missing token. The refusal named the
+	// wrong thing, and the test that asserts it says so went red for a reason
+	// that had nothing to do with what it guards.
+	if o.only != "" && !known(projs, o.only) {
+		return fmt.Errorf("-only %q is not in %s — a filter that matches nothing "+
+			"reports a clean registry", o.only, o.workflow)
+	}
+
 	tok, err := tokenFrom(o.token)
 	if err != nil {
 		return err
 	}
 	c := client{token: tok, http: &http.Client{Timeout: 30 * time.Second}}
-
-	if o.only != "" && !known(projs, o.only) {
-		return fmt.Errorf("-only %q is not in %s — a filter that matches nothing "+
-			"reports a clean registry", o.only, o.workflow)
-	}
 
 	var seen, keptN, doomedN, untagged, missing, deleted, skipped int
 	for _, p := range projs {
@@ -148,9 +156,9 @@ flags:
 		fmt.Fprintln(out, "nothing done. Pass -yes to delete; a deleted version cannot be restored.")
 		return nil
 	}
+	// No "planned N, made M" check: the loop either deletes and counts, or
+	// returns the failure. A comparison that cannot come out false is not a
+	// guard, it is an unreachable branch asserting its own arithmetic.
 	fmt.Fprintf(out, "deleted %d version(s)\n", deleted)
-	if deleted != doomedN {
-		return fmt.Errorf("planned %d deletion(s) and made %d", doomedN, deleted)
-	}
 	return nil
 }
