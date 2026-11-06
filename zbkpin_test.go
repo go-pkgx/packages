@@ -51,7 +51,7 @@ import (
 // lane must not be without. It is not a "latest" check and must never become
 // one: a lane pinned behind for a reason of its own is fine until it is
 // behind THIS.
-const zbkIdentityFloor = "v0.67.0"
+const zbkIdentityFloor = "v0.69.0"
 
 // zbkFloorReason says what THIS floor buys, and moves with it.
 //
@@ -63,9 +63,10 @@ const zbkIdentityFloor = "v0.67.0"
 // names the wrong cause sends the reader to fix the wrong thing, and it reads
 // as authoritative because it came from a gate.
 const zbkFloorReason = "from v0.66.0 the factory REFUSES to publish a bottle that is unsigned or " +
-	"unidentified, and v0.67.0 added --spec-recipe-from so a lane with no pantry plan can state its " +
-	"identity instead of hashing one in the shell; below that a lane can still publish an artefact " +
-	"nobody can verify or name (go-zpkg/zbk#416)"
+	"unidentified, v0.67.0 added --spec-recipe-from so a lane with no pantry plan can state its " +
+	"identity instead of hashing one in the shell, and v0.69.0 carries the trust set as it stands " +
+	"after the 2026-11-06 key rotation — a lane below that reports a bottle signed by the retired " +
+	"key as signed by nobody it knows (go-zpkg/zbk#416)"
 
 // zbkPinRE matches an install or run of our factory at an explicit version.
 // `@main` is deliberately NOT matched: this repository runs most lanes from
