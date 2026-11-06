@@ -46,7 +46,7 @@ env:
   # will still overwrite an address, rewriting what every existing lock,
   # install and signature refers to (go-zpkg/zbk#416). zbkpin_test.go holds
   # the floor and the reason together.
-  BK: github.com/go-zpkg/zbk/cmd/zbk@v0.65.0
+  BK: github.com/go-zpkg/zbk/cmd/zbk@v0.67.0
 
 jobs:
   build:
@@ -149,8 +149,38 @@ jobs:
             umask 077; KEYFILE="$(mktemp)"; printf '%s' "$SIGNING_KEY" > "$KEYFILE"
             SIGN_ARGS=(--sign "$KEYFILE"); echo "signing: enabled"
           else
-            echo "signing: disabled (no SIGNING_KEY)"
+            # ⛔ NO FALLBACK. zbk publish refuses an unsigned bottle, so this
+            # branch now FAILS THE JOB instead of shipping thirty artefacts a
+            # fail-closed client cannot install. Red here is the correct
+            # state until BOTTLE_SIGNING_KEY exists in this organisation —
+            # the secret did not follow the repository transfer.
+            echo "signing: disabled (no SIGNING_KEY) — refusing to publish unsigned"
           fi
+          # ⛔⛔ THE IDENTITY IS STATED, BECAUSE THIS LANE HAS NO PLAN TO
+          # DERIVE ONE FROM. `go build` is not a pantry recipe: there is no
+          # resolved closure and no script, so bk cannot compute a Concrete
+          # and the tag would be the bare version — which two different
+          # builds can both claim. Every bottle this lane published before
+          # 2026-11-06 reads `nothing recorded` for exactly that reason.
+          #
+          # What actually decides these bytes is written down and digested by
+          # bk, rather than hashed in the shell:
+          #   - the Go toolchain, as a dependency. It is THE input a CVE
+          #     rebuild changes, and the case the whole identity model exists
+          #     for: a rebuild against a patched Go must not land on the
+          #     first one's address.
+          #   - the module, tag, package and build flags, as the recipe.
+          GOVER="$(go env GOVERSION)"
+          cat > "$RUNNER_TEMP/build.txt" <<EOF
+          module=github.com/${{ matrix.repo }}
+          tag=v$ver
+          package=${{ matrix.pkg }}
+          goos=wasip1
+          goarch=wasm
+          cgo=0
+          flags=-trimpath
+          toolchain=$GOVER
+          EOF
           # Not best-effort, unlike windows.yml: the pilot exists to prove the
           # path, so a publish failure fails the job.
           #
@@ -177,5 +207,7 @@ jobs:
           SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1700000000}" \
             zbk publish --to oci://ghcr.io/go-zpkg/packages --project "$slug" \
               --version "$ver" --platform wasip1/wasm "${SIGN_ARGS[@]}" \
+              --spec-dep "go.dev=${GOVER#go}" \
+              --spec-recipe-from "$RUNNER_TEMP/build.txt" \
               --advisories "$GITHUB_WORKSPACE/advisories" \
               "out/v$ver.tar.gz"

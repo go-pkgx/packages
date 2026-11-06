@@ -73,7 +73,7 @@ jobs:
           # refuses to publish bytes that differ from what a hashed tag
           # already holds. A lane at v0.64.0 computes a good identity and will
           # still overwrite an address (go-zpkg/zbk#416).
-          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.65.0
+          CGO_ENABLED=0 go install github.com/go-zpkg/zbk/cmd/zbk@v0.67.0
           CGO_ENABLED=0 go install github.com/go-zpkg/zpkgx@main
           CGO_ENABLED=0 go install github.com/go-zpkg/zpkgm@main
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
