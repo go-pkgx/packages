@@ -188,7 +188,7 @@ jobs:
       # chunks that had nothing to report.
       - name: keep this chunk's findings
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           # The platform is in the name, so `gh run download -n` can fetch
           # one platform's fourteen and `sonamesweep -merge` cannot mix two
