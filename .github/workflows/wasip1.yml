@@ -46,7 +46,7 @@ env:
   # will still overwrite an address, rewriting what every existing lock,
   # install and signature refers to (go-zpkg/zbk#416). zbkpin_test.go holds
   # the floor and the reason together.
-  BK: github.com/go-zpkg/zbk/cmd/zbk@v0.67.0
+  BK: github.com/go-zpkg/zbk/cmd/zbk@v0.69.0
 
 jobs:
   build:
