@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	github.com/go-zpkg/bottle v0.83.0
-	github.com/go-zpkg/zbk v0.65.0
+	github.com/go-zpkg/zbk v0.67.0
 	github.com/hashicorp/hcl/v2 v2.25.0
 	golang.org/x/mod v0.41.0
 	gopkg.in/yaml.v3 v3.0.1
