@@ -27,6 +27,11 @@ Read 2026-11-07, from primary sources, at the versions linked.
 | tests | `test.script` | `#:tests?` | `checkPhase`, `doCheck` | test methods | `test do` |
 | version discovery | `versions.github`, `versions.strip` | — | — | `list_url`, `spack checksum` | inferred from `url`, `livecheck` |
 
+⛔ The pkgx column describes **upstream's** recipes. Our own schema
+(`zbk/schema/package.schema.json`, "derived from libpkgx's parser") is not
+identical to it: it already declares `license` and `platforms`, which §2 and
+§6 below correct. It still has no integrity field of any kind.
+
 Sources: pkgx — `pkgxdev/pantry@4eb778f`, read from the recipes themselves
 (`projects/openssl.org/package.yml`, `projects/zlib.net/package.yml`), the
 repository documenting no field reference. Guix — `doc/guix.texi` at
@@ -65,10 +70,40 @@ truth. The digest in the example below is therefore left as a placeholder
 rather than written from memory: an unverified digest in the document that
 argues for verified digests would be the same mistake in miniature.
 
-**2. No licence.** Nothing in our recipes records what the packaged project is
-licensed under. We have just spent a day establishing that an unstated licence
-is not an absent one; shipping 1932 bottles with no record of their terms
-repeats upstream's mistake at our own expense.
+⛔ **This is not new ground, and the existing analysis is sharper than the
+first draft of this section.** `zbk/fetch/fetch.go:160` already states the
+problem and already mitigates it: "Exactly one recipe of 904 in the pantry
+carries a `sha:`, and that one points at a `.sha256` served by the same host
+as the tarball — it catches corruption, not substitution. For everything else
+TLS is the whole of it, across 233 distinct upstream hosts." The mitigation is
+`fetch.Pin`, trust on first use: the first fetch of a URL records its digest,
+and a later fetch serving different bytes fails with `ErrSourcePinMismatch`.
+As that comment puts it, it "does not make an upstream trustworthy. It makes a
+CHANGE visible, which is the part nobody had."
+
+What a recipe-pinned digest adds — the only thing it adds — is **the first
+fetch**. Trust on first use cannot refuse a first answer, because it has
+nothing to compare against: it records it. The zlib attempt above is exactly
+that case. A first fetch returning a 404 page is a digest `fetch.Pin` would
+have written down as the truth about zlib, and then defended against
+correction. A digest put in the recipe by whoever read the release is the one
+control that covers it.
+
+Re-measured 2026-11-07 against the current trees: **1 of 1932** upstream
+recipes carries a `sha:`, and **0 of our 213** carry any integrity field —
+the schema's `distributableObject` offers only `url`, `ref` and
+`strip-components`.
+
+**2. The licence field exists and nothing fills it.** Corrected after reading
+the authoritative schema: `license` is already there
+(`zbk/schema/package.schema.json:98`, a `stringOrArray`). The gap is not a
+missing field, it is a field no recipe is required to carry and almost none
+does — **0 of our 213** overlay recipes and **1 of upstream's 1932**. A field
+that is optional and unused is indistinguishable from an absent one, except
+that it reads as though we had the information. We have just spent a day
+establishing that an unstated licence is not an absent one; shipping bottles
+with no record of their terms repeats upstream's mistake at our own expense.
+So the change here is a *requirement*, not a field.
 
 **3. No SBOM identifiers.** Only Nixpkgs carries them —
 `meta.identifiers`, "Software identifiers such as CPE and Package URL, used
@@ -94,11 +129,15 @@ error. That is a build-slot confusion with no vocabulary to express it. It is
 also the thing standing between us and dispatching builds to the right os/arch
 node of a heterogeneous cluster.
 
-**6. No declarative platform support.** Guix has `supported-systems`
-("architecture-kernel, for example `x86_64-linux`"); Nixpkgs has `platforms`
-and `badPlatforms`. We state platform support only as a side effect of `env:`
-maps, so nothing can answer "which nodes should build this" without running
-the build.
+**6. The platform field exists and almost nothing states it.** Corrected, as
+§2 was: `platforms` is in the schema already
+(`zbk/schema/package.schema.json:83` — "darwin, linux, windows, or
+`<os>/<arch>`"), and **7 of our 213** overlay recipes set it. Two things are
+genuinely missing rather than unused: there is no way to *exclude* a couple
+that a broader claim admits — Nixpkgs pairs `platforms` with `badPlatforms`
+for exactly this, and recommends claiming everything and subtracting — and
+nothing requires the claim, so "which nodes should build this" still has no
+answer for 206 of 213 recipes without running the build.
 
 **7. Patches are shell, not data.** pkgx writes
 `run: patch -p1 <props/x509_def.c.diff` with `if: <3.4.0`. Spack's
@@ -210,18 +249,39 @@ provenance {
 
 ## What it costs
 
-`zbk` parses the current schema; every field above that it does not know is a
-parse error, so the format lands in `zbk` before any recipe uses it. The order
-that keeps the tree buildable throughout:
+⛔ **Corrected, and it inverts the risk.** The first draft said an unknown
+field would be a parse error. It is the opposite:
+`zbk/schema/package.schema.json` sets `"additionalProperties": true` at the
+root and in every nested object, so a recipe may declare `sha256`,
+`provenance` or anything else today and `zbk` will **accept it and silently
+ignore it**. That is worse than refusing it. A recipe carrying a digest that
+nothing checks reads, to anyone who opens it, as a verified source.
 
-1. `source.sha256` + `license` + `provenance` — refuse a recipe without them.
-2. `deps` slots, with the present `build.dependencies` reading as `deps.build`.
-3. `platforms`, so a build can be dispatched without being run.
-4. `identifiers` and `vulnerable`, joined to `advisories/`.
-5. `patch` blocks and `outputs`.
+So the first step is not "add fields", it is "stop accepting fields nobody
+reads". The order that keeps the tree buildable throughout:
 
-Steps 1–3 are what the first bootstrap tranche needs; 4–5 can follow the
+1. Close the schema: `additionalProperties: false` at the root, with the
+   present keys enumerated, so an unknown or misspelt key fails loudly. Do
+   this first — every step below is only as good as this one.
+2. `source.sha256` + `provenance`, and make `license` **required** rather
+   than merely present. This is a migration, not a flag day: 0 of 213 recipes
+   carry a licence and none carries a digest, so the requirement lands with a
+   grace list that shrinks, and the gate reports its denominator.
+3. `deps` slots, with the present `build.dependencies` reading as
+   `deps.build`.
+4. `platforms` required, plus an exclusion form, so a build can be dispatched
+   without being run.
+5. `identifiers` and `vulnerable`, joined to `advisories/`.
+6. `patch` blocks and `outputs`.
+
+Steps 1–4 are what the first bootstrap tranche needs; 5–6 can follow the
 recipes.
+
+Both front-ends have to move together: `zbk/pantry/hcl` converts HCL to YAML
+through `bottle.HCLToYAML` and validates with the same schema, deliberately,
+"because the CLIENT has to read these files too — the overlay is fetched at
+install time". A field the factory honours and the installer ignores would be
+two readings of one recipe.
 
 ## The first tranche
 
